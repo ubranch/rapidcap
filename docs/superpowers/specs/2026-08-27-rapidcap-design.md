@@ -1,6 +1,6 @@
 # RapidCap MVP Design
 
-Date: 2026-08-27  
+Date: 2026-08-27
 Status: awaiting implementation approval
 
 ## Goal
@@ -233,4 +233,3 @@ These are acceptance targets, not guarantees for unrelated hardware.
 ## Acceptance criteria
 
 MVP is complete when a clean Windows 11 x64 machine can unpack the portable bundle and execute all four workflows without installing ShareX or FFmpeg; outputs match the approved configuration; no capture/encoding work blocks GPUI; failure paths preserve user data; and the runtime, accessibility, and performance checks above pass or have explicit measured exceptions.
-
