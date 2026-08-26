@@ -1,0 +1,4 @@
+/dist/
+/assets/ffmpeg/bin/
+*.tmp
+*.part
