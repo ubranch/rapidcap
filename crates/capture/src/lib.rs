@@ -1,9 +1,11 @@
+mod image_file;
 mod naming;
 mod settings;
 mod state;
 
+pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::{NamingError, OutputNamer};
-pub use settings::{AppPaths, Settings};
+pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
 pub use state::{CaptureCommand, CaptureEvent, CaptureKind, CaptureState, StateError};
 
 #[cfg(test)]
@@ -82,5 +84,59 @@ mod tests {
         assert!(paths.settings_file.is_absolute());
         assert!(paths.log_dir.is_absolute());
         assert!(paths.temp_dir.is_absolute());
+    }
+
+    #[test]
+    fn missing_settings_file_is_created_with_defaults() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("RapidCap/settings.json");
+        let store = SettingsStore::new(file.clone());
+        assert_eq!(store.load().unwrap(), Settings::default());
+        assert!(file.is_file());
+        assert!(!file.with_extension("json.part").exists());
+    }
+
+    #[test]
+    fn invalid_settings_are_preserved() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("settings.json");
+        std::fs::write(&file, b"{invalid").unwrap();
+        let error = SettingsStore::new(file.clone()).load().unwrap_err();
+        assert!(matches!(error, SettingsError::Invalid(_)));
+        assert_eq!(std::fs::read(&file).unwrap(), b"{invalid");
+    }
+
+    #[test]
+    fn screenshot_uses_png_below_threshold() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().join("solid");
+        let rgba = vec![255_u8; 16 * 16 * 4];
+        let saved = save_screenshot(&rgba, 16, 16, &base, 2_097_152, 90).unwrap();
+        assert_eq!(saved.extension().unwrap(), "png");
+        assert!(saved.is_file());
+        assert!(!base.with_extension("part").exists());
+    }
+
+    #[test]
+    fn screenshot_uses_jpeg_above_threshold() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path().join("forced-jpeg");
+        let rgba = vec![127_u8; 16 * 16 * 4];
+        let saved = save_screenshot(&rgba, 16, 16, &base, 1, 90).unwrap();
+        assert_eq!(saved.extension().unwrap(), "jpg");
+        assert!(saved.is_file());
+        assert!(!base.with_extension("part").exists());
+    }
+
+    #[test]
+    fn failed_screenshot_write_leaves_no_final_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let blocker = temp.path().join("not-a-directory");
+        std::fs::write(&blocker, b"block").unwrap();
+        let base = blocker.join("capture");
+        let rgba = vec![0_u8; 4 * 4 * 4];
+        assert!(save_screenshot(&rgba, 4, 4, &base, 2_097_152, 90).is_err());
+        assert!(!base.with_extension("png").exists());
+        assert!(!base.with_extension("jpg").exists());
     }
 }

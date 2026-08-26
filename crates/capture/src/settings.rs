@@ -1,18 +1,22 @@
 use std::{
     fmt,
+    fs::{self, File},
+    io::Write,
+    os::windows::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 use windows::{
     Win32::{
+        Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW},
         System::Com::CoTaskMemFree,
         UI::Shell::{
             FOLDERID_Documents, FOLDERID_LocalAppData, FOLDERID_RoamingAppData, KF_FLAG_DEFAULT,
             SHGetKnownFolderPath,
         },
     },
-    core::GUID,
+    core::{GUID, PCWSTR},
 };
 
 pub const SETTINGS_SCHEMA_VERSION: u32 = 1;
@@ -62,6 +66,82 @@ impl Default for Settings {
         }
     }
 }
+
+impl Settings {
+    fn validate(&self) -> Result<(), SettingsError> {
+        if self.schema_version != SETTINGS_SCHEMA_VERSION {
+            return Err(SettingsError::Invalid(format!(
+                "unsupported settings schema {}",
+                self.schema_version
+            )));
+        }
+        if !(1..=100).contains(&self.screenshot.jpeg_quality)
+            || self.video.fps == 0
+            || self.gif.fps == 0
+            || self.countdown_seconds == 0
+        {
+            return Err(SettingsError::Invalid(
+                "settings contain zero or out-of-range values".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SettingsStore {
+    file: PathBuf,
+}
+
+impl SettingsStore {
+    pub fn new(file: PathBuf) -> Self {
+        Self { file }
+    }
+
+    pub fn load(&self) -> Result<Settings, SettingsError> {
+        if !self.file.exists() {
+            let settings = Settings::default();
+            self.save(&settings)?;
+            return Ok(settings);
+        }
+        let raw = fs::read(&self.file).map_err(SettingsError::io)?;
+        let settings: Settings = serde_json::from_slice(&raw)
+            .map_err(|error| SettingsError::Invalid(error.to_string()))?;
+        settings.validate()?;
+        Ok(settings)
+    }
+
+    pub fn save(&self, settings: &Settings) -> Result<(), SettingsError> {
+        settings.validate()?;
+        let bytes = serde_json::to_vec_pretty(settings)
+            .map_err(|error| SettingsError::Invalid(error.to_string()))?;
+        let temp = self.file.with_extension("json.part");
+        write_atomic(&temp, &self.file, &bytes).map_err(SettingsError::io)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SettingsError {
+    Io(String),
+    Invalid(String),
+}
+
+impl SettingsError {
+    fn io(error: std::io::Error) -> Self {
+        Self::Io(error.to_string())
+    }
+}
+
+impl fmt::Display for SettingsError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(message) => write!(formatter, "settings I/O failed: {message}"),
+            Self::Invalid(message) => write!(formatter, "settings invalid: {message}"),
+        }
+    }
+}
+
+impl std::error::Error for SettingsError {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,6 +214,45 @@ impl AppPaths {
             log_dir: local_app_data.as_ref().join("RapidCap").join("Logs"),
             temp_dir: local_app_data.as_ref().join("RapidCap").join("Temp"),
         }
+    }
+}
+
+pub(crate) fn write_atomic(temp: &Path, final_path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = final_path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "output path has no parent",
+        )
+    })?;
+    fs::create_dir_all(parent)?;
+    let result = (|| {
+        let mut file = File::create(temp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        move_replace(temp, final_path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(temp);
+    }
+    result
+}
+
+fn move_replace(source: &Path, destination: &Path) -> std::io::Result<()> {
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let destination: Vec<u16> = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    // SAFETY: both vectors are live NUL-terminated UTF-16 paths for the call duration.
+    unsafe {
+        MoveFileExW(
+            PCWSTR(source.as_ptr()),
+            PCWSTR(destination.as_ptr()),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+        .map_err(|error| std::io::Error::other(error.to_string()))
     }
 }
 
