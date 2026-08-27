@@ -1,12 +1,20 @@
+mod clipboard;
 mod image_file;
 mod naming;
+mod screenshot;
 mod settings;
 mod state;
+mod wgc;
 
+pub use clipboard::{ClipboardError, write_clipboard};
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::{NamingError, OutputNamer};
+pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
 pub use state::{CaptureCommand, CaptureEvent, CaptureKind, CaptureState, StateError};
+pub use wgc::{
+    CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, RawFrame, capture_screenshot,
+};
 
 #[cfg(test)]
 mod tests {

@@ -3,7 +3,7 @@ use gpui::{
     WindowAppearance, WindowBounds, WindowHandle, WindowOptions, actions, div, prelude::*, px, rgb,
     size,
 };
-use rapidcap_capture::{CaptureCommand, CaptureState};
+use rapidcap_capture::{CaptureCommand, CaptureState, CaptureTarget};
 
 use crate::controller::AppController;
 use crate::platform::open_folder;
@@ -142,9 +142,17 @@ impl Render for MainWindow {
         };
 
         let state = self.controller.read(cx).state().clone();
-        let status = match state {
-            CaptureState::Idle => "Ready".to_string(),
-            other => format!("{other:?}"),
+        let status = match self.controller.read(cx).target() {
+            Some(CaptureTarget::Region(region)) => {
+                format!("Selected {} × {}", region.width, region.height)
+            }
+            Some(CaptureTarget::Window { process_name, .. }) => {
+                format!("Selected {process_name}")
+            }
+            None => match state {
+                CaptureState::Idle => "Ready".to_string(),
+                other => format!("{other:?}"),
+            },
         };
         let output = self
             .controller

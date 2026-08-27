@@ -1,18 +1,26 @@
 #![cfg_attr(not(test), windows_subsystem = "windows")]
 
 mod controller;
+mod overlay;
 mod platform;
 mod window;
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, time::Duration};
 
 use gpui::{App, AppContext as _};
 use gpui_platform::application;
-use rapidcap_capture::{AppPaths, CaptureState, SettingsStore};
+use rapidcap_capture::{
+    AppPaths, CaptureCommand, CaptureKind, CaptureState, CaptureTarget, SettingsStore,
+    capture_and_save, write_clipboard,
+};
 
 use crate::{
     controller::AppController,
-    platform::{PlatformEvent, PlatformRuntime, SingleInstance, open_folder, probe_payload},
+    overlay::{open_region_overlay, overlay_key_bindings},
+    platform::{
+        PlatformEvent, PlatformRuntime, SingleInstance, foreground_window_target, open_folder,
+        probe_payload,
+    },
     window::{key_bindings, open_main_window},
 };
 
@@ -45,10 +53,79 @@ fn main() -> anyhow::Result<()> {
 
     let silent = std::env::args_os().any(|argument| argument == "--silent");
     application().run(move |cx: &mut App| {
-        cx.bind_keys(key_bindings());
+        let mut bindings = key_bindings();
+        bindings.extend(overlay_key_bindings());
+        cx.bind_keys(bindings);
         let controller = cx.new(|_| AppController::new(settings, paths));
-        let main_window = open_main_window(cx, controller.clone(), !silent)
-            .expect("open RapidCap main window");
+        let main_window =
+            open_main_window(cx, controller.clone(), !silent).expect("open RapidCap main window");
+        cx.subscribe(&controller, {
+            move |controller, command, cx| match command {
+                CaptureCommand::CaptureActiveWindow
+                    if matches!(controller.read(cx).state(), CaptureState::Selecting(_)) =>
+                {
+                    match foreground_window_target() {
+                        Ok(target) => {
+                            let _ = main_window.update(cx, |_view, window, _cx| {
+                                window.minimize_window();
+                            });
+                            controller
+                                .update(cx, |controller, cx| controller.set_target(target, cx));
+                        }
+                        Err(error) => tracing::error!(%error, "resolve foreground window"),
+                    }
+                }
+                CaptureCommand::CaptureRegion
+                | CaptureCommand::ToggleVideo
+                | CaptureCommand::ToggleGif
+                    if matches!(controller.read(cx).state(), CaptureState::Selecting(_)) =>
+                {
+                    let _ = main_window.update(cx, |_view, window, _cx| {
+                        window.minimize_window();
+                    });
+                    if let Err(error) = open_region_overlay(cx, controller) {
+                        tracing::error!(%error, "open region overlay");
+                    }
+                }
+                CaptureCommand::Cancel => {
+                    let _ = main_window.update(cx, |_view, window, _cx| {
+                        window.activate_window();
+                    });
+                }
+                _ => {}
+            }
+        })
+        .detach();
+        cx.subscribe(&controller, |controller, target: &CaptureTarget, cx| {
+            if !matches!(
+                controller.read(cx).state(),
+                CaptureState::Selecting(
+                    CaptureKind::RegionScreenshot | CaptureKind::ActiveWindowScreenshot
+                )
+            ) {
+                return;
+            }
+            let (settings, paths) = controller.read_with(cx, |controller, _| {
+                (controller.settings().clone(), controller.paths().clone())
+            });
+            let target = target.clone();
+            let task = cx.background_executor().spawn(async move {
+                std::thread::sleep(Duration::from_millis(40));
+                let saved = capture_and_save(&target, &settings, &paths)?;
+                if let Err(error) = write_clipboard(&saved) {
+                    tracing::warn!(%error, path = %saved.path.display(), "clipboard write failed after screenshot save");
+                }
+                Ok(saved)
+            });
+            cx.spawn(async move |cx| {
+                let result = task.await;
+                controller.update(cx, |controller, cx| {
+                    controller.finish_screenshot(result, cx)
+                });
+            })
+            .detach();
+        })
+        .detach();
         let runtime = match PlatformRuntime::start() {
             Ok(runtime) => runtime,
             Err(error) => {

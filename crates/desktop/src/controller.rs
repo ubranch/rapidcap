@@ -1,10 +1,14 @@
-use gpui::Context;
-use rapidcap_capture::{AppPaths, CaptureCommand, CaptureKind, CaptureState, Settings, StateError};
+use gpui::{Context, EventEmitter};
+use rapidcap_capture::{
+    AppPaths, CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget, SavedCapture,
+    ScreenshotError, Settings, StateError,
+};
 
 pub struct AppController {
     state: CaptureState,
     settings: Settings,
     paths: AppPaths,
+    target: Option<CaptureTarget>,
     generation: u64,
 }
 
@@ -14,6 +18,7 @@ impl AppController {
             state: CaptureState::Idle,
             settings,
             paths,
+            target: None,
             generation: 0,
         }
     }
@@ -30,6 +35,36 @@ impl AppController {
         &self.paths
     }
 
+    pub fn target(&self) -> Option<&CaptureTarget> {
+        self.target.as_ref()
+    }
+
+    pub fn set_target(&mut self, target: CaptureTarget, cx: &mut Context<Self>) {
+        self.target = Some(target.clone());
+        cx.emit(target);
+        cx.notify();
+    }
+
+    pub fn finish_screenshot(
+        &mut self,
+        result: Result<SavedCapture, ScreenshotError>,
+        cx: &mut Context<Self>,
+    ) {
+        self.target = None;
+        match result {
+            Ok(saved) => {
+                self.state = CaptureState::Idle;
+                cx.emit(CaptureEvent::OutputSaved(saved.path));
+            }
+            Err(error) => {
+                let message = error.to_string();
+                self.state = CaptureState::Error(message.clone());
+                cx.emit(CaptureEvent::Failed(message));
+            }
+        }
+        cx.notify();
+    }
+
     pub fn dispatch(
         &mut self,
         command: CaptureCommand,
@@ -43,7 +78,11 @@ impl AppController {
             CaptureCommand::Cancel => self.state.clone().cancel().map_err(CommandError::from),
         }?;
         self.state = next;
+        if matches!(command, CaptureCommand::Cancel) {
+            self.target = None;
+        }
         self.generation = self.generation.wrapping_add(1);
+        cx.emit(command);
         cx.notify();
         Ok(())
     }
@@ -67,6 +106,10 @@ impl AppController {
         self.state = state;
     }
 }
+
+impl EventEmitter<CaptureCommand> for AppController {}
+impl EventEmitter<CaptureTarget> for AppController {}
+impl EventEmitter<CaptureEvent> for AppController {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandError {
@@ -118,5 +161,23 @@ mod tests {
             controller.dispatch(CaptureCommand::ToggleGif, cx)
         });
         assert_eq!(result, Err(CommandError::Busy));
+    }
+
+    #[gpui::test]
+    fn selected_target_is_retained(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        let target = rapidcap_capture::CaptureTarget::Region(rapidcap_capture::PhysicalRegion {
+            x: -10,
+            y: 20,
+            width: 300,
+            height: 200,
+        });
+        controller.update(cx, |controller, cx| {
+            controller.set_target(target.clone(), cx)
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.target().cloned()),
+            Some(target)
+        );
     }
 }
