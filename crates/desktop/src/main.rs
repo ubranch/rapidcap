@@ -65,6 +65,7 @@ fn main() -> anyhow::Result<()> {
         let recording_stop = Arc::new(Mutex::new(None::<mpsc::Sender<()>>));
         let main_window =
             open_main_window(cx, controller.clone(), !silent).expect("open RapidCap main window");
+        let recording_window = main_window;
         cx.subscribe(&controller, {
             let recording_stop = recording_stop.clone();
             move |controller, command, cx| match command {
@@ -142,6 +143,10 @@ fn main() -> anyhow::Result<()> {
                     .detach();
                 }
                 CaptureState::Countdown(kind @ (CaptureKind::Video | CaptureKind::Gif), seconds) => {
+                    let _ = recording_window.update(cx, |_view, window, _cx| {
+                        window.activate_window();
+                    });
+                    cx.activate(true);
                     let (stop_sender, stop_receiver) = mpsc::channel();
                     *recording_stop.lock().unwrap() = Some(stop_sender);
                     let (started_sender, started_receiver) = async_channel::bounded(1);

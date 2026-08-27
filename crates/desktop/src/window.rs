@@ -3,7 +3,7 @@ use gpui::{
     WindowAppearance, WindowBounds, WindowHandle, WindowOptions, actions, div, prelude::*, px, rgb,
     size,
 };
-use rapidcap_capture::{CaptureCommand, CaptureState, CaptureTarget};
+use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget};
 
 use crate::controller::AppController;
 use crate::platform::open_folder;
@@ -149,7 +149,7 @@ impl Render for MainWindow {
             Some(CaptureTarget::Window { process_name, .. }) => {
                 format!("Selected {process_name}")
             }
-            None => match state {
+            None => match &state {
                 CaptureState::Idle => "Ready".to_string(),
                 other => format!("{other:?}"),
             },
@@ -163,6 +163,8 @@ impl Render for MainWindow {
             .to_string();
         let video_fps = self.controller.read(cx).settings().video.fps;
         let gif_fps = self.controller.read(cx).settings().gif.fps;
+        let video_label = recording_label(&state, CaptureKind::Video);
+        let gif_label = recording_label(&state, CaptureKind::Gif);
 
         div()
             .id("rapidcap-root")
@@ -238,18 +240,22 @@ impl Render for MainWindow {
                             CONTROL_IDS[2],
                             "rapidcap.record-video",
                             "RapidCapVideo",
-                            "Video",
+                            video_label,
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.dispatch(CaptureCommand::ToggleVideo, cx)
                         })),
                     )
                     .child(
-                        button("record-gif", "rapidcap.record-gif", "RapidCapGif", "GIF").on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.dispatch(CaptureCommand::ToggleGif, cx)
-                            }),
-                        ),
+                        button(
+                            "record-gif",
+                            "rapidcap.record-gif",
+                            "RapidCapGif",
+                            gif_label,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.dispatch(CaptureCommand::ToggleGif, cx)
+                        })),
                     ),
             )
             .child(
@@ -282,6 +288,21 @@ impl Render for MainWindow {
                         })),
                     ),
             )
+    }
+}
+
+fn recording_label(state: &CaptureState, kind: CaptureKind) -> &'static str {
+    match state {
+        CaptureState::Countdown(active, _) if *active == kind => "Starting…",
+        CaptureState::Recording(active) | CaptureState::Finalizing(active) if *active == kind => {
+            if kind == CaptureKind::Video {
+                "Stop Video"
+            } else {
+                "Stop GIF"
+            }
+        }
+        _ if kind == CaptureKind::Video => "Video",
+        _ => "GIF",
     }
 }
 
@@ -343,6 +364,21 @@ mod tests {
                 CONTROL_IDS[3],
                 CONTROL_IDS[4],
             ]
+        );
+    }
+
+    #[test]
+    fn active_recording_button_becomes_stop() {
+        assert_eq!(
+            recording_label(
+                &CaptureState::Recording(CaptureKind::Video),
+                CaptureKind::Video
+            ),
+            "Stop Video"
+        );
+        assert_eq!(
+            recording_label(&CaptureState::Idle, CaptureKind::Gif),
+            "GIF"
         );
     }
 
