@@ -1,6 +1,18 @@
+#![cfg_attr(not(test), windows_subsystem = "windows")]
+
+mod controller;
+mod window;
+
 use std::{fs, path::Path};
 
+use gpui::{App, AppContext as _};
+use gpui_platform::application;
 use rapidcap_capture::{AppPaths, SettingsStore};
+
+use crate::{
+    controller::AppController,
+    window::{key_bindings, open_main_window},
+};
 
 fn main() -> anyhow::Result<()> {
     let paths = AppPaths::discover()?;
@@ -20,6 +32,16 @@ fn main() -> anyhow::Result<()> {
         output = %paths.capture_root.display(),
         "RapidCap startup"
     );
+
+    let silent = std::env::args_os().any(|argument| argument == "--silent");
+    application().run(move |cx: &mut App| {
+        cx.bind_keys(key_bindings());
+        let controller = cx.new(|_| AppController::new(settings, paths));
+        open_main_window(cx, controller, !silent).expect("open RapidCap main window");
+        if !silent {
+            cx.activate(true);
+        }
+    });
     Ok(())
 }
 

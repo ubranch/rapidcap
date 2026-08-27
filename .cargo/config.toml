@@ -1,2 +1,2 @@
 [build]
-target-dir = "../../../work/rapidcap-target"
+target-dir = "../../work/rapidcap-target"
