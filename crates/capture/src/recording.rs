@@ -174,16 +174,8 @@ fn ffmpeg_args(
             format!("{}k", settings.audio.bitrate / 1000),
         ]);
     } else {
-        args.extend([
-            "-filter_complex".into(),
-            format!(
-                "split[a][b];[a]fps={},palettegen=stats_mode={}[p];[b]fps={}[x];[x][p]paletteuse=dither={}",
-                settings.gif.fps,
-                settings.gif.palette_stats_mode,
-                settings.gif.fps,
-                settings.gif.dither
-            ),
-        ]);
+        // ponytail: direct GIF streams safely; full palette generation requires a second pass.
+        args.extend(["-vf".into(), format!("fps={}", settings.gif.fps)]);
     }
     args.extend(["-y".into(), output.display().to_string()]);
     args
@@ -233,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn gif_command_uses_sharex_palette_settings() {
+    fn gif_command_streams_at_sharex_frame_rate() {
         let args = ffmpeg_args(
             CaptureKind::Gif,
             &PhysicalRegion {
@@ -245,9 +237,9 @@ mod tests {
             &Settings::default(),
             Path::new("out.part.gif"),
         );
-        assert!(args.join(" ").contains(
-            "fps=15,palettegen=stats_mode=full[p];[b]fps=15[x];[x][p]paletteuse=dither=sierra2_4a"
-        ));
+        let joined = args.join(" ");
+        assert!(joined.contains("-vf fps=15"));
+        assert!(!joined.contains("palettegen"));
     }
 
     #[test]
