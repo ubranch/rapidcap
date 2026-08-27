@@ -40,6 +40,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     };
     fs::create_dir_all(&paths.log_dir)?;
+    fs::create_dir_all(&paths.capture_root)?;
     prune_logs(&paths.log_dir, 7)?;
 
     let file = tracing_appender::rolling::daily(&paths.log_dir, "rapidcap.log");
@@ -80,7 +81,12 @@ fn main() -> anyhow::Result<()> {
                             controller
                                 .update(cx, |controller, cx| controller.set_target(target, cx));
                         }
-                        Err(error) => tracing::error!(%error, "resolve foreground window"),
+                        Err(error) => {
+                            tracing::error!(%error, "resolve foreground window");
+                            let _ = controller.update(cx, |controller, cx| {
+                                controller.dispatch(CaptureCommand::Cancel, cx)
+                            });
+                        }
                     }
                 }
                 CaptureCommand::CaptureRegion
@@ -91,8 +97,14 @@ fn main() -> anyhow::Result<()> {
                     let _ = main_window.update(cx, |_view, window, _cx| {
                         window.minimize_window();
                     });
-                    if let Err(error) = open_region_overlay(cx, controller) {
+                    if let Err(error) = open_region_overlay(cx, controller.clone()) {
                         tracing::error!(%error, "open region overlay");
+                        let _ = controller.update(cx, |controller, cx| {
+                            controller.dispatch(CaptureCommand::Cancel, cx)
+                        });
+                        let _ = main_window.update(cx, |_view, window, _cx| {
+                            window.activate_window();
+                        });
                     }
                 }
                 CaptureCommand::ToggleVideo | CaptureCommand::ToggleGif
@@ -139,6 +151,10 @@ fn main() -> anyhow::Result<()> {
                         controller.update(cx, |controller, cx| {
                             controller.finish_screenshot(result, cx)
                         });
+                        let _ = recording_window.update(cx, |_view, window, _cx| {
+                            window.activate_window();
+                        });
+                        cx.update(|cx| cx.activate(true));
                     })
                     .detach();
                 }

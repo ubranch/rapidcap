@@ -104,6 +104,9 @@ impl AppController {
         command: CaptureCommand,
         cx: &mut Context<Self>,
     ) -> Result<(), CommandError> {
+        if matches!(self.state, CaptureState::Error(_)) {
+            self.state = CaptureState::Idle;
+        }
         let next = match command {
             CaptureCommand::CaptureRegion => self.start(CaptureKind::RegionScreenshot),
             CaptureCommand::CaptureActiveWindow => self.start(CaptureKind::ActiveWindowScreenshot),
@@ -235,6 +238,23 @@ mod tests {
         assert_eq!(
             controller.read_with(cx, |controller, _| controller.state().clone()),
             CaptureState::Countdown(CaptureKind::Video, 5)
+        );
+    }
+
+    #[gpui::test]
+    fn next_command_recovers_from_previous_error(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, _| {
+            controller.set_state_for_test(CaptureState::Error("previous failure".into()));
+        });
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::CaptureRegion, cx)
+                .unwrap();
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.state().clone()),
+            CaptureState::Selecting(CaptureKind::RegionScreenshot)
         );
     }
 }
