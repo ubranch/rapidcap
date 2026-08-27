@@ -6,6 +6,7 @@ use gpui::{
 use rapidcap_capture::{CaptureCommand, CaptureState};
 
 use crate::controller::AppController;
+use crate::platform::open_folder;
 
 actions!(
     rapidcap,
@@ -83,7 +84,9 @@ impl MainWindow {
     }
 
     fn open_output(&mut self, _: &OpenOutputAction, _: &mut Window, cx: &mut Context<Self>) {
-        cx.notify();
+        if let Err(error) = open_folder(&self.controller.read(cx).paths().capture_root) {
+            tracing::error!(%error, "open output folder");
+        }
     }
 
     fn focus_next(&mut self, _: &TabAction, window: &mut Window, cx: &mut Context<Self>) {
@@ -266,7 +269,9 @@ impl Render for MainWindow {
                         .h(px(32.0))
                         .px(px(10.0))
                         .aria_label(format!("Open output folder {output}"))
-                        .on_click(cx.listener(|_this, _, _, cx| cx.notify())),
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_output(&OpenOutputAction, window, cx)
+                        })),
                     ),
             )
     }
@@ -294,8 +299,9 @@ pub fn open_main_window(
     controller: Entity<AppController>,
     show: bool,
 ) -> anyhow::Result<WindowHandle<MainWindow>> {
-    let bounds = Bounds::centered(None, size(px(360.0), px(240.0)), cx);
-    cx.open_window(
+    let compact_size = size(px(360.0), px(240.0));
+    let bounds = Bounds::centered(None, compact_size, cx);
+    let handle = cx.open_window(
         WindowOptions {
             focus: show,
             show,
@@ -305,7 +311,9 @@ pub fn open_main_window(
             ..Default::default()
         },
         |window, cx| cx.new(|cx| MainWindow::new(window, cx, controller)),
-    )
+    )?;
+    handle.update(cx, |_view, window, _cx| window.resize(compact_size))?;
+    Ok(handle)
 }
 
 #[cfg(test)]

@@ -11,10 +11,12 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1.0.104"
+async-channel = "2.5.0"
 crossbeam-channel = "0.5.15"
 cpal = "0.16.0"
 gpui = { git = "https://github.com/zed-industries/zed", rev = "7733b9922665f103abda7c6a3fde6b9dfdc8eba9", default-features = false }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "7733b9922665f103abda7c6a3fde6b9dfdc8eba9" }
+global-hotkey = "0.7.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 rand = "0.9.5"
 raw-window-handle = "0.6.2"
@@ -23,6 +25,7 @@ serde_json = "1.0.151"
 tracing = "0.1.44"
 tracing-appender = "0.2.4"
 tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
+tray-icon = "0.24.1"
 windows-capture = "1.5.0"
 windows = { version = "0.61.3", features = [
   "Foundation",
