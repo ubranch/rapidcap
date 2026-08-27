@@ -112,7 +112,32 @@ fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
         return Ok(bundled);
     }
     // ponytail: PATH fallback is development-only; portable bundle supplies adjacent ffmpeg.exe.
-    Ok(PathBuf::from("ffmpeg.exe"))
+    std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .map(|directory| directory.join("ffmpeg.exe"))
+        .find(|candidate| candidate.is_file())
+        .map(|candidate| resolve_scoop_shim(&candidate))
+        .ok_or_else(|| RecordingError("ffmpeg.exe not found".into()))
+}
+
+fn resolve_scoop_shim(executable: &Path) -> PathBuf {
+    let Some(target) = fs::read_to_string(executable.with_extension("shim"))
+        .ok()
+        .and_then(|line| {
+            line.trim()
+                .strip_prefix("path = \"")
+                .and_then(|path| path.strip_suffix('"'))
+                .map(PathBuf::from)
+        })
+    else {
+        return executable.to_owned();
+    };
+    if target.is_file() {
+        target
+    } else {
+        executable.to_owned()
+    }
 }
 
 fn ffmpeg_args(
@@ -240,6 +265,22 @@ mod tests {
         let joined = args.join(" ");
         assert!(joined.contains("-vf fps=15"));
         assert!(!joined.contains("palettegen"));
+    }
+
+    #[test]
+    fn scoop_shim_resolves_real_ffmpeg_process() {
+        let temp = tempfile::tempdir().unwrap();
+        let shim_exe = temp.path().join("ffmpeg.exe");
+        let real_exe = temp.path().join("apps/ffmpeg/bin/ffmpeg.exe");
+        std::fs::create_dir_all(real_exe.parent().unwrap()).unwrap();
+        std::fs::write(&shim_exe, b"shim").unwrap();
+        std::fs::write(&real_exe, b"real").unwrap();
+        std::fs::write(
+            temp.path().join("ffmpeg.shim"),
+            format!("path = \"{}\"", real_exe.display()),
+        )
+        .unwrap();
+        assert_eq!(resolve_scoop_shim(&shim_exe), real_exe);
     }
 
     #[test]
