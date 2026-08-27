@@ -21,17 +21,18 @@ use tray_icon::{
 };
 use windows::{
     Win32::{
-        Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, RECT},
+        Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HWND, RECT},
         Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute},
         System::Threading::{
-            CreateMutexW, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-            QueryFullProcessImageNameW,
+            CreateMutexW, GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32,
+            PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
         },
         UI::{
             Shell::ShellExecuteW,
             WindowsAndMessaging::{
-                FindWindowW, GW_HWNDNEXT, GetForegroundWindow, GetWindow, GetWindowThreadProcessId,
-                IsWindowVisible, SW_RESTORE, SW_SHOWNORMAL, SetForegroundWindow, ShowWindow,
+                FindWindowW, GW_HWNDNEXT, GetForegroundWindow, GetTopWindow, GetWindow,
+                GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SW_SHOWNORMAL,
+                SetForegroundWindow, ShowWindow,
             },
         },
     },
@@ -58,8 +59,44 @@ pub fn foreground_window_target() -> anyhow::Result<CaptureTarget> {
     let rapidcap = unsafe { FindWindowW(PCWSTR::null(), w!("RapidCap")) }.unwrap_or_default();
     let next = next_visible_window(foreground, rapidcap);
     let hwnd = preferred_candidate(foreground.0 as isize, next.0 as isize, rapidcap.0 as isize)
-        .map(|raw| windows::Win32::Foundation::HWND(raw as *mut _))
+        .map(|raw| HWND(raw as *mut _))
         .ok_or_else(|| anyhow::anyhow!("no foreground capture window"))?;
+
+    capture_target_for_hwnd(hwnd)
+}
+
+pub fn window_target_at(point: (i32, i32)) -> anyhow::Result<CaptureTarget> {
+    let current_process = unsafe { GetCurrentProcessId() };
+    let mut hwnd = unsafe { GetTopWindow(None) }.context("find top window")?;
+    loop {
+        let mut process_id = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&raw mut process_id)) };
+        if unsafe { IsWindowVisible(hwnd).as_bool() }
+            && !unsafe { IsIconic(hwnd).as_bool() }
+            && let Ok(rect) = window_rect(hwnd)
+            && window_candidate_contains(rect, point, process_id, current_process)
+            && let Ok(target) = capture_target_for_hwnd(hwnd)
+        {
+            return Ok(target);
+        }
+        hwnd = unsafe { GetWindow(hwnd, GW_HWNDNEXT) }.context("walk top-level windows")?;
+    }
+}
+
+fn window_candidate_contains(
+    rect: RECT,
+    point: (i32, i32),
+    process_id: u32,
+    current_process: u32,
+) -> bool {
+    process_id != current_process
+        && point.0 >= rect.left
+        && point.0 < rect.right
+        && point.1 >= rect.top
+        && point.1 < rect.bottom
+}
+
+fn window_rect(hwnd: HWND) -> anyhow::Result<RECT> {
 
     let mut rect = RECT::default();
     unsafe {
@@ -71,6 +108,11 @@ pub fn foreground_window_target() -> anyhow::Result<CaptureTarget> {
         )
     }
     .context("read foreground window bounds")?;
+    Ok(rect)
+}
+
+fn capture_target_for_hwnd(hwnd: HWND) -> anyhow::Result<CaptureTarget> {
+    let rect = window_rect(hwnd)?;
     let mut process_id = 0;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&raw mut process_id)) };
     let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) }
@@ -91,9 +133,9 @@ pub fn foreground_window_target() -> anyhow::Result<CaptureTarget> {
 }
 
 fn next_visible_window(
-    start: windows::Win32::Foundation::HWND,
-    excluded: windows::Win32::Foundation::HWND,
-) -> windows::Win32::Foundation::HWND {
+    start: HWND,
+    excluded: HWND,
+) -> HWND {
     let mut candidate = start;
     while let Ok(next) = unsafe { GetWindow(candidate, GW_HWNDNEXT) } {
         candidate = next;
@@ -101,7 +143,7 @@ fn next_visible_window(
             return candidate;
         }
     }
-    windows::Win32::Foundation::HWND::default()
+    HWND::default()
 }
 
 fn process_name(process: HANDLE) -> anyhow::Result<String> {
@@ -369,5 +411,18 @@ mod tests {
         assert_eq!(preferred_candidate(44, 22, 44), Some(22));
         assert_eq!(preferred_candidate(22, 11, 44), Some(22));
         assert_eq!(preferred_candidate(44, 44, 44), None);
+    }
+
+    #[test]
+    fn pointer_selects_only_external_window_containing_point() {
+        let rect = RECT {
+            left: 100,
+            top: 200,
+            right: 500,
+            bottom: 600,
+        };
+        assert!(window_candidate_contains(rect, (300, 400), 42, 7));
+        assert!(!window_candidate_contains(rect, (99, 400), 42, 7));
+        assert!(!window_candidate_contains(rect, (300, 400), 7, 7));
     }
 }
