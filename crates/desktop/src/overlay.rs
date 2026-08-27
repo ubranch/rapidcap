@@ -6,7 +6,7 @@ use gpui::{
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, actions,
     div, prelude::*, px, rgba,
 };
-use rapidcap_capture::{CaptureCommand, CaptureTarget, PhysicalRegion};
+use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget, PhysicalRegion};
 use windows::Win32::{
     Foundation::{POINT, RECT},
     Graphics::Gdi::{
@@ -15,16 +15,18 @@ use windows::Win32::{
     UI::WindowsAndMessaging::GetCursorPos,
 };
 
-use crate::controller::AppController;
+use crate::{controller::AppController, platform::window_target_at};
 
 actions!(rapidcap_overlay, [CancelSelection]);
 
 pub struct RegionOverlay {
     controller: Entity<AppController>,
+    kind: CaptureKind,
     monitor: PhysicalRegion,
     scale_factor: f32,
     start: Option<Point<Pixels>>,
     current: Option<Point<Pixels>>,
+    hovered: Option<CaptureTarget>,
     focus_handle: FocusHandle,
 }
 
@@ -33,6 +35,7 @@ impl RegionOverlay {
         window: &mut Window,
         cx: &mut Context<Self>,
         controller: Entity<AppController>,
+        kind: CaptureKind,
         monitor: PhysicalRegion,
     ) -> Self {
         window.set_window_title("RapidCap Selection");
@@ -40,10 +43,12 @@ impl RegionOverlay {
         focus_handle.focus(window, cx);
         Self {
             controller,
+            kind,
             monitor,
             scale_factor: window.scale_factor(),
             start: None,
             current: None,
+            hovered: None,
             focus_handle,
         }
     }
@@ -57,22 +62,34 @@ impl RegionOverlay {
     fn mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
         if self.start.is_some() && event.dragging() {
             self.current = Some(event.position);
-            cx.notify();
+        } else {
+            self.hovered = window_target_at(physical_point(
+                event.position,
+                &self.monitor,
+                self.scale_factor,
+            ))
+            .ok();
         }
+        cx.notify();
     }
 
     fn mouse_up(&mut self, event: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
         let Some(start) = self.start else {
             return;
         };
-        let Some(region) = PhysicalRegion::from_drag(
+        let Some(target) = selected_target(
+            self.kind,
             physical_point(start, &self.monitor, self.scale_factor),
             physical_point(event.position, &self.monitor, self.scale_factor),
+            self.hovered.as_ref(),
         ) else {
+            self.start = None;
+            self.current = None;
+            cx.notify();
             return;
         };
         self.controller.update(cx, |controller, cx| {
-            controller.set_target(CaptureTarget::Region(region), cx)
+            controller.set_target(target, cx)
         });
         window.remove_window();
     }
@@ -132,7 +149,57 @@ impl Render for RegionOverlay {
                             )),
                     ),
             );
+        } else if let Some(target) = &self.hovered {
+            let (region, label) = match target {
+                CaptureTarget::Window {
+                    region,
+                    process_name,
+                    ..
+                } => (region, process_name.as_str()),
+                CaptureTarget::Region(_) => unreachable!(),
+            };
+            root = root.child(
+                div()
+                    .absolute()
+                    .left(px((region.x - self.monitor.x) as f32 / self.scale_factor))
+                    .top(px((region.y - self.monitor.y) as f32 / self.scale_factor))
+                    .w(px(region.width as f32 / self.scale_factor))
+                    .h(px(region.height as f32 / self.scale_factor))
+                    .border_2()
+                    .border_color(rgba(0x4d8dffff))
+                    .bg(rgba(0x4d8dff22))
+                    .child(
+                        div()
+                            .absolute()
+                            .top(px(8.0))
+                            .left(px(8.0))
+                            .px(px(7.0))
+                            .py(px(3.0))
+                            .rounded(px(4.0))
+                            .bg(rgba(0x111318dd))
+                            .text_color(rgba(0xffffffff))
+                            .text_size(px(12.0))
+                            .child(label.to_owned()),
+                    ),
+            );
         }
+        root = root.child(
+            div()
+                .absolute()
+                .top(px(16.0))
+                .right(px(16.0))
+                .px(px(10.0))
+                .py(px(6.0))
+                .rounded(px(6.0))
+                .bg(rgba(0x111318dd))
+                .text_color(rgba(0xffffffff))
+                .text_size(px(13.0))
+                .child(if self.kind == CaptureKind::ActiveWindowScreenshot {
+                    "Click window · Esc cancel"
+                } else {
+                    "Click window or drag region · Esc cancel"
+                }),
+        );
         root
     }
 }
@@ -149,6 +216,10 @@ pub fn open_region_overlay(
     cx: &mut App,
     controller: Entity<AppController>,
 ) -> anyhow::Result<WindowHandle<RegionOverlay>> {
+    let kind = match controller.read(cx).state() {
+        CaptureState::Selecting(kind) => *kind,
+        state => anyhow::bail!("selector opened from invalid state: {state:?}"),
+    };
     let (display_id, monitor) = monitor_under_cursor()?;
     let display = cx
         .find_display(display_id)
@@ -170,8 +241,22 @@ pub fn open_region_overlay(
             app_id: Some("com.inspire.rapidcap.selection".into()),
             ..Default::default()
         },
-        |window, cx| cx.new(|cx| RegionOverlay::new(window, cx, controller, monitor)),
+        |window, cx| cx.new(|cx| RegionOverlay::new(window, cx, controller, kind, monitor)),
     )
+}
+
+fn selected_target(
+    kind: CaptureKind,
+    start: (i32, i32),
+    end: (i32, i32),
+    hovered: Option<&CaptureTarget>,
+) -> Option<CaptureTarget> {
+    let dragged = start.0.abs_diff(end.0) >= 6 || start.1.abs_diff(end.1) >= 6;
+    if kind != CaptureKind::ActiveWindowScreenshot && dragged {
+        PhysicalRegion::from_drag(start, end).map(CaptureTarget::Region)
+    } else {
+        hovered.cloned()
+    }
 }
 
 fn physical_point(point: Point<Pixels>, monitor: &PhysicalRegion, scale_factor: f32) -> (i32, i32) {
@@ -207,6 +292,7 @@ fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
 #[cfg(test)]
 mod tests {
     use gpui::{point, px};
+    use rapidcap_capture::CaptureKind;
 
     use super::*;
 
@@ -221,6 +307,37 @@ mod tests {
         assert_eq!(
             physical_point(point(px(100.0), px(80.0)), &monitor, 1.5),
             (-1770, 120)
+        );
+    }
+
+    #[test]
+    fn click_selects_hovered_window_for_window_capture() {
+        let hovered = CaptureTarget::Window {
+            hwnd: 7,
+            region: PhysicalRegion {
+                x: 10,
+                y: 20,
+                width: 300,
+                height: 200,
+            },
+            process_name: "Code".into(),
+        };
+        assert_eq!(
+            selected_target(CaptureKind::ActiveWindowScreenshot, (50, 50), (50, 50), Some(&hovered)),
+            Some(hovered)
+        );
+    }
+
+    #[test]
+    fn recording_drag_selects_region_instead_of_hovered_window() {
+        let hovered = CaptureTarget::Window {
+            hwnd: 7,
+            region: PhysicalRegion { x: 0, y: 0, width: 800, height: 600 },
+            process_name: "Code".into(),
+        };
+        assert_eq!(
+            selected_target(CaptureKind::Video, (20, 30), (220, 130), Some(&hovered)),
+            Some(CaptureTarget::Region(PhysicalRegion { x: 20, y: 30, width: 200, height: 100 }))
         );
     }
 }

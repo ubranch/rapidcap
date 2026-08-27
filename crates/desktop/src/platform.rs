@@ -30,7 +30,7 @@ use windows::{
         UI::{
             Shell::ShellExecuteW,
             WindowsAndMessaging::{
-                FindWindowW, GW_HWNDNEXT, GetForegroundWindow, GetTopWindow, GetWindow,
+                FindWindowW, GW_HWNDNEXT, GetTopWindow, GetWindow,
                 GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SW_SHOWNORMAL,
                 SetForegroundWindow, ShowWindow,
             },
@@ -43,27 +43,6 @@ const APP_ID: &str = "com.inspire.rapidcap";
 const MENU_SHOW: &str = "show";
 const MENU_OUTPUT: &str = "output";
 const MENU_EXIT: &str = "exit";
-
-fn preferred_candidate(current: isize, next: isize, excluded: isize) -> Option<isize> {
-    if current != excluded && current != 0 {
-        Some(current)
-    } else if next != excluded && next != 0 {
-        Some(next)
-    } else {
-        None
-    }
-}
-
-pub fn foreground_window_target() -> anyhow::Result<CaptureTarget> {
-    let foreground = unsafe { GetForegroundWindow() };
-    let rapidcap = unsafe { FindWindowW(PCWSTR::null(), w!("RapidCap")) }.unwrap_or_default();
-    let next = next_visible_window(foreground, rapidcap);
-    let hwnd = preferred_candidate(foreground.0 as isize, next.0 as isize, rapidcap.0 as isize)
-        .map(|raw| HWND(raw as *mut _))
-        .ok_or_else(|| anyhow::anyhow!("no foreground capture window"))?;
-
-    capture_target_for_hwnd(hwnd)
-}
 
 pub fn window_target_at(point: (i32, i32)) -> anyhow::Result<CaptureTarget> {
     let current_process = unsafe { GetCurrentProcessId() };
@@ -130,20 +109,6 @@ fn capture_target_for_hwnd(hwnd: HWND) -> anyhow::Result<CaptureTarget> {
         },
         process_name: process_name?,
     })
-}
-
-fn next_visible_window(
-    start: HWND,
-    excluded: HWND,
-) -> HWND {
-    let mut candidate = start;
-    while let Ok(next) = unsafe { GetWindow(candidate, GW_HWNDNEXT) } {
-        candidate = next;
-        if candidate != excluded && unsafe { IsWindowVisible(candidate) }.as_bool() {
-            return candidate;
-        }
-    }
-    HWND::default()
 }
 
 fn process_name(process: HANDLE) -> anyhow::Result<String> {
@@ -404,13 +369,6 @@ mod tests {
         assert_eq!(value["app_id"], APP_ID);
         assert_eq!(value["output"], "C:/Captures");
         assert_eq!(value["hotkeys"].as_array().unwrap().len(), 5);
-    }
-
-    #[test]
-    fn rapidcap_foreground_uses_next_visible_window() {
-        assert_eq!(preferred_candidate(44, 22, 44), Some(22));
-        assert_eq!(preferred_candidate(22, 11, 44), Some(22));
-        assert_eq!(preferred_candidate(44, 44, 44), None);
     }
 
     #[test]

@@ -23,8 +23,7 @@ use crate::{
     controller::AppController,
     overlay::{open_region_overlay, overlay_key_bindings},
     platform::{
-        PlatformEvent, PlatformRuntime, SingleInstance, foreground_window_target, open_folder,
-        probe_payload,
+        PlatformEvent, PlatformRuntime, SingleInstance, open_folder, probe_payload,
     },
     window::{key_bindings, open_main_window},
 };
@@ -70,26 +69,8 @@ fn main() -> anyhow::Result<()> {
         cx.subscribe(&controller, {
             let recording_stop = recording_stop.clone();
             move |controller, command, cx| match command {
-                CaptureCommand::CaptureActiveWindow
-                    if matches!(controller.read(cx).state(), CaptureState::Selecting(_)) =>
-                {
-                    match foreground_window_target() {
-                        Ok(target) => {
-                            let _ = main_window.update(cx, |_view, window, _cx| {
-                                window.minimize_window();
-                            });
-                            controller
-                                .update(cx, |controller, cx| controller.set_target(target, cx));
-                        }
-                        Err(error) => {
-                            tracing::error!(%error, "resolve foreground window");
-                            let _ = controller.update(cx, |controller, cx| {
-                                controller.dispatch(CaptureCommand::Cancel, cx)
-                            });
-                        }
-                    }
-                }
                 CaptureCommand::CaptureRegion
+                | CaptureCommand::CaptureActiveWindow
                 | CaptureCommand::ToggleVideo
                 | CaptureCommand::ToggleGif
                     if matches!(controller.read(cx).state(), CaptureState::Selecting(_)) =>
