@@ -1,6 +1,7 @@
 mod clipboard;
 mod image_file;
 mod naming;
+mod recording;
 mod screenshot;
 mod settings;
 mod state;
@@ -9,6 +10,7 @@ mod wgc;
 pub use clipboard::{ClipboardError, write_clipboard};
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::{NamingError, OutputNamer};
+pub use recording::{RecordingError, RecordingSession};
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
 pub use state::{CaptureCommand, CaptureEvent, CaptureKind, CaptureState, StateError};

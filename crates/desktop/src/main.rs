@@ -5,13 +5,18 @@ mod overlay;
 mod platform;
 mod window;
 
-use std::{fs, path::Path, time::Duration};
+use std::{
+    fs,
+    path::Path,
+    sync::{Arc, Mutex, mpsc},
+    time::Duration,
+};
 
 use gpui::{App, AppContext as _};
 use gpui_platform::application;
 use rapidcap_capture::{
-    AppPaths, CaptureCommand, CaptureKind, CaptureState, CaptureTarget, SettingsStore,
-    capture_and_save, write_clipboard,
+    AppPaths, CaptureCommand, CaptureKind, CaptureState, CaptureTarget, RecordingSession,
+    SettingsStore, capture_and_save, write_clipboard,
 };
 
 use crate::{
@@ -57,9 +62,11 @@ fn main() -> anyhow::Result<()> {
         bindings.extend(overlay_key_bindings());
         cx.bind_keys(bindings);
         let controller = cx.new(|_| AppController::new(settings, paths));
+        let recording_stop = Arc::new(Mutex::new(None::<mpsc::Sender<()>>));
         let main_window =
             open_main_window(cx, controller.clone(), !silent).expect("open RapidCap main window");
         cx.subscribe(&controller, {
+            let recording_stop = recording_stop.clone();
             move |controller, command, cx| match command {
                 CaptureCommand::CaptureActiveWindow
                     if matches!(controller.read(cx).state(), CaptureState::Selecting(_)) =>
@@ -87,7 +94,17 @@ fn main() -> anyhow::Result<()> {
                         tracing::error!(%error, "open region overlay");
                     }
                 }
+                CaptureCommand::ToggleVideo | CaptureCommand::ToggleGif
+                    if matches!(controller.read(cx).state(), CaptureState::Finalizing(_)) =>
+                {
+                    if let Some(sender) = recording_stop.lock().unwrap().take() {
+                        let _ = sender.send(());
+                    }
+                }
                 CaptureCommand::Cancel => {
+                    if let Some(sender) = recording_stop.lock().unwrap().take() {
+                        let _ = sender.send(());
+                    }
                     let _ = main_window.update(cx, |_view, window, _cx| {
                         window.activate_window();
                     });
@@ -96,34 +113,84 @@ fn main() -> anyhow::Result<()> {
             }
         })
         .detach();
-        cx.subscribe(&controller, |controller, target: &CaptureTarget, cx| {
-            if !matches!(
-                controller.read(cx).state(),
-                CaptureState::Selecting(
-                    CaptureKind::RegionScreenshot | CaptureKind::ActiveWindowScreenshot
-                )
-            ) {
-                return;
-            }
+        cx.subscribe(&controller, {
+            let recording_stop = recording_stop.clone();
+            move |controller, target: &CaptureTarget, cx| {
+            let state = controller.read(cx).state().clone();
             let (settings, paths) = controller.read_with(cx, |controller, _| {
                 (controller.settings().clone(), controller.paths().clone())
             });
             let target = target.clone();
-            let task = cx.background_executor().spawn(async move {
-                std::thread::sleep(Duration::from_millis(40));
-                let saved = capture_and_save(&target, &settings, &paths)?;
-                if let Err(error) = write_clipboard(&saved) {
-                    tracing::warn!(%error, path = %saved.path.display(), "clipboard write failed after screenshot save");
+            match state {
+                CaptureState::Selecting(
+                    CaptureKind::RegionScreenshot | CaptureKind::ActiveWindowScreenshot,
+                ) => {
+                    let task = cx.background_executor().spawn(async move {
+                        std::thread::sleep(Duration::from_millis(40));
+                        let saved = capture_and_save(&target, &settings, &paths)?;
+                        if let Err(error) = write_clipboard(&saved) {
+                            tracing::warn!(%error, path = %saved.path.display(), "clipboard write failed after screenshot save");
+                        }
+                        Ok(saved)
+                    });
+                    cx.spawn(async move |cx| {
+                        let result = task.await;
+                        controller.update(cx, |controller, cx| {
+                            controller.finish_screenshot(result, cx)
+                        });
+                    })
+                    .detach();
                 }
-                Ok(saved)
-            });
-            cx.spawn(async move |cx| {
-                let result = task.await;
-                controller.update(cx, |controller, cx| {
-                    controller.finish_screenshot(result, cx)
-                });
-            })
-            .detach();
+                CaptureState::Countdown(kind @ (CaptureKind::Video | CaptureKind::Gif), seconds) => {
+                    let (stop_sender, stop_receiver) = mpsc::channel();
+                    *recording_stop.lock().unwrap() = Some(stop_sender);
+                    let (started_sender, started_receiver) = async_channel::bounded(1);
+                    let task = cx.background_executor().spawn(async move {
+                        if stop_receiver
+                            .recv_timeout(Duration::from_secs(u64::from(seconds)))
+                            .is_ok()
+                        {
+                            return Ok(None);
+                        }
+                        let session = match RecordingSession::start(kind, &target, &settings, &paths)
+                        {
+                            Ok(session) => session,
+                            Err(error) => {
+                                let _ = started_sender.send_blocking(Err(error.clone()));
+                                return Err(error);
+                            }
+                        };
+                        let _ = started_sender.send_blocking(Ok(()));
+                        let _ = stop_receiver.recv();
+                        session.stop().map(Some)
+                    });
+                    let recording_stop = recording_stop.clone();
+                    cx.spawn(async move |cx| {
+                        match started_receiver.recv().await {
+                            Ok(Ok(())) => controller.update(cx, |controller, cx| {
+                                controller.begin_recording(kind, cx)
+                            }),
+                            Ok(Err(error)) => {
+                                controller.update(cx, |controller, cx| {
+                                    controller.finish_recording(Err(error), cx)
+                                });
+                                return;
+                            }
+                            Err(_) => return,
+                        }
+                        let result = task.await.and_then(|path| {
+                            path.ok_or_else(|| unreachable!("started recording cannot be cancelled"))
+                        });
+                        recording_stop.lock().unwrap().take();
+                        controller.update(cx, |controller, cx| {
+                            controller.finish_recording(result, cx)
+                        });
+                    })
+                    .detach();
+                }
+                _ => {}
+            }
+            }
         })
         .detach();
         let runtime = match PlatformRuntime::start() {

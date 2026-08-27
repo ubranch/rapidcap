@@ -1,7 +1,9 @@
+use std::path::PathBuf;
+
 use gpui::{Context, EventEmitter};
 use rapidcap_capture::{
-    AppPaths, CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget, SavedCapture,
-    ScreenshotError, Settings, StateError,
+    AppPaths, CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget,
+    RecordingError, SavedCapture, ScreenshotError, Settings, StateError,
 };
 
 pub struct AppController {
@@ -40,8 +42,40 @@ impl AppController {
     }
 
     pub fn set_target(&mut self, target: CaptureTarget, cx: &mut Context<Self>) {
+        if let CaptureState::Selecting(kind @ (CaptureKind::Video | CaptureKind::Gif)) = self.state
+        {
+            self.state = CaptureState::Countdown(kind, self.settings.countdown_seconds);
+        }
         self.target = Some(target.clone());
         cx.emit(target);
+        cx.notify();
+    }
+
+    pub fn begin_recording(&mut self, kind: CaptureKind, cx: &mut Context<Self>) {
+        if matches!(self.state, CaptureState::Countdown(active, _) if active == kind) {
+            self.state = CaptureState::Recording(kind);
+            cx.emit(CaptureEvent::StateChanged(self.state.clone()));
+            cx.notify();
+        }
+    }
+
+    pub fn finish_recording(
+        &mut self,
+        result: Result<PathBuf, RecordingError>,
+        cx: &mut Context<Self>,
+    ) {
+        self.target = None;
+        match result {
+            Ok(path) => {
+                self.state = CaptureState::Idle;
+                cx.emit(CaptureEvent::OutputSaved(path));
+            }
+            Err(error) => {
+                let message = error.to_string();
+                self.state = CaptureState::Error(message.clone());
+                cx.emit(CaptureEvent::Failed(message));
+            }
+        }
         cx.notify();
     }
 
@@ -178,6 +212,29 @@ mod tests {
         assert_eq!(
             controller.read_with(cx, |controller, _| controller.target().cloned()),
             Some(target)
+        );
+    }
+
+    #[gpui::test]
+    fn video_selection_enters_configured_countdown(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+            controller.set_target(
+                rapidcap_capture::CaptureTarget::Region(rapidcap_capture::PhysicalRegion {
+                    x: 0,
+                    y: 0,
+                    width: 640,
+                    height: 480,
+                }),
+                cx,
+            );
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.state().clone()),
+            CaptureState::Countdown(CaptureKind::Video, 5)
         );
     }
 }
