@@ -1,6 +1,7 @@
 use std::{
     fmt, fs,
     io::Write,
+    os::windows::io::AsRawHandle,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -8,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use windows::Win32::System::SystemInformation::GetLocalTime;
+use windows::Win32::{Foundation::HANDLE, System::SystemInformation::GetLocalTime};
 
 use crate::{AppPaths, CaptureKind, CaptureTarget, OutputNamer, PhysicalRegion, Settings};
 
@@ -16,6 +17,13 @@ pub struct RecordingSession {
     child: Child,
     temp_path: PathBuf,
     final_path: PathBuf,
+    paused: bool,
+}
+
+#[link(name = "ntdll")]
+unsafe extern "system" {
+    fn NtSuspendProcess(process: HANDLE) -> i32;
+    fn NtResumeProcess(process: HANDLE) -> i32;
 }
 
 impl RecordingSession {
@@ -58,10 +66,53 @@ impl RecordingSession {
             child,
             temp_path,
             final_path,
+            paused: false,
         })
     }
 
+    pub fn pause(&mut self) -> Result<(), RecordingError> {
+        if self.paused {
+            return Ok(());
+        }
+        let status = unsafe { NtSuspendProcess(HANDLE(self.child.as_raw_handle())) };
+        if status < 0 {
+            return Err(RecordingError(format!(
+                "pause FFmpeg failed: NTSTATUS {status:#x}"
+            )));
+        }
+        self.paused = true;
+        Ok(())
+    }
+
+    pub fn resume(&mut self) -> Result<(), RecordingError> {
+        if !self.paused {
+            return Ok(());
+        }
+        let status = unsafe { NtResumeProcess(HANDLE(self.child.as_raw_handle())) };
+        if status < 0 {
+            return Err(RecordingError(format!(
+                "resume FFmpeg failed: NTSTATUS {status:#x}"
+            )));
+        }
+        self.paused = false;
+        Ok(())
+    }
+
+    pub fn cancel(mut self) -> Result<(), RecordingError> {
+        self.resume()?;
+        if self.child.try_wait().map_err(recording_error)?.is_none() {
+            self.child.kill().map_err(recording_error)?;
+        }
+        self.child.wait().map_err(recording_error)?;
+        match fs::remove_file(&self.temp_path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(recording_error(error)),
+        }
+    }
+
     pub fn stop(mut self) -> Result<PathBuf, RecordingError> {
+        self.resume()?;
         if self.child.try_wait().map_err(recording_error)?.is_none()
             && let Some(mut stdin) = self.child.stdin.take()
         {

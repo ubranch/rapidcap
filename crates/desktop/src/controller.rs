@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use gpui::{Context, EventEmitter};
 use rapidcap_capture::{
@@ -12,6 +13,8 @@ pub struct AppController {
     paths: AppPaths,
     target: Option<CaptureTarget>,
     generation: u64,
+    recorded: Duration,
+    recording_since: Option<Instant>,
 }
 
 impl AppController {
@@ -22,6 +25,8 @@ impl AppController {
             paths,
             target: None,
             generation: 0,
+            recorded: Duration::ZERO,
+            recording_since: None,
         }
     }
 
@@ -41,6 +46,14 @@ impl AppController {
         self.target.as_ref()
     }
 
+    pub fn recording_elapsed(&self) -> Duration {
+        self.recorded
+            + self
+                .recording_since
+                .map(|started| started.elapsed())
+                .unwrap_or_default()
+    }
+
     pub fn set_target(&mut self, target: CaptureTarget, cx: &mut Context<Self>) {
         if let CaptureState::Selecting(kind @ (CaptureKind::Video | CaptureKind::Gif)) = self.state
         {
@@ -54,6 +67,8 @@ impl AppController {
     pub fn begin_recording(&mut self, kind: CaptureKind, cx: &mut Context<Self>) {
         if matches!(self.state, CaptureState::Countdown(active, _) if active == kind) {
             self.state = CaptureState::Recording(kind);
+            self.recorded = Duration::ZERO;
+            self.recording_since = Some(Instant::now());
             cx.emit(CaptureEvent::StateChanged(self.state.clone()));
             cx.notify();
         }
@@ -65,6 +80,8 @@ impl AppController {
         cx: &mut Context<Self>,
     ) {
         self.target = None;
+        self.recorded = Duration::ZERO;
+        self.recording_since = None;
         match result {
             Ok(path) => {
                 self.state = CaptureState::Idle;
@@ -107,14 +124,27 @@ impl AppController {
         if matches!(self.state, CaptureState::Error(_)) {
             self.state = CaptureState::Idle;
         }
+        let previous = self.state.clone();
         let next = match command {
             CaptureCommand::CaptureRegion => self.start(CaptureKind::RegionScreenshot),
             CaptureCommand::CaptureActiveWindow => self.start(CaptureKind::ActiveWindowScreenshot),
             CaptureCommand::ToggleVideo => self.toggle_recording(CaptureKind::Video),
             CaptureCommand::ToggleGif => self.toggle_recording(CaptureKind::Gif),
+            CaptureCommand::TogglePause => self.toggle_pause(),
             CaptureCommand::Cancel => self.state.clone().cancel().map_err(CommandError::from),
         }?;
         self.state = next;
+        match (&previous, &self.state) {
+            (CaptureState::Recording(_), CaptureState::Paused(_)) => {
+                if let Some(started) = self.recording_since.take() {
+                    self.recorded += started.elapsed();
+                }
+            }
+            (CaptureState::Paused(_), CaptureState::Recording(_)) => {
+                self.recording_since = Some(Instant::now());
+            }
+            _ => {}
+        }
         if matches!(command, CaptureCommand::Cancel) {
             self.target = None;
         }
@@ -131,8 +161,23 @@ impl AppController {
     fn toggle_recording(&self, kind: CaptureKind) -> Result<CaptureState, CommandError> {
         match self.state {
             CaptureState::Idle => self.start(kind),
-            CaptureState::Recording(active) if active == kind => {
+            CaptureState::Countdown(active, _) if active == kind => {
+                self.state.clone().cancel().map_err(CommandError::from)
+            }
+            CaptureState::Recording(active) | CaptureState::Paused(active) if active == kind => {
                 self.state.clone().stop(kind).map_err(CommandError::from)
+            }
+            _ => Err(CommandError::Busy),
+        }
+    }
+
+    fn toggle_pause(&self) -> Result<CaptureState, CommandError> {
+        match self.state {
+            CaptureState::Recording(kind) => {
+                self.state.clone().pause(kind).map_err(CommandError::from)
+            }
+            CaptureState::Paused(kind) => {
+                self.state.clone().resume(kind).map_err(CommandError::from)
             }
             _ => Err(CommandError::Busy),
         }
@@ -238,6 +283,32 @@ mod tests {
         assert_eq!(
             controller.read_with(cx, |controller, _| controller.state().clone()),
             CaptureState::Countdown(CaptureKind::Video, 5)
+        );
+    }
+
+    #[gpui::test]
+    fn matching_recording_button_cancels_countdown(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+            controller.set_target(
+                rapidcap_capture::CaptureTarget::Region(rapidcap_capture::PhysicalRegion {
+                    x: 0,
+                    y: 0,
+                    width: 640,
+                    height: 480,
+                }),
+                cx,
+            );
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.state().clone()),
+            CaptureState::Idle
         );
     }
 

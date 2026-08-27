@@ -8,6 +8,7 @@ pub enum CaptureCommand {
     CaptureActiveWindow,
     ToggleVideo,
     ToggleGif,
+    TogglePause,
     Cancel,
 }
 
@@ -25,6 +26,7 @@ pub enum CaptureState {
     Selecting(CaptureKind),
     Countdown(CaptureKind, u8),
     Recording(CaptureKind),
+    Paused(CaptureKind),
     Finalizing(CaptureKind),
     Error(String),
 }
@@ -46,7 +48,23 @@ impl CaptureState {
 
     pub fn stop(self, kind: CaptureKind) -> Result<Self, StateError> {
         match self {
-            Self::Recording(active) if active == kind => Ok(Self::Finalizing(kind)),
+            Self::Recording(active) | Self::Paused(active) if active == kind => {
+                Ok(Self::Finalizing(kind))
+            }
+            state => Err(StateError::InvalidTransition(state)),
+        }
+    }
+
+    pub fn pause(self, kind: CaptureKind) -> Result<Self, StateError> {
+        match self {
+            Self::Recording(active) if active == kind => Ok(Self::Paused(kind)),
+            state => Err(StateError::InvalidTransition(state)),
+        }
+    }
+
+    pub fn resume(self, kind: CaptureKind) -> Result<Self, StateError> {
+        match self {
+            Self::Paused(active) if active == kind => Ok(Self::Recording(kind)),
             state => Err(StateError::InvalidTransition(state)),
         }
     }

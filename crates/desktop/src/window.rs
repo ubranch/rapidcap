@@ -293,8 +293,18 @@ impl Render for MainWindow {
 
 fn recording_label(state: &CaptureState, kind: CaptureKind) -> &'static str {
     match state {
-        CaptureState::Countdown(active, _) if *active == kind => "Starting…",
-        CaptureState::Recording(active) | CaptureState::Finalizing(active) if *active == kind => {
+        CaptureState::Countdown(active, _) if *active == kind => {
+            if kind == CaptureKind::Video {
+                "Cancel Video"
+            } else {
+                "Cancel GIF"
+            }
+        }
+        CaptureState::Recording(active)
+        | CaptureState::Paused(active)
+        | CaptureState::Finalizing(active)
+            if *active == kind =>
+        {
             if kind == CaptureKind::Video {
                 "Stop Video"
             } else {

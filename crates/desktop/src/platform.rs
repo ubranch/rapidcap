@@ -30,9 +30,9 @@ use windows::{
         UI::{
             Shell::ShellExecuteW,
             WindowsAndMessaging::{
-                FindWindowW, GW_HWNDNEXT, GetTopWindow, GetWindow,
-                GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SW_SHOWNORMAL,
-                SetForegroundWindow, ShowWindow,
+                FindWindowW, GW_HWNDNEXT, GetTopWindow, GetWindow, GetWindowThreadProcessId,
+                IsIconic, IsWindowVisible, SW_HIDE, SW_RESTORE, SW_SHOWNORMAL, SetForegroundWindow,
+                ShowWindow,
             },
         },
     },
@@ -76,7 +76,6 @@ fn window_candidate_contains(
 }
 
 fn window_rect(hwnd: HWND) -> anyhow::Result<RECT> {
-
     let mut rect = RECT::default();
     unsafe {
         DwmGetWindowAttribute(
@@ -309,6 +308,18 @@ fn activate_existing_window() {
         }
         thread::sleep(Duration::from_millis(25));
     }
+}
+
+pub fn hide_main_window() {
+    if let Ok(window) = unsafe { FindWindowW(PCWSTR::null(), w!("RapidCap")) } {
+        unsafe {
+            let _ = ShowWindow(window, SW_HIDE);
+        }
+    }
+}
+
+pub fn show_main_window() {
+    activate_existing_window();
 }
 
 pub fn open_folder(path: &Path) -> anyhow::Result<()> {

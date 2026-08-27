@@ -6,8 +6,10 @@ mod platform;
 mod window;
 
 use std::{
+    cell::RefCell,
     fs,
     path::Path,
+    rc::Rc,
     sync::{Arc, Mutex, mpsc},
     time::Duration,
 };
@@ -21,12 +23,22 @@ use rapidcap_capture::{
 
 use crate::{
     controller::AppController,
-    overlay::{open_region_overlay, overlay_key_bindings},
+    overlay::{
+        close_recording_border, close_recording_hud, open_recording_border, open_recording_hud,
+        open_region_overlay, overlay_key_bindings,
+    },
     platform::{
-        PlatformEvent, PlatformRuntime, SingleInstance, open_folder, probe_payload,
+        PlatformEvent, PlatformRuntime, SingleInstance, hide_main_window, open_folder,
+        probe_payload, show_main_window,
     },
     window::{key_bindings, open_main_window},
 };
+
+enum RecordingControl {
+    Stop,
+    Pause,
+    Resume,
+}
 
 fn main() -> anyhow::Result<()> {
     let paths = AppPaths::discover()?;
@@ -62,12 +74,16 @@ fn main() -> anyhow::Result<()> {
         bindings.extend(overlay_key_bindings());
         cx.bind_keys(bindings);
         let controller = cx.new(|_| AppController::new(settings, paths));
-        let recording_stop = Arc::new(Mutex::new(None::<mpsc::Sender<()>>));
+        let recording_stop = Arc::new(Mutex::new(None::<mpsc::Sender<RecordingControl>>));
+        let recording_border = Rc::new(RefCell::new(Vec::new()));
+        let recording_hud = Rc::new(RefCell::new(None));
         let main_window =
             open_main_window(cx, controller.clone(), !silent).expect("open RapidCap main window");
         let recording_window = main_window;
         cx.subscribe(&controller, {
             let recording_stop = recording_stop.clone();
+            let recording_border = recording_border.clone();
+            let recording_hud = recording_hud.clone();
             move |controller, command, cx| match command {
                 CaptureCommand::CaptureRegion
                 | CaptureCommand::CaptureActiveWindow
@@ -92,13 +108,39 @@ fn main() -> anyhow::Result<()> {
                     if matches!(controller.read(cx).state(), CaptureState::Finalizing(_)) =>
                 {
                     if let Some(sender) = recording_stop.lock().unwrap().take() {
-                        let _ = sender.send(());
+                        let _ = sender.send(RecordingControl::Stop);
                     }
+                }
+                CaptureCommand::TogglePause => {
+                    if let Some(sender) = recording_stop.lock().unwrap().as_ref() {
+                        let control = if matches!(controller.read(cx).state(), CaptureState::Paused(_)) {
+                            RecordingControl::Pause
+                        } else {
+                            RecordingControl::Resume
+                        };
+                        let _ = sender.send(control);
+                    }
+                }
+                CaptureCommand::ToggleVideo | CaptureCommand::ToggleGif
+                    if matches!(controller.read(cx).state(), CaptureState::Idle) =>
+                {
+                    if let Some(sender) = recording_stop.lock().unwrap().take() {
+                        let _ = sender.send(RecordingControl::Stop);
+                    }
+                    close_recording_border(&mut recording_border.borrow_mut(), cx);
+                    close_recording_hud(&mut recording_hud.borrow_mut(), cx);
+                    show_main_window();
+                    let _ = main_window.update(cx, |_view, window, _cx| {
+                        window.activate_window();
+                    });
                 }
                 CaptureCommand::Cancel => {
                     if let Some(sender) = recording_stop.lock().unwrap().take() {
-                        let _ = sender.send(());
+                        let _ = sender.send(RecordingControl::Stop);
                     }
+                    close_recording_border(&mut recording_border.borrow_mut(), cx);
+                    close_recording_hud(&mut recording_hud.borrow_mut(), cx);
+                    show_main_window();
                     let _ = main_window.update(cx, |_view, window, _cx| {
                         window.activate_window();
                     });
@@ -109,6 +151,8 @@ fn main() -> anyhow::Result<()> {
         .detach();
         cx.subscribe(&controller, {
             let recording_stop = recording_stop.clone();
+            let recording_border = recording_border.clone();
+            let recording_hud = recording_hud.clone();
             move |controller, target: &CaptureTarget, cx| {
             let state = controller.read(cx).state().clone();
             let (settings, paths) = controller.read_with(cx, |controller, _| {
@@ -140,21 +184,41 @@ fn main() -> anyhow::Result<()> {
                     .detach();
                 }
                 CaptureState::Countdown(kind @ (CaptureKind::Video | CaptureKind::Gif), seconds) => {
-                    let _ = recording_window.update(cx, |_view, window, _cx| {
-                        window.activate_window();
-                    });
+                    close_recording_border(&mut recording_border.borrow_mut(), cx);
+                    close_recording_hud(&mut recording_hud.borrow_mut(), cx);
+                    match open_recording_border(cx, &target) {
+                        Ok(handles) => *recording_border.borrow_mut() = handles,
+                        Err(error) => {
+                            tracing::error!(%error, "open recording boundary");
+                            let _ = controller.update(cx, |controller, cx| {
+                                controller.dispatch(CaptureCommand::Cancel, cx)
+                            });
+                            return;
+                        }
+                    }
+                    match open_recording_hud(cx, controller.clone(), target.clone()) {
+                        Ok(handle) => *recording_hud.borrow_mut() = Some(handle),
+                        Err(error) => {
+                            tracing::error!(%error, "open recording HUD");
+                            close_recording_border(&mut recording_border.borrow_mut(), cx);
+                            let _ = controller.update(cx, |controller, cx| {
+                                controller.dispatch(CaptureCommand::Cancel, cx)
+                            });
+                            return;
+                        }
+                    }
+                    hide_main_window();
                     cx.activate(true);
                     let (stop_sender, stop_receiver) = mpsc::channel();
                     *recording_stop.lock().unwrap() = Some(stop_sender);
                     let (started_sender, started_receiver) = async_channel::bounded(1);
                     let task = cx.background_executor().spawn(async move {
-                        if stop_receiver
-                            .recv_timeout(Duration::from_secs(u64::from(seconds)))
-                            .is_ok()
-                        {
-                            return Ok(None);
+                        match stop_receiver.recv_timeout(Duration::from_secs(u64::from(seconds))) {
+                            Ok(_) => return Ok(None),
+                            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(None),
+                            Err(mpsc::RecvTimeoutError::Timeout) => {}
                         }
-                        let session = match RecordingSession::start(kind, &target, &settings, &paths)
+                        let mut session = match RecordingSession::start(kind, &target, &settings, &paths)
                         {
                             Ok(session) => session,
                             Err(error) => {
@@ -163,10 +227,17 @@ fn main() -> anyhow::Result<()> {
                             }
                         };
                         let _ = started_sender.send_blocking(Ok(()));
-                        let _ = stop_receiver.recv();
-                        session.stop().map(Some)
+                        loop {
+                            match stop_receiver.recv() {
+                                Ok(RecordingControl::Pause) => session.pause()?,
+                                Ok(RecordingControl::Resume) => session.resume()?,
+                                Ok(RecordingControl::Stop) | Err(_) => break session.stop().map(Some),
+                            }
+                        }
                     });
                     let recording_stop = recording_stop.clone();
+                    let recording_border = recording_border.clone();
+                    let recording_hud = recording_hud.clone();
                     cx.spawn(async move |cx| {
                         match started_receiver.recv().await {
                             Ok(Ok(())) => controller.update(cx, |controller, cx| {
@@ -176,9 +247,17 @@ fn main() -> anyhow::Result<()> {
                                 controller.update(cx, |controller, cx| {
                                     controller.finish_recording(Err(error), cx)
                                 });
+                                close_recording_border(&mut recording_border.borrow_mut(), cx);
+                                close_recording_hud(&mut recording_hud.borrow_mut(), cx);
+                                show_main_window();
                                 return;
                             }
-                            Err(_) => return,
+                            Err(_) => {
+                                close_recording_border(&mut recording_border.borrow_mut(), cx);
+                                close_recording_hud(&mut recording_hud.borrow_mut(), cx);
+                                show_main_window();
+                                return;
+                            }
                         }
                         let result = task.await.and_then(|path| {
                             path.ok_or_else(|| unreachable!("started recording cannot be cancelled"))
@@ -186,6 +265,12 @@ fn main() -> anyhow::Result<()> {
                         recording_stop.lock().unwrap().take();
                         controller.update(cx, |controller, cx| {
                             controller.finish_recording(result, cx)
+                        });
+                        close_recording_border(&mut recording_border.borrow_mut(), cx);
+                        close_recording_hud(&mut recording_hud.borrow_mut(), cx);
+                        show_main_window();
+                        let _ = recording_window.update(cx, |_view, window, _cx| {
+                            window.activate_window();
                         });
                     })
                     .detach();

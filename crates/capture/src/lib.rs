@@ -36,6 +36,22 @@ mod tests {
     }
 
     #[test]
+    fn recording_pause_resume_and_stop_are_explicit() {
+        assert_eq!(
+            CaptureState::Recording(CaptureKind::Video).pause(CaptureKind::Video),
+            Ok(CaptureState::Paused(CaptureKind::Video))
+        );
+        assert_eq!(
+            CaptureState::Paused(CaptureKind::Video).resume(CaptureKind::Video),
+            Ok(CaptureState::Recording(CaptureKind::Video))
+        );
+        assert_eq!(
+            CaptureState::Paused(CaptureKind::Video).stop(CaptureKind::Video),
+            Ok(CaptureState::Finalizing(CaptureKind::Video))
+        );
+    }
+
+    #[test]
     fn sharex_defaults_are_preserved() {
         let settings = Settings::default();
         assert_eq!(settings.screenshot.png_to_jpeg_threshold_bytes, 2_097_152);

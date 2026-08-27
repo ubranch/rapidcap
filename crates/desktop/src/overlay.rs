@@ -2,9 +2,9 @@ use std::mem::size_of;
 
 use gpui::{
     App, AppContext as _, Bounds, Context, DisplayId, Entity, FocusHandle, KeyBinding, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, actions,
-    div, prelude::*, px, rgba,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Role, Subscription,
+    Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+    actions, div, point, prelude::*, px, rgba, size,
 };
 use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget, PhysicalRegion};
 use windows::Win32::{
@@ -88,9 +88,8 @@ impl RegionOverlay {
             cx.notify();
             return;
         };
-        self.controller.update(cx, |controller, cx| {
-            controller.set_target(target, cx)
-        });
+        self.controller
+            .update(cx, |controller, cx| controller.set_target(target, cx));
         window.remove_window();
     }
 
@@ -245,6 +244,314 @@ pub fn open_region_overlay(
     )
 }
 
+pub struct RecordingBorder;
+
+impl Render for RecordingBorder {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div().size_full().bg(rgba(0xff2d2dff))
+    }
+}
+
+pub struct RecordingHud {
+    controller: Entity<AppController>,
+    target: CaptureTarget,
+    countdown_since: std::time::Instant,
+    _subscription: Subscription,
+}
+
+impl RecordingHud {
+    fn new(
+        cx: &mut Context<Self>,
+        controller: Entity<AppController>,
+        target: CaptureTarget,
+    ) -> Self {
+        let subscription = cx.observe(&controller, |_this, _, cx| cx.notify());
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(200))
+                    .await;
+                if this.update(cx, |_this, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+        Self {
+            controller,
+            target,
+            countdown_since: std::time::Instant::now(),
+            _subscription: subscription,
+        }
+    }
+
+    fn toggle_pause(&mut self, cx: &mut Context<Self>) {
+        let _ = self.controller.update(cx, |controller, cx| {
+            controller.dispatch(CaptureCommand::TogglePause, cx)
+        });
+    }
+
+    fn stop(&mut self, cx: &mut Context<Self>) {
+        let command = match self.controller.read(cx).state() {
+            CaptureState::Countdown(CaptureKind::Video, _)
+            | CaptureState::Recording(CaptureKind::Video)
+            | CaptureState::Paused(CaptureKind::Video) => CaptureCommand::ToggleVideo,
+            _ => CaptureCommand::ToggleGif,
+        };
+        let _ = self
+            .controller
+            .update(cx, |controller, cx| controller.dispatch(command, cx));
+    }
+}
+
+impl Render for RecordingHud {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let state = self.controller.read(cx).state().clone();
+        let target = match &self.target {
+            CaptureTarget::Region(region) => format!("{} × {}", region.width, region.height),
+            CaptureTarget::Window { process_name, .. } => process_name.clone(),
+        };
+        let (status, pause_label, can_pause) = match state {
+            CaptureState::Countdown(kind, seconds) => (
+                format!(
+                    "{} starts in {} · {target}",
+                    if kind == CaptureKind::Video {
+                        "Video"
+                    } else {
+                        "GIF"
+                    },
+                    seconds.saturating_sub(self.countdown_since.elapsed().as_secs() as u8)
+                ),
+                "Pause",
+                false,
+            ),
+            CaptureState::Recording(kind) => {
+                let elapsed = self.controller.read(cx).recording_elapsed().as_secs();
+                (
+                    format!(
+                        "● REC {} {:02}:{:02} · {target}",
+                        if kind == CaptureKind::Video {
+                            "Video"
+                        } else {
+                            "GIF"
+                        },
+                        elapsed / 60,
+                        elapsed % 60
+                    ),
+                    "Pause",
+                    true,
+                )
+            }
+            CaptureState::Paused(kind) => {
+                let elapsed = self.controller.read(cx).recording_elapsed().as_secs();
+                (
+                    format!(
+                        "Ⅱ PAUSED {} {:02}:{:02} · {target}",
+                        if kind == CaptureKind::Video {
+                            "Video"
+                        } else {
+                            "GIF"
+                        },
+                        elapsed / 60,
+                        elapsed % 60
+                    ),
+                    "Resume",
+                    true,
+                )
+            }
+            CaptureState::Finalizing(kind) => (
+                format!(
+                    "Finalizing {}…",
+                    if kind == CaptureKind::Video {
+                        "Video"
+                    } else {
+                        "GIF"
+                    }
+                ),
+                "Pause",
+                false,
+            ),
+            _ => ("Closing…".into(), "Pause", false),
+        };
+        let button = |id: &'static str, label: &'static str| {
+            div()
+                .id(id)
+                .accessibility_id(id)
+                .role(Role::Button)
+                .aria_label(label)
+                .px(px(12.0))
+                .h(px(34.0))
+                .flex()
+                .items_center()
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(rgba(0x5a6070ff))
+                .bg(rgba(0x242832ff))
+                .text_color(rgba(0xffffffff))
+                .cursor_pointer()
+                .child(label)
+        };
+        div()
+            .id("recording-hud")
+            .accessibility_id("rapidcap.hud")
+            .role(Role::Application)
+            .aria_label("RapidCap recording controls")
+            .size_full()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .px(px(10.0))
+            .border_2()
+            .border_color(rgba(0xff2d2dff))
+            .bg(rgba(0x111318f5))
+            .text_color(rgba(0xffffffff))
+            .child(
+                div()
+                    .id("recording-hud-status")
+                    .accessibility_id("rapidcap.hud-status")
+                    .role(Role::Status)
+                    .aria_label(status.clone())
+                    .flex_1()
+                    .text_size(px(13.0))
+                    .child(status),
+            )
+            .when(can_pause, |root| {
+                root.child(
+                    button("rapidcap.hud-pause", pause_label)
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx))),
+                )
+            })
+            .child(
+                button(
+                    "rapidcap.hud-stop",
+                    if can_pause { "Stop" } else { "Cancel" },
+                )
+                .bg(rgba(0xc92a2aff))
+                .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
+            )
+    }
+}
+
+pub fn open_recording_hud(
+    cx: &mut App,
+    controller: Entity<AppController>,
+    target: CaptureTarget,
+) -> anyhow::Result<WindowHandle<RecordingHud>> {
+    let region = match &target {
+        CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
+    };
+    let width = 420.0;
+    let height = 58.0;
+    let x = region.x as f32 + (region.width as f32 - width) / 2.0;
+    let y = if region.y >= 70 {
+        region.y as f32 - 66.0
+    } else {
+        region.y as f32 + 8.0
+    };
+    cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds {
+                origin: point(px(x), px(y)),
+                size: size(px(width), px(height)),
+            })),
+            titlebar: None,
+            focus: true,
+            show: true,
+            kind: WindowKind::PopUp,
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            window_background: WindowBackgroundAppearance::Opaque,
+            app_id: Some("com.inspire.rapidcap.recording-hud".into()),
+            ..Default::default()
+        },
+        |_window, cx| cx.new(|cx| RecordingHud::new(cx, controller, target)),
+    )
+}
+
+pub fn close_recording_hud<C: gpui::AppContext>(
+    handle: &mut Option<WindowHandle<RecordingHud>>,
+    cx: &mut C,
+) {
+    if let Some(handle) = handle.take() {
+        let _ = handle.update(cx, |_view, window, _cx| window.remove_window());
+    }
+}
+
+pub fn open_recording_border(
+    cx: &mut App,
+    target: &CaptureTarget,
+) -> anyhow::Result<Vec<WindowHandle<RecordingBorder>>> {
+    let region = match target {
+        CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
+    };
+    recording_border_regions(region, 4)
+        .into_iter()
+        .map(|edge| {
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(Bounds {
+                        origin: point(px(edge.x as f32), px(edge.y as f32)),
+                        size: size(px(edge.width as f32), px(edge.height as f32)),
+                    })),
+                    titlebar: None,
+                    focus: false,
+                    show: true,
+                    kind: WindowKind::PopUp,
+                    is_movable: false,
+                    is_resizable: false,
+                    is_minimizable: false,
+                    window_background: WindowBackgroundAppearance::Opaque,
+                    app_id: Some("com.inspire.rapidcap.recording-border".into()),
+                    ..Default::default()
+                },
+                |_window, cx| cx.new(|_| RecordingBorder),
+            )
+        })
+        .collect()
+}
+
+pub fn close_recording_border<C: gpui::AppContext>(
+    handles: &mut Vec<WindowHandle<RecordingBorder>>,
+    cx: &mut C,
+) {
+    for handle in handles.drain(..) {
+        let _ = handle.update(cx, |_view, window, _cx| window.remove_window());
+    }
+}
+
+fn recording_border_regions(region: &PhysicalRegion, thickness: u32) -> [PhysicalRegion; 4] {
+    let x = region.x - thickness as i32;
+    let y = region.y - thickness as i32;
+    let width = region.width + thickness * 2;
+    [
+        PhysicalRegion {
+            x,
+            y,
+            width,
+            height: thickness,
+        },
+        PhysicalRegion {
+            x,
+            y: region.y + region.height as i32,
+            width,
+            height: thickness,
+        },
+        PhysicalRegion {
+            x,
+            y: region.y,
+            width: thickness,
+            height: region.height,
+        },
+        PhysicalRegion {
+            x: region.x + region.width as i32,
+            y: region.y,
+            width: thickness,
+            height: region.height,
+        },
+    ]
+}
+
 fn selected_target(
     kind: CaptureKind,
     start: (i32, i32),
@@ -323,7 +630,12 @@ mod tests {
             process_name: "Code".into(),
         };
         assert_eq!(
-            selected_target(CaptureKind::ActiveWindowScreenshot, (50, 50), (50, 50), Some(&hovered)),
+            selected_target(
+                CaptureKind::ActiveWindowScreenshot,
+                (50, 50),
+                (50, 50),
+                Some(&hovered)
+            ),
             Some(hovered)
         );
     }
@@ -332,12 +644,61 @@ mod tests {
     fn recording_drag_selects_region_instead_of_hovered_window() {
         let hovered = CaptureTarget::Window {
             hwnd: 7,
-            region: PhysicalRegion { x: 0, y: 0, width: 800, height: 600 },
+            region: PhysicalRegion {
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
             process_name: "Code".into(),
         };
         assert_eq!(
             selected_target(CaptureKind::Video, (20, 30), (220, 130), Some(&hovered)),
-            Some(CaptureTarget::Region(PhysicalRegion { x: 20, y: 30, width: 200, height: 100 }))
+            Some(CaptureTarget::Region(PhysicalRegion {
+                x: 20,
+                y: 30,
+                width: 200,
+                height: 100
+            }))
+        );
+    }
+
+    #[test]
+    fn recording_boundary_is_four_thin_edges() {
+        let region = PhysicalRegion {
+            x: 100,
+            y: 200,
+            width: 640,
+            height: 480,
+        };
+        assert_eq!(
+            recording_border_regions(&region, 4),
+            [
+                PhysicalRegion {
+                    x: 96,
+                    y: 196,
+                    width: 648,
+                    height: 4
+                },
+                PhysicalRegion {
+                    x: 96,
+                    y: 680,
+                    width: 648,
+                    height: 4
+                },
+                PhysicalRegion {
+                    x: 96,
+                    y: 200,
+                    width: 4,
+                    height: 480
+                },
+                PhysicalRegion {
+                    x: 740,
+                    y: 200,
+                    width: 4,
+                    height: 480
+                },
+            ]
         );
     }
 }
