@@ -287,39 +287,29 @@ foreach ($slot in @(@(334, 3, 'countdown-3'), @(368, 5, 'countdown-5'), @(300, 0
 }
 
 # --- frame rate ------------------------------------------------------------
-# The stepper sits inside the card. Both hitboxes hold the click, so a stepper
-# that does not stop propagation cycles the frame rate *and* starts a recording.
+# There is no frame rate control any more: the rates are fixed and the whole
+# card is one hitbox. Two things have to hold. The rates the settings file
+# carries are the ones the header badge states, and the strip on the right of a
+# card where the stepper used to sit now belongs to the card - hovering it lifts
+# the whole card to the hover fill. Hover rather than click: clicking there
+# opens the overlay, and the release lands on the overlay and picks a window,
+# which would leave a live recording running through the rest of this run.
 Write-Host ""
 Write-Host "Frame rate"
-foreach ($pane in @(@(178, 'video', @(30, 60, 120)), @(371, 'gif', @(10, 15, 24)))) {
-  $before = if ($pane[1] -eq 'video') { (Settings).video.fps } else { (Settings).gif.fps }
-  $want = Next $pane[2] $before
-  Click ($o.X + $pane[0]) ($o.Y + 213) 700
-  Snap ("{0}-fps" -f $pane[1])
-  $got = if ($pane[1] -eq 'video') { (Settings).video.fps } else { (Settings).gif.fps }
-  Check ("the {0} stepper cycles fps ({1} -> {2})" -f $pane[1], $before, $want) ($got -eq $want) "settings.json says $got"
-  Check ("the {0} stepper does not start a recording" -f $pane[1]) ([RcUi]::IsWindowVisible($panel) -and @(Extra).Count -eq 0) "the panel went away, so the click reached the card behind the pane"
-}
-
-# The header badge carries both frame rates, so either stepper has to repaint
-# it. The GIF one is the reason the badge grew a second number: before that it
-# wrote a setting nothing on screen reflected.
-foreach ($pane in @(@(178, 'video'), @(371, 'gif'))) {
-  $before = Shot ("badge-before-" + $pane[1])
-  Click ($o.X + $pane[0]) ($o.Y + 213)
-  $after = Shot ("badge-after-" + $pane[1])
-  $differs = $false
-  if ($before -and $after) {
-    for ($x = 160; $x -lt 260 -and -not $differs; $x++) {
-      for ($y = 60; $y -lt 92; $y++) {
-        if ($before.GetPixel($x, $y).ToArgb() -ne $after.GetPixel($x, $y).ToArgb()) { $differs = $true; break }
-      }
-    }
-  }
-  Check ("the FPS badge repaints when the {0} stepper writes" -f $pane[1]) $differs "the badge is identical after the frame rate changed"
-  if ($before) { $before.Dispose() }
-  if ($after) { $after.Dispose() }
-}
+$fps = Settings
+Check "video records at 30 fps" ($fps.video.fps -eq 30) "settings.json says $($fps.video.fps)"
+Check "GIF records at 15 fps" ($fps.gif.fps -eq 15) "settings.json says $($fps.gif.fps)"
+$edgeX = $o.X + 371
+$edgeY = $o.Y + 213
+[void][RcUi]::SetCursorPos(900, 500); Start-Sleep -Milliseconds 500
+$rest = Grab $edgeX $edgeY 1 1 "gif-card-edge-rest"
+[void][RcUi]::SetCursorPos($edgeX, $edgeY); Start-Sleep -Milliseconds 500
+$lit = Grab $edgeX $edgeY 1 1 "gif-card-edge-hover"
+$restPixel = $rest.GetPixel(0, 0)
+$litPixel = $lit.GetPixel(0, 0)
+$rest.Dispose(); $lit.Dispose()
+Check "the strip the stepper used to own is part of the GIF card" ($litPixel.ToArgb() -ne $restPixel.ToArgb()) ("the fill stayed {0:X6} with the pointer on it - a dead zone is still there" -f ($restPixel.ToArgb() -band 0xFFFFFF))
+[void][RcUi]::SetCursorPos(900, 500); Start-Sleep -Milliseconds 300
 
 # --- footer ----------------------------------------------------------------
 Write-Host ""

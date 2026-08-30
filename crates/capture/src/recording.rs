@@ -308,9 +308,9 @@ mod tests {
             Path::new("out.part.mp4"),
         );
         let joined = args.join(" ");
-        assert!(joined.contains("-framerate 60"));
+        assert!(joined.contains("-framerate 30"));
         assert!(joined.contains("audio=virtual-audio-capturer"));
-        assert!(joined.contains("-c:v h264_nvenc -r 60 -preset p7 -tune hq -b:v 3000k"));
+        assert!(joined.contains("-c:v h264_nvenc -r 30 -preset p7 -tune hq -b:v 3000k"));
         assert!(joined.contains("-c:a aac -ac 2 -b:a 128k"));
     }
 

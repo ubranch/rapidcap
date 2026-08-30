@@ -42,7 +42,7 @@ impl Default for Settings {
                 jpeg_quality: 90,
             },
             video: VideoSettings {
-                fps: 60,
+                fps: 30,
                 bitrate: 3_000_000,
                 preset: "p7".into(),
                 tune: "hq".into(),

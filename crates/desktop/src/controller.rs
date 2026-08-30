@@ -129,10 +129,6 @@ impl AppController {
 
     /// Countdown slots offered by the segmented control, in order.
     pub const COUNTDOWN_CHOICES: [u8; 3] = [0, 3, 5];
-    /// Frame rates the Video stepper cycles through.
-    pub const VIDEO_FPS_CHOICES: [u32; 3] = [30, 60, 120];
-    /// Frame rates the GIF stepper cycles through.
-    pub const GIF_FPS_CHOICES: [u32; 3] = [10, 15, 24];
 
     pub fn set_countdown(&mut self, seconds: u8, cx: &mut Context<Self>) {
         if self.settings.countdown_seconds != seconds {
@@ -142,16 +138,6 @@ impl AppController {
         }
     }
 
-    /// One click advances to the next preset and wraps. Three choices is short
-    /// enough that stepping beats a menu, and a stepper needs no popup layer -
-    /// which is why the control wears a cycle glyph rather than the chevron it
-    /// used to. A chevron promises a list; this control opens nothing.
-    pub fn cycle_video_fps(&mut self, cx: &mut Context<Self>) {
-        self.settings.video.fps = next_choice(&Self::VIDEO_FPS_CHOICES, self.settings.video.fps);
-        self.persist_settings();
-        cx.notify();
-    }
-
     /// Mute or unmute the soundtrack on video recordings.
     ///
     /// Takes effect on the next recording, not the running one: FFmpeg's inputs
@@ -159,12 +145,6 @@ impl AppController {
     /// lose the take.
     pub fn toggle_audio(&mut self, cx: &mut Context<Self>) {
         self.settings.audio.enabled = !self.settings.audio.enabled;
-        self.persist_settings();
-        cx.notify();
-    }
-
-    pub fn cycle_gif_fps(&mut self, cx: &mut Context<Self>) {
-        self.settings.gif.fps = next_choice(&Self::GIF_FPS_CHOICES, self.settings.gif.fps);
         self.persist_settings();
         cx.notify();
     }
@@ -269,15 +249,6 @@ impl AppController {
     fn set_error_for_test(&mut self, message: &str) {
         self.state = CaptureState::Error(message.to_string());
         self.error = Some(message.to_string());
-    }
-}
-
-/// Wraps around to the first entry, so a click always changes something.
-fn next_choice<T: Copy + PartialEq>(choices: &[T], current: T) -> T {
-    let index = choices.iter().position(|value| *value == current);
-    match index {
-        Some(index) => choices[(index + 1) % choices.len()],
-        None => choices[0],
     }
 }
 

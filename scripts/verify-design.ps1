@@ -130,7 +130,9 @@ Check "card border #202020" ((Hex $col $cardTop) -eq '#202020') ("got " + (Hex $
 Check "card top highlight #414141" ((Hex 60 ($cardTop + 1)) -eq '#414141') ("got " + (Hex 60 ($cardTop + 1)))
 Check "card fill #1C1C1C" ((Hex $col ($cardTop + 20)) -eq '#1C1C1C') ("got " + (Hex $col ($cardTop + 20)))
 
-# Frame rate stepper: scan the Video card row right-to-left for the divider.
+# The Video card is one undivided surface now that the frame rate control is
+# gone. Scan its row right-to-left: no split-button hairline, and the card fill
+# runs all the way to the edge.
 $cardRight = 0
 if ($bands.Count -ge 2) {
   $mid = $bands[1].Top + 32
@@ -141,15 +143,8 @@ if ($bands.Count -ge 2) {
   for ($x = $cardRight; $x -gt 20; $x--) {
     if ((Hex $x $mid) -eq '#444444') { $divider = $x; break }
   }
-  if ($divider -gt 0) {
-    Expect "stepper width 34" ($cardRight - $divider) 34
-    # +4, not the middle of the 34px pane: the cycle glyph is 14px wide and
-    # centred, so a mid-pane sample reads the stroke instead of the fill.
-    Check "stepper fill #323232" ((Hex ($divider + 4) $mid) -eq '#323232') ("got " + (Hex ($divider + 4) $mid))
-    Check "card fill left of divider" ((Hex ($divider - 8) $mid) -eq '#1C1C1C') ("got " + (Hex ($divider - 8) $mid))
-  } else {
-    Check "stepper divider #444444 present" $false "no divider found on the Video card"
-  }
+  Check "the Video card has no split-button divider" ($divider -eq 0) "a #444444 divider is still drawn at x=$divider"
+  Check "card fill runs to the right edge" ((Hex ($cardRight - 6) $mid) -eq '#1C1C1C') ("got " + (Hex ($cardRight - 6) $mid))
 }
 
 # Segmented control: the active slot draws a 2px accent ring.
@@ -187,12 +182,6 @@ if ($bands.Count -ge 3) {
     Check "chip highlight clears the left cap" (($hl[0] - $chipL) -ge 17) ("highlight starts " + ($hl[0] - $chipL) + "px into a chip whose cap is 18px wide - it is cutting across the curve")
     Check "chip highlight clears the right cap" (($chipR - $hl[-1]) -ge 17) ("highlight ends " + ($chipR - $hl[-1]) + "px short of the right cap")
   }
-}
-if ($cardRight -gt 0 -and $bands.Count -ge 2) {
-  # Two rows below the card's top border the rounded corner has not opened out
-  # to full width yet, so the pane's fill must not reach the edge there.
-  $corner = Hex $cardRight ($bands[1].Top + 2)
-  Check "stepper corner follows the card radius" ($corner -ne '#323232') ("stepper fill reaches the card top-right corner (got " + $corner + ") - square corner on a rounded card")
 }
 
 Write-Host ""

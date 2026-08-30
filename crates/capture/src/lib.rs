@@ -56,7 +56,7 @@ mod tests {
         let settings = Settings::default();
         assert_eq!(settings.screenshot.png_to_jpeg_threshold_bytes, 2_097_152);
         assert_eq!(settings.screenshot.jpeg_quality, 90);
-        assert_eq!(settings.video.fps, 60);
+        assert_eq!(settings.video.fps, 30);
         assert_eq!(settings.video.bitrate, 3_000_000);
         assert_eq!(settings.audio.bitrate, 128_000);
         assert_eq!(settings.gif.fps, 15);

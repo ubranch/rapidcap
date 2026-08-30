@@ -42,7 +42,6 @@ pub enum Icon {
     Settings,
     Minimize,
     Close,
-    Cycle,
     Back,
     Check,
     // files
@@ -103,9 +102,6 @@ impl Icon {
             }
             Self::Minimize => r#"<path d="M5 12h14"/>"#,
             Self::Close => r#"<path d="M6 6l12 12M18 6 6 18"/>"#,
-            Self::Cycle => {
-                r#"<path d="M20 12a8 8 0 1 1-2.6-5.9L20 8"/><path d="M20 3v5h-5"/>"#
-            }
             Self::Back => r#"<path d="M15 5l-7 7 7 7"/>"#,
             Self::Check => r#"<path d="m5 12 5 5 9-10"/>"#,
             Self::Copy => {
@@ -160,7 +156,6 @@ impl Icon {
             Self::Settings => "settings",
             Self::Minimize => "minimize",
             Self::Close => "close",
-            Self::Cycle => "cycle",
             Self::Back => "back",
             Self::Check => "check",
             Self::Copy => "copy",
@@ -238,7 +233,7 @@ impl AssetSource for IconAssets {
 
 /// Every icon, in declaration order. The asset source and the tests both walk
 /// this, so a new variant that is not added here fails to resolve at runtime.
-pub const ALL_ICONS: [Icon; 30] = [
+pub const ALL_ICONS: [Icon; 29] = [
     Icon::Region,
     Icon::Window,
     Icon::Video,
@@ -260,7 +255,6 @@ pub const ALL_ICONS: [Icon; 30] = [
     Icon::Settings,
     Icon::Minimize,
     Icon::Close,
-    Icon::Cycle,
     Icon::Back,
     Icon::Check,
     Icon::Copy,
@@ -275,7 +269,7 @@ pub const ALL_ICONS: [Icon; 30] = [
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 30] = ALL_ICONS;
+    const ALL: [Icon; 29] = ALL_ICONS;
 
     #[test]
     fn every_icon_is_a_closed_svg_on_the_same_grid() {
