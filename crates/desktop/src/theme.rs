@@ -65,11 +65,6 @@ pub fn border_divider() -> Hsla {
     rgb(0x444444).into()
 }
 
-/// Divider inside the titlebar, separating app actions from window controls.
-pub fn border_titlebar() -> Hsla {
-    rgb(0x3a3a3a).into()
-}
-
 // ---------------------------------------------------------------- text
 
 /// Wordmark, logo mark, hovered icons.
@@ -216,17 +211,52 @@ pub const RADIUS_PILL: f32 = 999.0;
 /// Fixed panel width. Long names truncate; this never moves.
 pub const PANEL_W: f32 = 400.0;
 /// Panel height. Fixed, like the width: the error bar replaces the footer row
-/// rather than adding one, so no state is taller than any other.
-pub const PANEL_H: f32 = 302.0;
+/// rather than adding one, so no state is taller than any other. 258 of body
+/// under a [`TITLEBAR_H`] bar.
+pub const PANEL_H: f32 = 288.0;
 
-pub const TITLEBAR_H: f32 = 44.0;
-/// App action button in the titlebar.
-pub const TITLEBAR_BTN: f32 = 36.0;
-/// Minimize and close. Full bar height so the screen corner is clickable.
-pub const WIN_BTN_W: f32 = 46.0;
-/// Gap between titlebar action buttons — matches the 4px a 36px button leaves
-/// above and below it in a 44px bar.
-pub const TITLEBAR_GAP: f32 = 4.0;
+/// The titlebar, and the panel it sits on.
+///
+/// Every number in this group is a *design* pixel and reaches the screen through
+/// [`u`], because the bar is the one part of the window that has to keep step
+/// with the native titlebars around it — see [`u`] for why.
+///
+/// The heights are cumcord's, measured off its source rather than its pixels:
+/// `TITLEBAR_HEIGHT` 30, window buttons 34 wide by the full bar height, 13px
+/// glyphs, a 9px leading inset and 8px between everything. Matching it by eye
+/// is what produced the 22px bar this replaces.
+pub const TITLEBAR_H: f32 = 30.0;
+/// Minimize and close. Wider than they are tall, which is what a titlebar
+/// control is; full bar height so the screen corner stays clickable.
+pub const WIN_BTN_W: f32 = 34.0;
+/// Mark, wordmark and window-control glyphs. One size, the whole bar.
+pub const TITLEBAR_GLYPH: f32 = 13.0;
+/// Leading inset before the mark.
+pub const TITLEBAR_LEADING: f32 = 9.0;
+/// Between the mark and the wordmark, and between the two window controls.
+pub const TITLEBAR_GAP: f32 = 8.0;
+
+/// A design measurement, in the unit the interface is drawn in.
+///
+/// Every number in this module is a *design* pixel and reaches the screen
+/// through here. Windows applies Settings > Accessibility > Text size to its own
+/// chrome and to nothing an app draws for itself, so an interface authored in
+/// raw pixels stays put while every native window on the machine grows - at 130%
+/// this panel was drawing a titlebar close to half the height of the one on the
+/// window beside it. One multiply here scales the whole panel with the system
+/// instead.
+///
+/// This is *not* the display's DPI scale. GPUI already applies that underneath,
+/// which is why the unit stays logical pixels rather than physical ones.
+pub fn u(value: f32) -> Pixels {
+    px(value * crate::platform::text_scale())
+}
+
+/// [`u`], for the callers that need the number rather than the type: window
+/// bounds and the Win32 placement behind them.
+pub fn scaled(value: f32) -> f32 {
+    value * crate::platform::text_scale()
+}
 
 pub const CARD_H: f32 = 64.0;
 pub const CHIP_H: f32 = 36.0;
@@ -243,7 +273,9 @@ pub const SEG_INFO: f32 = 15.0;
 /// Gap between the header row and the grid, on top of the 9px column gap.
 pub const HEADER_MB: f32 = 3.0;
 
-/// The smallest target in the product that is not a segment slot.
+/// The smallest target in the body of the panel that is not a segment slot.
+/// The titlebar's window controls sit under it at 34 x 30 - what a titlebar
+/// control is - because the screen corner makes close clickable regardless.
 pub const TARGET_MIN: f32 = 36.0;
 
 /// Recording HUD pill.
@@ -275,9 +307,9 @@ pub fn pill_radius(height: f32) -> f32 {
 pub fn recessed() -> Vec<BoxShadow> {
     vec![BoxShadow {
         color: rgba(0x0000008c).into(),
-        offset: point(px(0.0), px(1.0)),
-        blur_radius: px(3.0),
-        spread_radius: px(0.0),
+        offset: point(u(0.0), u(1.0)),
+        blur_radius: u(3.0),
+        spread_radius: u(0.0),
         inset: true,
     }]
 }
@@ -286,20 +318,20 @@ pub fn recessed() -> Vec<BoxShadow> {
 pub fn floating() -> Vec<BoxShadow> {
     vec![BoxShadow {
         color: rgba(0x00000099).into(),
-        offset: point(px(0.0), px(10.0)),
-        blur_radius: px(28.0),
-        spread_radius: px(0.0),
+        offset: point(u(0.0), u(10.0)),
+        blur_radius: u(28.0),
+        spread_radius: u(0.0),
         inset: false,
     }]
 }
 
 // ---------------------------------------------------------------- type
 
-pub const TEXT_WORDMARK: Pixels = px(22.0);
-pub const TEXT_ROW: Pixels = px(14.0);
-pub const TEXT_BODY: Pixels = px(13.0);
-pub const TEXT_SMALL: Pixels = px(12.0);
-pub const TEXT_MICRO: Pixels = px(11.0);
+pub const TEXT_WORDMARK: f32 = 22.0;
+pub const TEXT_ROW: f32 = 14.0;
+pub const TEXT_BODY: f32 = 13.0;
+pub const TEXT_SMALL: f32 = 12.0;
+pub const TEXT_MICRO: f32 = 11.0;
 
 #[cfg(test)]
 mod tests {

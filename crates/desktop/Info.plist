@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- TCC records the Screen Recording grant against this identifier, so it has
+	     to match the single-instance lock name in platform/macos.rs and must not
+	     change between releases or every user is asked for permission again. -->
+	<key>CFBundleIdentifier</key>
+	<string>com.inspire.rapidcap</string>
+	<key>CFBundleExecutable</key>
+	<string>RapidCap</string>
+	<key>CFBundleName</key>
+	<string>RapidCap</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>0.1.0</string>
+	<!-- The AppKit and Core Graphics calls in platform/macos.rs are all Sonoma
+	     era or older, but the CI runner is macos-14 and nothing older is tested. -->
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>

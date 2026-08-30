@@ -38,7 +38,6 @@ pub enum Icon {
     Microphone,
     // chrome
     Mark,
-    KeepOnTop,
     Settings,
     Minimize,
     Close,
@@ -98,7 +97,6 @@ impl Icon {
                 r#"<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>"#
             }
             Self::Mark => r#"<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>"#,
-            Self::KeepOnTop => r#"<path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/>"#,
             Self::Settings => {
                 r#"<circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4m0-12.8-1.4 1.4m-10 10-1.4 1.4"/>"#
             }
@@ -157,7 +155,6 @@ impl Icon {
             Self::AudioOn => "icons/audio-on.svg",
             Self::Microphone => "icons/microphone.svg",
             Self::Mark => "icons/mark.svg",
-            Self::KeepOnTop => "icons/keep-on-top.svg",
             Self::Settings => "icons/settings.svg",
             Self::Minimize => "icons/minimize.svg",
             Self::Close => "icons/close.svg",
@@ -232,7 +229,7 @@ impl AssetSource for IconAssets {
 
 /// Every icon, in declaration order. The asset source and the tests both walk
 /// this, so a new variant that is not added here fails to resolve at runtime.
-pub const ALL_ICONS: [Icon; 29] = [
+pub const ALL_ICONS: [Icon; 28] = [
     Icon::Region,
     Icon::Window,
     Icon::Video,
@@ -250,7 +247,6 @@ pub const ALL_ICONS: [Icon; 29] = [
     Icon::AudioOn,
     Icon::Microphone,
     Icon::Mark,
-    Icon::KeepOnTop,
     Icon::Settings,
     Icon::Minimize,
     Icon::Close,
@@ -268,7 +264,7 @@ pub const ALL_ICONS: [Icon; 29] = [
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 29] = ALL_ICONS;
+    const ALL: [Icon; 28] = ALL_ICONS;
 
     #[test]
     fn every_icon_is_a_closed_svg_on_the_same_grid() {

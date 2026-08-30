@@ -35,7 +35,6 @@ public class RcUi {
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int c, uint f);
   [DllImport("user32.dll")] public static extern IntPtr PostMessageW(IntPtr h, uint m, IntPtr w, IntPtr l);
-  [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
@@ -114,7 +113,7 @@ function Px([double]$logical) { [int][Math]::Round($logical * $scale) }
 
 $proc = Get-Process -Name RapidCap -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $proc) { Write-Host "FAIL  RapidCap is not running"; exit 1 }
-$panel = [RcUi]::Panel([uint32]$proc.Id, (Px 380), (Px 460), (Px 280), (Px 360))
+$panel = [RcUi]::Panel([uint32]$proc.Id, (Px 380), (Px 460), (Px 240), (Px 340))
 if ($panel -eq [IntPtr]::Zero) { Write-Host "FAIL  the panel is not on screen"; exit 1 }
 
 $settingsFile = Join-Path $env:APPDATA "RapidCap\settings.json"
@@ -124,9 +123,7 @@ if (Test-Path $frames) { Remove-Item "$frames\*" -Force -ErrorAction SilentlyCon
 else { New-Item -ItemType Directory $frames | Out-Null }
 
 $TOPMOST = [IntPtr](-1)
-$NOTOPMOST = [IntPtr](-2)
 $MOVE_ONLY = 0x0001 -bor 0x0010          # SWP_NOSIZE | SWP_NOACTIVATE
-$ZORDER_ONLY = 0x0001 -bor 0x0002 -bor 0x0010
 
 $script:pass = 0
 $script:fail = 0
@@ -283,29 +280,18 @@ Write-Host "RapidCap - every control, clicked" -ForegroundColor Cyan
 Write-Host ("  frames -> {0}" -f $frames)
 
 $o = Park
+# Printed because every click below is an offset from it: when a run goes red
+# across the board, this line says whether the clicks were even aimed at the app.
+$r0 = New-Object RcUi+RECT
+[void][RcUi]::GetWindowRect($panel, [ref]$r0)
+Write-Host ("  panel  {0},{1} {2}x{3} outer, client origin {4},{5}, scale {6}" -f $r0.L, $r0.T, ($r0.R - $r0.L), ($r0.B - $r0.T), $o.X, $o.Y, $scale)
 Snap "idle"
-
-# --- titlebar --------------------------------------------------------------
-Write-Host ""
-Write-Host "Titlebar"
-$EXSTYLE = -20
-$WS_EX_TOPMOST = 0x8
-# Drop the harness' own pin first, or the toggle has nothing to prove.
-[void][RcUi]::SetWindowPos($panel, $NOTOPMOST, 0, 0, 0, 0, $ZORDER_ONLY)
-Start-Sleep -Milliseconds 300
-Click ($o.X + (Px 281)) ($o.Y + (Px 22))
-Snap "keep-on-top-on"
-Check "keep on top pins the panel" ((([int64][RcUi]::GetWindowLongPtrW($panel, $EXSTYLE)) -band $WS_EX_TOPMOST) -ne 0) "WS_EX_TOPMOST is clear"
-Click ($o.X + (Px 281)) ($o.Y + (Px 22))
-Snap "keep-on-top-off"
-Check "keep on top releases the pin" ((([int64][RcUi]::GetWindowLongPtrW($panel, $EXSTYLE)) -band $WS_EX_TOPMOST) -eq 0) "WS_EX_TOPMOST is still set"
-$o = Park
 
 # --- countdown -------------------------------------------------------------
 Write-Host ""
 Write-Host "Countdown"
 foreach ($slot in @(@(334, 3, 'countdown-3'), @(368, 5, 'countdown-5'), @(300, 0, 'countdown-off'))) {
-  Click ($o.X + (Px $slot[0])) ($o.Y + (Px 76))
+  Click ($o.X + (Px $slot[0])) ($o.Y + (Px 54))
   Snap $slot[2]
   $got = (Settings).countdown_seconds
   Check ("{0} writes countdown_seconds = {1}" -f $slot[2], $slot[1]) ($got -eq $slot[1]) "settings.json says $got"
@@ -325,7 +311,7 @@ $fps = Settings
 Check "video records at 30 fps" ($fps.video.fps -eq 30) "settings.json says $($fps.video.fps)"
 Check "GIF records at 15 fps" ($fps.gif.fps -eq 15) "settings.json says $($fps.gif.fps)"
 $edgeX = $o.X + (Px 371)
-$edgeY = $o.Y + (Px 213)
+$edgeY = $o.Y + (Px 191)
 [void][RcUi]::SetCursorPos(900, 500); Start-Sleep -Milliseconds 500
 $rest = Grab $edgeX $edgeY 1 1 "gif-card-edge-rest"
 [void][RcUi]::SetCursorPos($edgeX, $edgeY); Start-Sleep -Milliseconds 500
@@ -339,7 +325,7 @@ Check "the strip the stepper used to own is part of the GIF card" ($litPixel.ToA
 # --- footer ----------------------------------------------------------------
 Write-Host ""
 Write-Host "Footer"
-Click ($o.X + (Px 60)) ($o.Y + (Px 272)) 800
+Click ($o.X + (Px 60)) ($o.Y + (Px 250)) 800
 Snap "output-chip"
 $explorer = [IntPtr]::Zero
 foreach ($tick in 1..15) {
@@ -352,7 +338,7 @@ if ($explorer -ne [IntPtr]::Zero) { [void][RcUi]::PostMessageW($explorer, 0x0010
 $o = Park
 
 $snapshot = (Settings) | ConvertTo-Json -Depth 5
-Click ($o.X + (Px 330)) ($o.Y + (Px 272))
+Click ($o.X + (Px 330)) ($o.Y + (Px 250))
 Snap "status-well"
 Check "the status well is not a button" (((Settings) | ConvertTo-Json -Depth 5) -eq $snapshot) "clicking the status well changed a setting"
 
@@ -398,7 +384,7 @@ $g.Dispose()
 $under = $bare.GetPixel(0, 0)
 $bare.Dispose()
 
-Click ($o.X + (Px 103)) ($o.Y + (Px 140)) 1000
+Click ($o.X + (Px 103)) ($o.Y + (Px 118)) 1000
 $overlay = WaitFor { Overlay } 6
 Check "the Region card opens the overlay" ($null -ne $overlay) "no full-screen window appeared"
 if ($overlay) {
@@ -455,7 +441,7 @@ $o = Park
 Write-Host ""
 Write-Host "Window capture"
 $countBefore = Captures
-Click ($o.X + (Px 296)) ($o.Y + (Px 140)) 1000
+Click ($o.X + (Px 296)) ($o.Y + (Px 118)) 1000
 $overlay = WaitFor { Overlay } 6
 Check "the Window card opens the overlay" ($null -ne $overlay) "no full-screen window appeared"
 if ($overlay) {
@@ -492,9 +478,9 @@ foreach ($rec in @(@(86, 'video', 'Video'), @(279, 'gif', 'GIF'))) {
   Write-Host ("{0} recording" -f $rec[2])
   # Video runs with a 3s countdown so the countdown bar can be checked; GIF runs
   # with none, so the rest of the pass is not waiting on it.
-  Click ($o.X + (Px $(if ($rec[1] -eq 'video') { 334 } else { 300 }))) ($o.Y + (Px 76))
+  Click ($o.X + (Px $(if ($rec[1] -eq 'video') { 334 } else { 300 }))) ($o.Y + (Px 54))
   $countBefore = Captures
-  Click ($o.X + (Px $rec[0])) ($o.Y + (Px 213)) 1000
+  Click ($o.X + (Px $rec[0])) ($o.Y + (Px 191)) 1000
   $overlay = WaitFor { Overlay } 6
   Check ("the {0} card opens the target overlay" -f $rec[2]) ($null -ne $overlay) "no overlay appeared"
   if (-not $overlay) { $o = Park; continue }
@@ -529,15 +515,20 @@ foreach ($rec in @(@(86, 'video', 'Video'), @(279, 'gif', 'GIF'))) {
   Start-Sleep -Seconds 2
   WakeHud $hud
   $shot = Grab $hud.L $hud.T $hud.W $hud.H0 ("hud-" + $rec[1])
-  # The stop button is the only danger-red run on the pill's middle row.
+  # The stop button is the rightmost danger-red run on the pill's middle row.
+  # Rightmost, not first-to-last: the recording dot is painted the same danger
+  # red, so a left-to-right span straddles the dot and the button and puts the
+  # midpoint out in the status text - and the pause click, measured back from
+  # that midpoint, then lands on the clock instead of the button.
   $y = [int]($hud.H0 / 2)
   $first = -1; $last = -1
-  for ($x = 0; $x -lt $hud.W; $x++) {
+  for ($x = $hud.W - 1; $x -ge 0; $x--) {
     $c = $shot.GetPixel($x, $y)
     if ($c.R -gt 170 -and $c.R -lt 225 -and $c.G -lt 80 -and $c.B -lt 80) {
-      if ($first -lt 0) { $first = $x }
-      $last = $x
+      if ($last -lt 0) { $last = $x }
+      $first = $x
     }
+    elseif ($last -ge 0) { break }
   }
   $shot.Dispose()
   Check ("the {0} HUD draws a stop button" -f $rec[2]) ($first -ge 0) "no danger-red run on the pill"

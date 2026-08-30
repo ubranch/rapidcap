@@ -1,34 +1,26 @@
+//! Window manipulation on Windows, via Win32.
+//!
+//! GPUI exposes none of this on Windows - no owner-draw always-on-top layer, no
+//! drag-by-client-area, no size lock - so the panel, the overlay and the
+//! recording frame are all driven by their HWNDs directly.
+
 use std::{
-    cell::Cell,
     mem::size_of,
     os::windows::ffi::OsStrExt as _,
     path::{Path, PathBuf},
-    sync::{
-        OnceLock,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::OnceLock,
     thread,
     time::Duration,
 };
 
 use anyhow::Context as _;
-use async_channel::Receiver;
-use global_hotkey::{
-    GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
-    hotkey::{Code, HotKey, Modifiers},
-};
-use gpui::Global;
-use rapidcap_capture::{CaptureCommand, CaptureState, CaptureTarget, PhysicalRegion};
-use serde_json::{Value, json};
-use tray_icon::{
-    Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
-    menu::{Menu, MenuEvent, MenuItem},
-};
+use gpui::DisplayId;
+use rapidcap_capture::{CaptureTarget, PhysicalRegion};
 use windows::{
     Win32::{
         Foundation::{
-            COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND,
-            LPARAM, LRESULT, POINT, RECT, WPARAM,
+            COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError, HANDLE,
+            HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
         },
         Graphics::{
             Dwm::{
@@ -38,10 +30,14 @@ use windows::{
             },
             Gdi::{
                 CombineRgn, CreateRectRgn, CreateSolidBrush, DeleteObject, GetMonitorInfoW,
-                MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, RGN_DIFF, SetWindowRgn,
+                HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+                MonitorFromWindow, RGN_DIFF, SetWindowRgn,
             },
         },
         System::LibraryLoader::GetModuleHandleW,
+        System::Registry::{
+            HKEY, HKEY_CURRENT_USER, KEY_READ, RegCloseKey, RegOpenKeyExW, RegQueryValueExW,
+        },
         System::Threading::{
             CreateMutexW, GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32,
             PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
@@ -64,13 +60,6 @@ use windows::{
     },
     core::{PCWSTR, PWSTR, w},
 };
-
-use crate::tray::{self, TrayState};
-
-const APP_ID: &str = "com.inspire.rapidcap";
-const MENU_SHOW: &str = "show";
-const MENU_OUTPUT: &str = "output";
-const MENU_EXIT: &str = "exit";
 
 pub fn window_target_at(point: (i32, i32)) -> anyhow::Result<CaptureTarget> {
     let current_process = unsafe { GetCurrentProcessId() };
@@ -159,212 +148,6 @@ fn process_name(process: HANDLE) -> anyhow::Result<String> {
     )
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HotkeySpec {
-    modifiers: Modifiers,
-    code: Code,
-    command: CaptureCommand,
-}
-
-impl HotkeySpec {
-    const fn new(modifiers: Modifiers, code: Code, command: CaptureCommand) -> Self {
-        Self {
-            modifiers,
-            code,
-            command,
-        }
-    }
-
-    fn hotkey(self) -> HotKey {
-        HotKey::new(Some(self.modifiers), self.code)
-    }
-
-    /// How the shortcut reads to a user: `Alt+E`, `Ctrl+Shift+G`.
-    ///
-    /// Derived from the spec rather than written out again, so the pill on a
-    /// card cannot promise a key the app never registered.
-    pub fn label(self) -> String {
-        let debug = format!("{:?}", self.code);
-        let key = debug.strip_prefix("Key").unwrap_or(&debug);
-        let mut parts = Vec::with_capacity(4);
-        if self.modifiers.contains(Modifiers::CONTROL) {
-            parts.push("Ctrl");
-        }
-        if self.modifiers.contains(Modifiers::SHIFT) {
-            parts.push("Shift");
-        }
-        if self.modifiers.contains(Modifiers::ALT) {
-            parts.push("Alt");
-        }
-        parts.push(key);
-        parts.join("+")
-    }
-}
-
-/// The shortcut a control should print, or `None` for a command nobody bound.
-pub fn shortcut_label(command: CaptureCommand) -> Option<String> {
-    hotkey_specs()
-        .into_iter()
-        .find(|spec| spec.command == command)
-        .map(HotkeySpec::label)
-}
-
-/// The five shortcuts, one per command.
-///
-/// Alt+Q and Alt+E are the two the user asked for by name, so they are the two
-/// that ship, even though ShareX uses them too. `RegisterHotKey` is
-/// first-come-first-served, so on a machine already running ShareX one of them
-/// will lose the race and fail to register - `PlatformRuntime` logs that rather
-/// than failing to start, and the panel's buttons still work.
-///
-/// The remaining three have no requested binding, so they stay on
-/// Ctrl+Shift+letter, mnemonic per command and unclaimed by Windows.
-pub fn hotkey_specs() -> [HotkeySpec; 5] {
-    const CTRL_SHIFT: Modifiers = Modifiers::CONTROL.union(Modifiers::SHIFT);
-    [
-        HotkeySpec::new(Modifiers::ALT, Code::KeyE, CaptureCommand::CaptureRegion),
-        HotkeySpec::new(CTRL_SHIFT, Code::KeyW, CaptureCommand::CaptureActiveWindow),
-        HotkeySpec::new(Modifiers::ALT, Code::KeyQ, CaptureCommand::ToggleVideo),
-        HotkeySpec::new(CTRL_SHIFT, Code::KeyG, CaptureCommand::ToggleGif),
-        HotkeySpec::new(CTRL_SHIFT, Code::KeyP, CaptureCommand::TogglePause),
-    ]
-}
-
-pub fn probe_payload(output: impl AsRef<Path>) -> Value {
-    json!({
-        "app_id": APP_ID,
-        "version": env!("CARGO_PKG_VERSION"),
-        "output": output.as_ref(),
-        "hotkeys": hotkey_specs().map(HotkeySpec::label)
-    })
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PlatformEvent {
-    Capture(CaptureCommand),
-    Show,
-    OpenOutput,
-    Exit,
-}
-
-pub struct PlatformRuntime {
-    receiver: Receiver<PlatformEvent>,
-    _hotkeys: GlobalHotKeyManager,
-    tray: TrayIcon,
-    tray_state: Cell<Option<TrayState>>,
-}
-
-impl Global for PlatformRuntime {}
-
-/// `tray_icon` wants an owned buffer; the rasteriser hands one over.
-fn tray_pixels(state: TrayState) -> Vec<u8> {
-    tray::rgba(state)
-}
-
-impl PlatformRuntime {
-    pub fn start() -> anyhow::Result<Self> {
-        let (sender, receiver) = async_channel::unbounded();
-        let specs = hotkey_specs();
-        let hotkeys: Vec<_> = specs.iter().copied().map(HotkeySpec::hotkey).collect();
-        let manager = GlobalHotKeyManager::new().context("create global hotkey manager")?;
-        for hotkey in &hotkeys {
-            if let Err(error) = manager.register(*hotkey) {
-                tracing::warn!(?hotkey, %error, "global hotkey unavailable");
-            }
-        }
-
-        let hotkey_sender = sender.clone();
-        GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
-            if event.state() != HotKeyState::Pressed {
-                return;
-            }
-            if let Some(spec) = specs.iter().find(|spec| spec.hotkey().id() == event.id()) {
-                let _ = hotkey_sender.try_send(PlatformEvent::Capture(spec.command));
-            }
-        }));
-
-        let menu = Menu::with_items(&[
-            &MenuItem::with_id(MENU_SHOW, "Show RapidCap", true, None),
-            &MenuItem::with_id(MENU_OUTPUT, "Open output folder", true, None),
-            &MenuItem::with_id(MENU_EXIT, "Exit", true, None),
-        ])?;
-        let menu_sender = sender.clone();
-        MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
-            let event = match event.id().0.as_str() {
-                MENU_SHOW => Some(PlatformEvent::Show),
-                MENU_OUTPUT => Some(PlatformEvent::OpenOutput),
-                MENU_EXIT => Some(PlatformEvent::Exit),
-                _ => None,
-            };
-            if let Some(event) = event {
-                let _ = menu_sender.try_send(event);
-            }
-        }));
-
-        let tray_sender = sender;
-        TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
-            if matches!(
-                event,
-                TrayIconEvent::Click {
-                    button: MouseButton::Left,
-                    button_state: MouseButtonState::Up,
-                    ..
-                } | TrayIconEvent::DoubleClick {
-                    button: MouseButton::Left,
-                    ..
-                }
-            ) {
-                let _ = tray_sender.try_send(PlatformEvent::Show);
-            }
-        }));
-
-        let tray = TrayIconBuilder::new()
-            .with_tooltip("RapidCap")
-            .with_menu(Box::new(menu))
-            .with_menu_on_left_click(false)
-            .with_icon(Icon::from_rgba(
-                tray_pixels(TrayState::Idle),
-                tray::SIZE,
-                tray::SIZE,
-            )?)
-            .build()?;
-
-        Ok(Self {
-            receiver,
-            _hotkeys: manager,
-            tray,
-            tray_state: Cell::new(Some(TrayState::Idle)),
-        })
-    }
-
-    pub fn receiver(&self) -> Receiver<PlatformEvent> {
-        self.receiver.clone()
-    }
-
-    /// Push the current capture state onto the tray icon and its tooltip.
-    ///
-    /// Repainting the icon is a Win32 round trip, so the last painted state is
-    /// remembered and an unchanged state is a no-op — this is called from a
-    /// controller observer that also fires on target and settings changes.
-    pub fn show_capture_state(&self, state: &CaptureState) {
-        let next = TrayState::from_capture(state);
-        if self.tray_state.get() != Some(next) {
-            match Icon::from_rgba(tray_pixels(next), tray::SIZE, tray::SIZE) {
-                Ok(icon) => {
-                    if let Err(error) = self.tray.set_icon(Some(icon)) {
-                        tracing::warn!(%error, "update tray icon");
-                    }
-                    self.tray_state.set(Some(next));
-                }
-                Err(error) => tracing::warn!(%error, "build tray icon"),
-            }
-        }
-        if let Err(error) = self.tray.set_tooltip(Some(next.tooltip(state))) {
-            tracing::warn!(%error, "update tray tooltip");
-        }
-    }
-}
-
 pub struct SingleInstance(HANDLE);
 
 impl SingleInstance {
@@ -393,11 +176,6 @@ impl Drop for SingleInstance {
 /// still shutting down finds that one's window instead - measured, that is how
 /// the panel ended up unplaced on one launch in five.
 static PANEL: OnceLock<isize> = OnceLock::new();
-
-/// Whether the user has the panel pinned. `show_main_window` has to bounce the
-/// window through `HWND_TOPMOST` to beat the foreground lock, and without this
-/// it would have no way to know whether to bounce back out again.
-static KEEP_ON_TOP: AtomicBool = AtomicBool::new(false);
 
 pub fn remember_main_window(handle: isize) {
     let _ = PANEL.set(handle);
@@ -469,19 +247,6 @@ fn activate_existing_window() {
             return;
         }
         thread::sleep(Duration::from_millis(25));
-    }
-}
-
-/// Pin the panel above other windows. A capture tool that disappears behind the
-/// thing you are about to capture is a capture tool you fight.
-pub fn set_keep_on_top(on: bool) {
-    KEEP_ON_TOP.store(on, Ordering::Relaxed);
-    if let Some(window) = panel() {
-        let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
-        let after = if on { HWND_TOPMOST } else { HWND_NOTOPMOST };
-        unsafe {
-            let _ = SetWindowPos(window, Some(after), 0, 0, 0, 0, flags);
-        }
     }
 }
 
@@ -583,9 +348,7 @@ pub fn show_main_window() {
         let _ = ShowWindow(window, SW_RESTORE);
         let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
         let _ = SetWindowPos(window, Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
-        if !KEEP_ON_TOP.load(Ordering::Relaxed) {
-            let _ = SetWindowPos(window, Some(HWND_NOTOPMOST), 0, 0, 0, 0, flags);
-        }
+        let _ = SetWindowPos(window, Some(HWND_NOTOPMOST), 0, 0, 0, 0, flags);
         let _ = SetForegroundWindow(window);
     }
 }
@@ -752,6 +515,34 @@ pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
     }
 }
 
+/// The monitor under the cursor, as a GPUI display and a capture rectangle.
+///
+/// `HMONITOR` is what GPUI's Windows backend hands out as a `DisplayId`, so the
+/// handle goes straight across; `rcMonitor` is already in the virtual-screen
+/// space `PhysicalRegion` uses.
+pub fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
+    let mut point = POINT::default();
+    unsafe { GetCursorPos(&mut point) }?;
+    let monitor: HMONITOR = unsafe { MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        rcMonitor: RECT::default(),
+        rcWork: RECT::default(),
+        dwFlags: 0,
+    };
+    unsafe { GetMonitorInfoW(monitor, &mut info) }.ok()?;
+    let bounds = info.rcMonitor;
+    Ok((
+        DisplayId::new(monitor.0 as isize as u64),
+        PhysicalRegion {
+            x: bounds.left,
+            y: bounds.top,
+            width: (bounds.right - bounds.left) as u32,
+            height: (bounds.bottom - bounds.top) as u32,
+        },
+    ))
+}
+
 pub fn open_folder(path: &Path) -> anyhow::Result<()> {
     let wide: Vec<u16> = path
         .as_os_str()
@@ -779,51 +570,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_command_except_cancel_has_exactly_one_shortcut() {
-        let specs = hotkey_specs();
-        let mut commands: Vec<_> = specs.iter().map(|spec| spec.command).collect();
-        commands.sort_by_key(|command| format!("{command:?}"));
-        commands.dedup();
-        assert_eq!(
-            commands.len(),
-            specs.len(),
-            "two shortcuts fire the same command"
-        );
-    }
-
-    #[test]
-    fn the_two_requested_shortcuts_are_bound() {
-        // Alt+Q and Alt+E were asked for by name. They collide with ShareX,
-        // which is accepted; what is not accepted is quietly drifting back to
-        // some other binding the next time this table is edited.
-        let specs = hotkey_specs();
-        let bound = |modifiers, code| {
-            specs
-                .iter()
-                .find(|spec| spec.modifiers == modifiers && spec.code == code)
-                .map(|spec| spec.command)
-        };
-        assert_eq!(
-            bound(Modifiers::ALT, Code::KeyQ),
-            Some(CaptureCommand::ToggleVideo),
-            "Alt+Q must record"
-        );
-        assert_eq!(
-            bound(Modifiers::ALT, Code::KeyE),
-            Some(CaptureCommand::CaptureRegion),
-            "Alt+E must capture"
-        );
-    }
-
-    #[test]
-    fn probe_payload_is_machine_readable() {
-        let value = probe_payload("C:/Captures");
-        assert_eq!(value["app_id"], APP_ID);
-        assert_eq!(value["output"], "C:/Captures");
-        assert_eq!(value["hotkeys"].as_array().unwrap().len(), 5);
-    }
-
-    #[test]
     fn pointer_selects_only_external_window_containing_point() {
         let rect = RECT {
             left: 100,
@@ -834,5 +580,80 @@ mod tests {
         assert!(window_candidate_contains(rect, (300, 400), 42, 7));
         assert!(!window_candidate_contains(rect, (99, 400), 42, 7));
         assert!(!window_candidate_contains(rect, (300, 400), 7, 7));
+    }
+}
+
+/// Settings › Accessibility › Text size, as a multiplier.
+///
+/// Windows applies this to its own text and to nothing an app draws itself, so
+/// a custom titlebar stays the size it was authored while every native one on
+/// the machine grows. The titlebar reads this and scales with them.
+///
+/// Stored as a percentage from 100 to 225. Absent means nobody has moved the
+/// slider, and the clamp keeps a hand-edited registry value from producing a
+/// titlebar taller than the panel.
+pub fn text_scale() -> f32 {
+    static SCALE: OnceLock<f32> = OnceLock::new();
+    *SCALE.get_or_init(|| read_text_scale_percent().map_or(1.0, scale_from_percent))
+}
+
+fn scale_from_percent(percent: u32) -> f32 {
+    (percent as f32 / 100.0).clamp(1.0, 2.25)
+}
+
+fn read_text_scale_percent() -> Option<u32> {
+    let mut key = HKEY::default();
+    // SAFETY: `w!` strings are NUL-terminated and static, and the key is closed
+    // on every path out.
+    if unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Accessibility"),
+            None,
+            KEY_READ,
+            &mut key,
+        )
+    } != ERROR_SUCCESS
+    {
+        return None;
+    }
+    let mut value = 0u32;
+    let mut size = size_of::<u32>() as u32;
+    // SAFETY: `value` is a `u32` and `size` says so, which is what the DWORD
+    // read expects.
+    let queried = unsafe {
+        RegQueryValueExW(
+            key,
+            w!("TextScaleFactor"),
+            None,
+            None,
+            Some(&raw mut value as *mut u8),
+            Some(&mut size),
+        )
+    };
+    // SAFETY: `key` was opened above and is not used again.
+    let _ = unsafe { RegCloseKey(key) };
+    (queried == ERROR_SUCCESS).then_some(value)
+}
+
+#[cfg(test)]
+mod text_scale_tests {
+    use super::scale_from_percent;
+
+    #[test]
+    fn the_sizes_settings_offers_arrive_unchanged() {
+        for (percent, expected) in [(100, 1.0), (125, 1.25), (150, 1.5), (225, 2.25)] {
+            assert_eq!(scale_from_percent(percent), expected);
+        }
+    }
+
+    #[test]
+    fn a_value_outside_the_slider_is_clamped_rather_than_trusted() {
+        // A hand-edited registry can say anything. Below 100 the titlebar would
+        // shrink under its own glyphs; above 225 it would be taller than the
+        // panel it sits on.
+        assert_eq!(scale_from_percent(0), 1.0);
+        assert_eq!(scale_from_percent(50), 1.0);
+        assert_eq!(scale_from_percent(10_000), 2.25);
     }
 }

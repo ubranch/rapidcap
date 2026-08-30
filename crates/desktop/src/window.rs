@@ -1,7 +1,7 @@
 use gpui::{
     App, Bounds, Context, DispatchPhase, Entity, FocusHandle, FontWeight, KeyBinding, MouseButton,
     MouseMoveEvent, MouseUpEvent, Render, Role, Subscription, Toggled, Window, WindowBounds,
-    WindowHandle, WindowOptions, actions, canvas, div, prelude::*, px, size,
+    WindowHandle, WindowOptions, actions, canvas, div, prelude::*, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -11,7 +11,7 @@ use crate::controller::AppController;
 use crate::icons::Icon;
 use crate::platform::{
     drag_main_window, hide_main_window, lock_window_size, open_folder, place_main_window,
-    remember_main_window, set_keep_on_top, shortcut_label, window_drag_grab,
+    remember_main_window, shortcut_label, window_drag_grab,
 };
 use crate::theme;
 
@@ -40,7 +40,6 @@ pub const CONTROL_IDS: [&str; 6] = [
 pub struct MainWindow {
     controller: Entity<AppController>,
     focus_handle: FocusHandle,
-    keep_on_top: bool,
     /// Where the cursor grabbed the panel, while a titlebar drag is in flight.
     drag_grab: Option<(i32, i32)>,
     _controller_subscription: Subscription,
@@ -67,7 +66,6 @@ impl MainWindow {
         Self {
             controller,
             focus_handle,
-            keep_on_top: false,
             drag_grab: None,
             _controller_subscription: controller_subscription,
         }
@@ -158,13 +156,13 @@ impl Render for MainWindow {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(theme::GAP))
-                    .p(px(theme::PAD))
+                    .gap(theme::u(theme::GAP))
+                    .p(theme::u(theme::PAD))
                     .child(self.header_row(video_fps, gif_fps, countdown, cx))
                     .child(
                         div()
                             .flex()
-                            .gap(px(theme::GAP))
+                            .gap(theme::u(theme::GAP))
                             .child(
                                 mode_card(
                                     CONTROL_IDS[0],
@@ -205,7 +203,7 @@ impl Render for MainWindow {
                     .child(
                         div()
                             .flex()
-                            .gap(px(theme::GAP))
+                            .gap(theme::u(theme::GAP))
                             .child(
                                 mode_card(
                                     CONTROL_IDS[2],
@@ -248,8 +246,8 @@ impl Render for MainWindow {
                         None => div()
                             .flex()
                             .items_center()
-                            .gap(px(6.0))
-                            .h(px(theme::CHIP_H))
+                            .gap(theme::u(6.0))
+                            .h(theme::u(theme::CHIP_H))
                             .child(
                                 chip(
                                     CONTROL_IDS[5],
@@ -307,9 +305,9 @@ impl MainWindow {
     ) -> impl IntoElement {
         let mut track = div()
             .flex()
-            .gap(px(2.0))
-            .p(px(theme::SEG_PAD))
-            .rounded(px(theme::RADIUS_PILL))
+            .gap(theme::u(2.0))
+            .p(theme::u(theme::SEG_PAD))
+            .rounded(theme::u(theme::RADIUS_PILL))
             .bg(theme::bg_track());
         for choice in AppController::COUNTDOWN_CHOICES {
             track = track.child(
@@ -332,28 +330,28 @@ impl MainWindow {
             .accessibility_id("rapidcap.error")
             .role(Role::Alert)
             .aria_label(message.clone())
-            .h(px(theme::CHIP_H))
-            .pl(px(12.0))
-            .pr(px(6.0))
+            .h(theme::u(theme::CHIP_H))
+            .pl(theme::u(12.0))
+            .pr(theme::u(6.0))
             .flex()
             .items_center()
-            .gap(px(theme::GAP))
-            .rounded(px(theme::RADIUS_PILL))
+            .gap(theme::u(theme::GAP))
+            .rounded(theme::u(theme::RADIUS_PILL))
             .border_2()
             .border_color(theme::warn())
             .bg(theme::warn_fill())
             .child(
                 div()
-                    .size(px(7.0))
+                    .size(theme::u(7.0))
                     .flex_none()
-                    .rounded(px(theme::RADIUS_PILL))
+                    .rounded(theme::u(theme::RADIUS_PILL))
                     .bg(theme::warn()),
             )
             .child(
                 div()
                     .flex_1()
                     .overflow_hidden()
-                    .text_size(theme::TEXT_SMALL)
+                    .text_size(theme::u(theme::TEXT_SMALL))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(theme::warn_text())
                     .child(error_summary(&message)),
@@ -364,12 +362,12 @@ impl MainWindow {
                     .accessibility_id("rapidcap.error-dismiss")
                     .role(Role::Button)
                     .aria_label("Dismiss")
-                    .size(px(26.0))
+                    .size(theme::u(26.0))
                     .flex()
                     .flex_none()
                     .items_center()
                     .justify_center()
-                    .rounded(px(theme::RADIUS_PILL))
+                    .rounded(theme::u(theme::RADIUS_PILL))
                     .border_2()
                     .border_color(theme::warn())
                     .text_color(theme::warn_text())
@@ -379,7 +377,7 @@ impl MainWindow {
                         this.controller
                             .update(cx, |controller, cx| controller.dismiss_error(cx));
                     }))
-                    .child(Icon::Close.element(px(13.0), theme::warn_text())),
+                    .child(Icon::Close.element(theme::u(13.0), theme::warn_text())),
             )
     }
 
@@ -437,7 +435,7 @@ impl MainWindow {
     /// driven from [`Self::drag_listener`], which hears the whole gesture.
     fn titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .h(px(theme::TITLEBAR_H))
+            .h(theme::u(theme::TITLEBAR_H))
             .flex()
             .items_center()
             .bg(theme::bg_titlebar())
@@ -448,18 +446,18 @@ impl MainWindow {
                     .h_full()
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
-                    .pl(px(10.0))
+                    .gap(theme::u(theme::TITLEBAR_GAP))
+                    .pl(theme::u(theme::TITLEBAR_LEADING))
                     .text_color(theme::text_muted())
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, _| this.drag_grab = window_drag_grab()),
                     )
                     .child(self.drag_listener(cx))
-                    .child(Icon::Mark.element(px(16.0), theme::text_muted()))
+                    .child(Icon::Mark.element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()))
                     .child(
                         div()
-                            .text_size(theme::TEXT_SMALL)
+                            .text_size(theme::u(theme::TEXT_SMALL))
                             .font_weight(FontWeight::MEDIUM)
                             .child("RapidCap"),
                     ),
@@ -468,27 +466,8 @@ impl MainWindow {
                 div()
                     .flex()
                     .items_center()
-                    .child(
-                        action_button(
-                            "titlebar-keep-on-top",
-                            "Keep on top",
-                            Icon::KeepOnTop,
-                            self.keep_on_top,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.keep_on_top = !this.keep_on_top;
-                            set_keep_on_top(this.keep_on_top);
-                            cx.notify();
-                        })),
-                    )
-                    .child(
-                        div()
-                            .w(px(1.0))
-                            .h(px(20.0))
-                            .flex_none()
-                            .mx(px(theme::TITLEBAR_GAP))
-                            .bg(theme::border_titlebar()),
-                    )
+                    // The bar's own gap, which runs between these two as well.
+                    .gap(theme::u(theme::TITLEBAR_GAP))
                     .child(
                         window_button(
                             "titlebar-minimize",
@@ -519,32 +498,32 @@ fn header(video_fps: u32, gif_fps: u32, countdown: impl IntoElement) -> impl Int
         .flex()
         .items_center()
         .justify_between()
-        .mb(px(theme::HEADER_MB))
+        .mb(theme::u(theme::HEADER_MB))
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(10.0))
+                .gap(theme::u(10.0))
                 .child(
                     div()
-                        .size(px(theme::MARK))
+                        .size(theme::u(theme::MARK))
                         .flex_none()
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(10.0))
+                        .rounded(theme::u(10.0))
                         .bg(theme::text_primary())
                         .child(
                             div()
-                                .size(px(theme::MARK_RING))
-                                .rounded(px(theme::RADIUS_PILL))
+                                .size(theme::u(theme::MARK_RING))
+                                .rounded(theme::u(theme::RADIUS_PILL))
                                 .border_3()
                                 .border_color(theme::bg_body()),
                         ),
                 )
                 .child(
                     div()
-                        .text_size(theme::TEXT_WORDMARK)
+                        .text_size(theme::u(theme::TEXT_WORDMARK))
                         .font_weight(FontWeight::BOLD)
                         .text_color(theme::text_primary())
                         .child("RapidCap"),
@@ -560,17 +539,17 @@ fn countdown_control(track: impl IntoElement) -> impl IntoElement {
     div().relative().flex_none().child(track).child(
         div()
             .absolute()
-            .left(px(-3.0))
-            .top(px(-7.0))
-            .size(px(theme::SEG_INFO))
+            .left(theme::u(-3.0))
+            .top(theme::u(-7.0))
+            .size(theme::u(theme::SEG_INFO))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(theme::RADIUS_PILL))
+            .rounded(theme::u(theme::RADIUS_PILL))
             .border_2()
             .border_color(theme::border_card())
             .bg(theme::bg_pill_off())
-            .text_size(px(9.0))
+            .text_size(theme::u(9.0))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(theme::text_badge())
             .child("i"),
@@ -599,26 +578,26 @@ fn countdown_slot(seconds: u8, active: bool) -> gpui::Stateful<gpui::Div> {
         })
         .focusable()
         .tab_stop(true)
-        .size(px(theme::SEGMENT))
+        .size(theme::u(theme::SEGMENT))
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .rounded(px(theme::RADIUS_PILL))
+        .rounded(theme::u(theme::RADIUS_PILL))
         .border_2()
         .border_color(if active {
             theme::accent()
         } else {
             theme::border_card()
         })
-        .text_size(theme::TEXT_SMALL)
+        .text_size(theme::u(theme::TEXT_SMALL))
         .font_weight(FontWeight::SEMIBOLD)
         .text_color(colour)
         .cursor_pointer()
         .hover(|style| style.text_color(theme::text_label()));
 
     if seconds == 0 {
-        slot.child(Icon::Instant.element(px(16.0), colour))
+        slot.child(Icon::Instant.element(theme::u(16.0), colour))
     } else {
         slot.child(format!("{seconds}"))
     }
@@ -626,16 +605,16 @@ fn countdown_slot(seconds: u8, active: bool) -> gpui::Stateful<gpui::Div> {
 
 fn badge(label: String) -> impl IntoElement {
     div()
-        .h(px(theme::BADGE_H))
-        .px(px(9.0))
+        .h(theme::u(theme::BADGE_H))
+        .px(theme::u(9.0))
         .flex()
         .flex_none()
         .items_center()
-        .rounded(px(theme::RADIUS_PILL))
+        .rounded(theme::u(theme::RADIUS_PILL))
         .border_2()
         .border_color(theme::border_card())
         .bg(theme::bg_track())
-        .text_size(theme::TEXT_MICRO)
+        .text_size(theme::u(theme::TEXT_MICRO))
         .font_weight(FontWeight::MEDIUM)
         .text_color(theme::text_badge())
         .child(label)
@@ -671,17 +650,17 @@ fn mode_card(
         .flex_1()
         .relative()
         .overflow_hidden()
-        .h(px(theme::CARD_H))
+        .h(theme::u(theme::CARD_H))
         // Icon on the left, name over shortcut on the right. Stacking all three
         // down the middle of a 64px card left every row cramped and the card
         // bottom-heavy; a row has width to spare and gives the name and its
         // shortcut a shared left edge to read down.
         .flex()
         .items_center()
-        .gap(px(11.0))
-        .pl(px(14.0))
-        .pr(px(10.0))
-        .rounded(px(theme::RADIUS))
+        .gap(theme::u(11.0))
+        .pl(theme::u(14.0))
+        .pr(theme::u(10.0))
+        .rounded(theme::u(theme::RADIUS))
         .border_2()
         .border_color(if armed {
             theme::accent()
@@ -697,16 +676,16 @@ fn mode_card(
         .cursor_pointer()
         .hover(move |style| style.bg(theme::bg_hover()))
         .focus_visible(move |style| style.border_color(theme::accent()))
-        .child(icon.element(px(22.0), content))
+        .child(icon.element(theme::u(22.0), content))
         .child(
             div()
                 .flex()
                 .flex_col()
                 .items_start()
-                .gap(px(3.0))
+                .gap(theme::u(3.0))
                 .child(
                     div()
-                        .text_size(theme::TEXT_BODY)
+                        .text_size(theme::u(theme::TEXT_BODY))
                         .font_weight(FontWeight::MEDIUM)
                         .child(label),
                 )
@@ -725,14 +704,14 @@ fn shortcut_pill(shortcut: String) -> gpui::Div {
         // Pulled left by its own padding so the shortcut text lines up with the
         // name above it. Aligning the chip's box instead left the text inside it
         // visibly indented.
-        .ml(px(-5.0))
-        .px(px(5.0))
-        .h(px(15.0))
+        .ml(theme::u(-5.0))
+        .px(theme::u(5.0))
+        .h(theme::u(15.0))
         .flex()
         .items_center()
-        .rounded(px(theme::pill_radius(15.0)))
+        .rounded(theme::u(theme::pill_radius(15.0)))
         .bg(theme::bg_pill_off())
-        .text_size(theme::TEXT_MICRO)
+        .text_size(theme::u(theme::TEXT_MICRO))
         .font_weight(FontWeight::MEDIUM)
         .text_color(theme::text_muted())
         .child(shortcut)
@@ -776,18 +755,18 @@ fn chip(
             this.aria_toggled(if on { Toggled::True } else { Toggled::False })
         })
         .flex_none()
-        .h(px(theme::CHIP_H))
-        .max_w(px(theme::CHIP_MAX_W))
-        .px(px(12.0))
+        .h(theme::u(theme::CHIP_H))
+        .max_w(theme::u(theme::CHIP_MAX_W))
+        .px(theme::u(12.0))
         .flex()
         .items_center()
-        .gap(px(7.0))
-        .rounded(px(theme::RADIUS_PILL))
+        .gap(theme::u(7.0))
+        .rounded(theme::u(theme::RADIUS_PILL))
         .border_2()
         .relative()
         .border_color(theme::border_card())
         .bg(theme::bg_card())
-        .text_size(theme::TEXT_SMALL)
+        .text_size(theme::u(theme::TEXT_SMALL))
         .font_weight(FontWeight::MEDIUM)
         .text_color(label_colour)
         .cursor_pointer()
@@ -798,7 +777,7 @@ fn chip(
             div()
                 .flex_none()
                 .text_color(icon_colour)
-                .child(icon.element(px(16.0), icon_colour)),
+                .child(icon.element(theme::u(16.0), icon_colour)),
         )
         .child(div().overflow_hidden().child(label))
 }
@@ -811,79 +790,37 @@ fn status_well(status: String, dot: gpui::Hsla) -> impl IntoElement {
         .role(Role::Status)
         .aria_label(status.clone())
         .flex_none()
-        .h(px(theme::STATUS_H))
-        .px(px(12.0))
+        .h(theme::u(theme::STATUS_H))
+        .px(theme::u(12.0))
         .flex()
         .items_center()
-        .gap(px(7.0))
-        .rounded(px(theme::RADIUS_PILL))
+        .gap(theme::u(7.0))
+        .rounded(theme::u(theme::RADIUS_PILL))
         .border_2()
         .border_color(theme::border_card())
         .bg(theme::bg_card())
         .shadow(theme::recessed())
-        .text_size(theme::TEXT_SMALL)
+        .text_size(theme::u(theme::TEXT_SMALL))
         .font_weight(FontWeight::MEDIUM)
         .text_color(theme::text_pill())
         .child(
             div()
-                .size(px(7.0))
+                .size(theme::u(7.0))
                 .flex_none()
-                .rounded(px(theme::RADIUS_PILL))
+                .rounded(theme::u(theme::RADIUS_PILL))
                 .bg(dot),
         )
         .child(status)
 }
 
-/// Titlebar app action: 36 x 36 with a rounded hover pill, 4px from its
-/// neighbour — the same 4px a 36px button leaves above and below it in a 44px
-/// bar. Borderless on purpose: a box around a titlebar glyph reads as a second
-/// window frame. Pressed state is an accent tint on the fill instead.
-fn action_button(
-    id: &'static str,
-    label: &'static str,
-    icon: Icon,
-    pressed: bool,
-) -> gpui::Stateful<gpui::Div> {
-    let colour = if pressed {
-        theme::accent_text()
-    } else {
-        theme::text_muted()
-    };
-    div()
-        .id(id)
-        .accessibility_id(id)
-        .role(Role::Button)
-        .aria_label(label)
-        .size(px(theme::TITLEBAR_BTN))
-        .ml(px(theme::TITLEBAR_GAP))
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .rounded(px(theme::RADIUS))
-        .when(pressed, |this| this.bg(theme::accent_fill()))
-        .text_color(colour)
-        .cursor_pointer()
-        .hover(move |style| {
-            style
-                .bg(theme::bg_titlebar_hover())
-                .text_color(theme::text_primary())
-        })
-        .child(icon.element(px(18.0), colour))
-}
-
-/// Full bar height so the top screen edge — and, for close, the corner — is a
-/// valid click.
-///
 /// The close fill is deliberately square. Windows 11 already clips the panel to
 /// its own corner radius, so rounding the button too only subtracts: our 12px
 /// arc sat inside DWM's 8px one, and the lune between them painted neither the
 /// hover red nor the desktop - it showed the bare titlebar. Square, the red runs
 /// out to DWM's clip and the corner is red all the way into it.
 ///
-/// Borderless, like the app actions beside it: the titlebar already has an
-/// edge, and a second one around each glyph reads as a nested frame. Hover fill
-/// is what separates the buttons.
+/// Borderless: the titlebar already has an edge, and a second one around each
+/// glyph reads as a nested frame. Hover fill is what separates the buttons.
 fn window_button(
     id: &'static str,
     label: &'static str,
@@ -900,8 +837,8 @@ fn window_button(
         .accessibility_id(id)
         .role(Role::Button)
         .aria_label(label)
-        .w(px(theme::WIN_BTN_W))
-        .h(px(theme::TITLEBAR_H))
+        .w(theme::u(theme::WIN_BTN_W))
+        .h(theme::u(theme::TITLEBAR_H))
         .flex()
         .flex_none()
         .items_center()
@@ -910,7 +847,7 @@ fn window_button(
         .cursor_pointer()
         // One `hover` call per element: GPUI panics on a second.
         .hover(move |style| style.bg(hover_bg).text_color(theme::text_primary()))
-        .child(icon.element(px(16.0), theme::text_muted()))
+        .child(icon.element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()))
 }
 
 /// Written strings, one per state. Never `format!("{state:?}")` — a user should
@@ -1042,6 +979,7 @@ pub fn key_bindings() -> Vec<KeyBinding> {
 fn panel_hwnd(window: &Window) -> Option<isize> {
     match HasWindowHandle::window_handle(window).ok()?.as_raw() {
         RawWindowHandle::Win32(handle) => Some(isize::from(handle.hwnd)),
+        RawWindowHandle::AppKit(handle) => Some(handle.ns_view.as_ptr() as isize),
         _ => None,
     }
 }
@@ -1051,7 +989,7 @@ pub fn open_main_window(
     controller: Entity<AppController>,
     show: bool,
 ) -> anyhow::Result<WindowHandle<MainWindow>> {
-    let compact_size = size(px(theme::PANEL_W), px(theme::PANEL_H));
+    let compact_size = size(theme::u(theme::PANEL_W), theme::u(theme::PANEL_H));
     let bounds = Bounds::centered(None, compact_size, cx);
     let handle = cx.open_window(
         WindowOptions {
@@ -1083,7 +1021,7 @@ pub fn open_main_window(
     // half-screen default wins the race about one launch in five.
     if let Some(hwnd) = handle.update(cx, |_view, window, _cx| panel_hwnd(window))? {
         remember_main_window(hwnd);
-        place_main_window(theme::PANEL_W, theme::PANEL_H);
+        place_main_window(theme::scaled(theme::PANEL_W), theme::scaled(theme::PANEL_H));
         lock_window_size();
     }
     Ok(handle)

@@ -18,14 +18,45 @@ libc = "0.2.189"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "std",
+  "NSApplication",
+  "NSButton",
+  "NSControl",
+  "NSEvent",
+  "NSGraphics",
   "NSPasteboard",
+  "NSResponder",
+  "NSScreen",
+  "NSView",
+  "NSWindow",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CFArray",
+  "CFBase",
+  "CFCGTypes",
+  "CFDictionary",
+  "CFNumber",
+  "CFString",
+] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CGColor",
+  "CGDirectDisplay",
+  "CGError",
+  "CGEvent",
+  "CGWindow",
 ] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "NSArray",
   "NSData",
+  "NSGeometry",
   "NSString",
   "NSURL",
+] }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "CALayer",
 ] }
 crossbeam-channel = "0.5.15"
 cpal = "0.16.0"
@@ -63,6 +94,7 @@ windows = { version = "0.61.3", features = [
   "Win32_System_Memory",
   "Win32_System_Ole",
   "Win32_System_Pipes",
+  "Win32_System_Registry",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_UI_Accessibility",

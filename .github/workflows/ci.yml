@@ -31,7 +31,7 @@ jobs:
       - run: cargo test --workspace
 
   macos:
-    name: macos (port in progress)
+    name: macos
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -39,9 +39,5 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      # Scoped to the capture crate on purpose. `rapidcap-desktop` still has a
-      # Win32-only platform layer, so widening this to --workspace before that
-      # port lands would leave CI permanently red and stop telling anyone
-      # anything. Widening it IS the gate that says the port is finished.
-      - run: cargo clippy -p rapidcap-capture --all-targets
-      - run: cargo test -p rapidcap-capture
+      - run: cargo clippy --workspace --all-targets
+      - run: cargo test --workspace

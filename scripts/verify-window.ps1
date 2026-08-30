@@ -67,6 +67,18 @@ if ([Math]::Abs($probe.X - 900) -gt 3 -or [Math]::Abs($probe.Y - 500) -gt 3) {
   exit 2
 }
 
+# Settings > Accessibility > Text size, the same value the app reads. Every
+# coordinate below is a design pixel from theme.rs, and the panel draws them
+# multiplied by this - so a script that clicks the raw design number lands short
+# of the control it is aiming at.
+$textScale = 1.0
+$stored = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Accessibility' -Name TextScaleFactor -ErrorAction SilentlyContinue).TextScaleFactor
+if ($stored) { $textScale = [Math]::Min([Math]::Max($stored / 100.0, 1.0), 2.25) }
+# Design unit -> the client coordinates this script works in. No display scale:
+# the thread is pinned DPI-unaware above, so those coordinates are already
+# 96-DPI logical ones.
+function Du([double]$design) { [int][Math]::Round($design * $textScale) }
+
 # Park the panel on a clear patch, topmost, so the synthetic clicks land on it.
 $TOPMOST = [IntPtr](-1)
 $NOSIZE_NOACTIVATE = 0x0001 -bor 0x0010
@@ -82,12 +94,12 @@ Write-Host ""
 # --- drag ------------------------------------------------------------------
 $before = New-Object RcInput+RECT
 [void][RcInput]::GetWindowRect($h, [ref]$before)
-[void][RcInput]::SetCursorPos($origin.X + 60, $origin.Y + 22)
+[void][RcInput]::SetCursorPos($origin.X + (Du 60), $origin.Y + (Du 15))
 Start-Sleep -Milliseconds 250
 [RcInput]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
 Start-Sleep -Milliseconds 120
 foreach ($step in 1..6) {
-  [void][RcInput]::SetCursorPos($origin.X + 60 + ($step * 20), $origin.Y + 22 + ($step * 10))
+  [void][RcInput]::SetCursorPos($origin.X + (Du 60) + ($step * 20), $origin.Y + (Du 15) + ($step * 10))
   Start-Sleep -Milliseconds 80
 }
 [RcInput]::mouse_event(0x0004, 0, 0, 0, [IntPtr]::Zero)
@@ -103,7 +115,7 @@ Check "titlebar drag moves the panel" (([Math]::Abs($dx - 120) -le 2) -and ([Mat
 Check "the panel stays where it was dropped" ($dx -ne 0 -or $dy -ne 0) "snapped back to its starting rect"
 
 # --- minimise --------------------------------------------------------------
-[void][RcInput]::SetCursorPos($origin.X + 331 + ($after.L - $before.L), $origin.Y + 22 + ($after.T - $before.T))
+[void][RcInput]::SetCursorPos($origin.X + (Du 341) + ($after.L - $before.L), $origin.Y + (Du 15) + ($after.T - $before.T))
 Start-Sleep -Milliseconds 250
 [RcInput]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
 Start-Sleep -Milliseconds 90
@@ -117,9 +129,9 @@ Start-Sleep -Milliseconds 600
 Check "the tray brings the panel back" ([RcInput]::IsWindowVisible($h)) "SW_RESTORE did not show the panel"
 
 # --- close -----------------------------------------------------------------
-$rect = New-Object RcInput+RECT
-[void][RcInput]::GetWindowRect($h, [ref]$rect)
-[void][RcInput]::SetCursorPos($rect.L + 8 + 377, $rect.T + 22)
+$spot = New-Object RcInput+POINT
+[void][RcInput]::ClientToScreen($h, [ref]$spot)
+[void][RcInput]::SetCursorPos($spot.X + (Du 383), $spot.Y + (Du 15))
 Start-Sleep -Milliseconds 250
 [RcInput]::mouse_event(0x0002, 0, 0, 0, [IntPtr]::Zero)
 Start-Sleep -Milliseconds 90

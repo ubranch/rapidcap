@@ -1,26 +1,16 @@
-use std::mem::size_of;
-
 use gpui::{
-    App, AppContext as _, Bounds, Context, DisplayId, Entity, FocusHandle, KeyBinding, MouseButton,
+    App, AppContext as _, Bounds, Context, Entity, FocusHandle, KeyBinding, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Role, Subscription,
     Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
     actions, div, point, prelude::*, px, size,
 };
 use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget, PhysicalRegion};
-use windows::Win32::{
-    Foundation::{POINT, RECT},
-    Graphics::Gdi::{
-        GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
-    },
-    UI::WindowsAndMessaging::GetCursorPos,
-};
-
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::{
     controller::AppController,
     icons::Icon,
-    platform::{place_window, window_target_at},
+    platform::{monitor_under_cursor, place_window, window_target_at},
     theme,
 };
 
@@ -154,17 +144,25 @@ impl Render for RegionOverlay {
                         (width.as_f32() * self.scale_factor).round() as u32,
                         (height.as_f32() * self.scale_factor).round() as u32
                     )))
-                    .child(drag_handle().left(px(HANDLE_INSET)).top(px(HANDLE_INSET)))
-                    .child(drag_handle().right(px(HANDLE_INSET)).top(px(HANDLE_INSET)))
                     .child(
                         drag_handle()
-                            .left(px(HANDLE_INSET))
-                            .bottom(px(HANDLE_INSET)),
+                            .left(theme::u(HANDLE_INSET))
+                            .top(theme::u(HANDLE_INSET)),
                     )
                     .child(
                         drag_handle()
-                            .right(px(HANDLE_INSET))
-                            .bottom(px(HANDLE_INSET)),
+                            .right(theme::u(HANDLE_INSET))
+                            .top(theme::u(HANDLE_INSET)),
+                    )
+                    .child(
+                        drag_handle()
+                            .left(theme::u(HANDLE_INSET))
+                            .bottom(theme::u(HANDLE_INSET)),
+                    )
+                    .child(
+                        drag_handle()
+                            .right(theme::u(HANDLE_INSET))
+                            .bottom(theme::u(HANDLE_INSET)),
                     ),
             );
         } else if let Some(target) = &self.hovered {
@@ -198,8 +196,8 @@ impl Render for RegionOverlay {
                 }
                 .to_string(),
             )
-            .top(px(18.0))
-            .right(px(18.0))
+            .top(theme::u(18.0))
+            .right(theme::u(18.0))
             .left_auto(),
         );
         root
@@ -223,8 +221,8 @@ const HANDLE_INSET: f32 = -4.0;
 fn drag_handle() -> gpui::Div {
     div()
         .absolute()
-        .size(px(theme::HANDLE))
-        .rounded(px(1.0))
+        .size(theme::u(theme::HANDLE))
+        .rounded(theme::u(1.0))
         .bg(theme::text_primary())
 }
 
@@ -234,18 +232,18 @@ fn drag_handle() -> gpui::Div {
 fn float_label(text: String) -> gpui::Div {
     div()
         .absolute()
-        .top(px(theme::GAP))
-        .left(px(theme::GAP))
-        .h(px(theme::FLOAT_H))
-        .px(px(11.0))
+        .top(theme::u(theme::GAP))
+        .left(theme::u(theme::GAP))
+        .h(theme::u(theme::FLOAT_H))
+        .px(theme::u(11.0))
         .flex()
         .items_center()
-        .rounded(px(theme::RADIUS))
+        .rounded(theme::u(theme::RADIUS))
         .border_2()
         .border_color(theme::border_card())
         .bg(theme::overlay_float())
         .text_color(theme::text_primary())
-        .text_size(px(13.0))
+        .text_size(theme::u(13.0))
         .child(text)
 }
 
@@ -443,13 +441,13 @@ impl Render for RecordingHud {
                     .role(Role::Application)
                     .aria_label("RapidCap recording controls")
                     .when(faded, |pill| pill.opacity(theme::HUD_IDLE_OPACITY))
-                    .h(px(theme::HUD_H))
-                    .w(px(theme::HUD_W))
+                    .h(theme::u(theme::HUD_H))
+                    .w(theme::u(theme::HUD_W))
                     .flex()
                     .items_center()
-                    .gap(px(4.0))
-                    .p(px(4.0))
-                    .rounded(px(theme::RADIUS_PILL))
+                    .gap(theme::u(4.0))
+                    .p(theme::u(4.0))
+                    .rounded(theme::u(theme::RADIUS_PILL))
                     .border_2()
                     .border_color(theme::border_card())
                     .bg(theme::hud_bg())
@@ -465,7 +463,7 @@ impl Render for RecordingHud {
                             // and clips rather than pushes: a long window title
                             // must not be able to move the buttons.
                             .flex_1()
-                            .min_w(px(0.0))
+                            .min_w(theme::u(0.0))
                             .overflow_hidden()
                             .flex()
                             .items_center()
@@ -477,24 +475,24 @@ impl Render for RecordingHud {
                             // empty. A countdown line fills the space and
                             // ellipsises, so centring is a no-op there.
                             .justify_center()
-                            .gap(px(7.0))
+                            .gap(theme::u(7.0))
                             // Symmetric, or the centre sits 2px left of it.
-                            .px(px(8.0))
-                            .text_size(px(13.0))
+                            .px(theme::u(8.0))
+                            .text_size(theme::u(13.0))
                             .text_ellipsis()
                             .child(
                                 div()
-                                    .size(px(8.0))
+                                    .size(theme::u(8.0))
                                     .flex_none()
-                                    .rounded(px(theme::RADIUS_PILL))
+                                    .rounded(theme::u(theme::RADIUS_PILL))
                                     .bg(dot),
                             )
                             .child(status),
                     )
                     .child(
                         div()
-                            .w(px(theme::BORDER))
-                            .h(px(18.0))
+                            .w(theme::u(theme::BORDER))
+                            .h(theme::u(18.0))
                             .flex_none()
                             .bg(theme::border_divider()),
                     )
@@ -569,12 +567,12 @@ fn hud_button(
         .accessibility_id(id)
         .role(Role::Button)
         .aria_label(label)
-        .size(px(28.0))
+        .size(theme::u(28.0))
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .rounded(px(theme::RADIUS_PILL))
+        .rounded(theme::u(theme::RADIUS_PILL))
         .border_2()
         .border_color(if danger {
             theme::danger_hover()
@@ -592,7 +590,7 @@ fn hud_button(
         // One size for every HUD button. The stop icon used to render two pixels
         // smaller than the pause icon, which read as the row resizing whenever
         // the state changed.
-        .child(icon.element(px(HUD_ICON), colour))
+        .child(icon.element(theme::u(HUD_ICON), colour))
 }
 
 pub fn open_recording_hud(
@@ -603,12 +601,17 @@ pub fn open_recording_hud(
     let region = match &target {
         CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
     };
-    let (x, y) = hud_origin(region, cx.primary_display().map(|display| display.bounds()));
+    let (x, y) = hud_origin(
+        region,
+        cx.primary_display().map(|display| display.bounds()),
+        theme::scaled(HUD_WINDOW_W),
+        theme::scaled(HUD_WINDOW_H),
+    );
     let handle = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(x), px(y)),
-                size: size(px(HUD_WINDOW_W), px(HUD_WINDOW_H)),
+                size: size(theme::u(HUD_WINDOW_W), theme::u(HUD_WINDOW_H)),
             })),
             titlebar: None,
             focus: true,
@@ -635,8 +638,8 @@ pub fn open_recording_hud(
             hwnd,
             x as i32,
             y as i32,
-            (HUD_WINDOW_W * scale) as i32,
-            (HUD_WINDOW_H * scale) as i32,
+            (theme::scaled(HUD_WINDOW_W) * scale) as i32,
+            (theme::scaled(HUD_WINDOW_H) * scale) as i32,
         );
     }
     Ok(handle)
@@ -646,6 +649,7 @@ pub fn open_recording_hud(
 fn panel_hwnd(window: &Window) -> Option<isize> {
     match HasWindowHandle::window_handle(window).ok()?.as_raw() {
         RawWindowHandle::Win32(handle) => Some(isize::from(handle.hwnd)),
+        RawWindowHandle::AppKit(handle) => Some(handle.ns_view.as_ptr() as isize),
         _ => None,
     }
 }
@@ -657,25 +661,30 @@ const HUD_WINDOW_H: f32 = 44.0;
 /// Below the region and centred on it — controls belong under the thing they
 /// control. Falls back above when the region is near the screen bottom, and
 /// inside it when neither fits.
-fn hud_origin(region: &PhysicalRegion, screen: Option<Bounds<Pixels>>) -> (f32, f32) {
+fn hud_origin(
+    region: &PhysicalRegion,
+    screen: Option<Bounds<Pixels>>,
+    width: f32,
+    height: f32,
+) -> (f32, f32) {
     let gap = theme::GAP;
     let region_bottom = (region.y + region.height as i32) as f32;
     let below = region_bottom + gap;
-    let above = region.y as f32 - gap - HUD_WINDOW_H;
+    let above = region.y as f32 - gap - height;
 
     let screen_bottom = screen
         .map(|bounds| f32::from(bounds.origin.y + bounds.size.height))
         .unwrap_or(f32::MAX);
 
-    let y = if below + HUD_WINDOW_H <= screen_bottom {
+    let y = if below + height <= screen_bottom {
         below
     } else if above >= 0.0 {
         above
     } else {
         // Region fills the display: sit inside its bottom edge.
-        region_bottom - gap - HUD_WINDOW_H
+        region_bottom - gap - height
     };
-    let x = region.x as f32 + (region.width as f32 - HUD_WINDOW_W) / 2.0;
+    let x = region.x as f32 + (region.width as f32 - width) / 2.0;
     (x.max(0.0), y.max(0.0))
 }
 
@@ -716,29 +725,6 @@ fn physical_point(point: Point<Pixels>, monitor: &PhysicalRegion, scale_factor: 
         monitor.x + (point.x.as_f32() * scale_factor).round() as i32,
         monitor.y + (point.y.as_f32() * scale_factor).round() as i32,
     )
-}
-
-fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
-    let mut point = POINT::default();
-    unsafe { GetCursorPos(&mut point) }?;
-    let monitor: HMONITOR = unsafe { MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST) };
-    let mut info = MONITORINFO {
-        cbSize: size_of::<MONITORINFO>() as u32,
-        rcMonitor: RECT::default(),
-        rcWork: RECT::default(),
-        dwFlags: 0,
-    };
-    unsafe { GetMonitorInfoW(monitor, &mut info) }.ok()?;
-    let bounds = info.rcMonitor;
-    Ok((
-        DisplayId::new(monitor.0 as isize as u64),
-        PhysicalRegion {
-            x: bounds.left,
-            y: bounds.top,
-            width: (bounds.right - bounds.left) as u32,
-            height: (bounds.bottom - bounds.top) as u32,
-        },
-    ))
 }
 
 #[cfg(test)]
@@ -838,7 +824,7 @@ mod tests {
         };
 
         // Normal: 9px under the bottom edge, centred on the region.
-        let (x, y) = hud_origin(&region, screen);
+        let (x, y) = hud_origin(&region, screen, HUD_WINDOW_W, HUD_WINDOW_H);
         assert_eq!(y, 600.0 + theme::GAP);
         assert_eq!(x, 400.0 + (800.0 - HUD_WINDOW_W) / 2.0);
 
@@ -849,7 +835,7 @@ mod tests {
             width: 800,
             height: 460,
         };
-        let (_, y) = hud_origin(&low, screen);
+        let (_, y) = hud_origin(&low, screen, HUD_WINDOW_W, HUD_WINDOW_H);
         assert_eq!(y, 600.0 - theme::GAP - HUD_WINDOW_H);
 
         // Region fills the display: sit inside its bottom edge.
@@ -859,7 +845,7 @@ mod tests {
             width: 1920,
             height: 1080,
         };
-        let (x, y) = hud_origin(&full, screen);
+        let (x, y) = hud_origin(&full, screen, HUD_WINDOW_W, HUD_WINDOW_H);
         assert_eq!(y, 1080.0 - theme::GAP - HUD_WINDOW_H);
         assert!(x >= 0.0, "the HUD never starts off the left edge");
 
@@ -870,7 +856,7 @@ mod tests {
             width: 120,
             height: 80,
         };
-        let (x, _) = hud_origin(&narrow, screen);
+        let (x, _) = hud_origin(&narrow, screen, HUD_WINDOW_W, HUD_WINDOW_H);
         assert_eq!(x, 0.0);
     }
 }
