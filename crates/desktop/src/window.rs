@@ -121,6 +121,7 @@ impl Render for MainWindow {
         let state = controller.state().clone();
         let target = controller.target().cloned();
         let video_fps = controller.settings().video.fps;
+        let gif_fps = controller.settings().gif.fps;
         let countdown = controller.settings().countdown_seconds;
         let audio = controller.settings().audio.enabled;
         let output = controller.paths().capture_root.display().to_string();
@@ -159,7 +160,7 @@ impl Render for MainWindow {
                     .flex_col()
                     .gap(px(theme::GAP))
                     .p(px(theme::PAD))
-                    .child(self.header_row(video_fps, countdown, cx))
+                    .child(self.header_row(video_fps, gif_fps, countdown, cx))
                     .child(
                         div()
                             .flex()
@@ -319,6 +320,7 @@ impl MainWindow {
     fn header_row(
         &self,
         video_fps: u32,
+        gif_fps: u32,
         countdown: u8,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -338,7 +340,7 @@ impl MainWindow {
                 )),
             );
         }
-        header(video_fps, track)
+        header(video_fps, gif_fps, track)
     }
 
     /// Amber, not red: red already means a capture is running, and an error bar
@@ -489,9 +491,15 @@ impl MainWindow {
     }
 }
 
-/// Brand row. Mark, wordmark and the video FPS badge on the left; the countdown
+/// Brand row. Mark, wordmark and the frame rate badge on the left; the countdown
 /// segmented control on the right, its info dot overhanging the track.
-fn header(video_fps: u32, countdown: impl IntoElement) -> impl IntoElement {
+///
+/// One badge, both rates, video first — the order the cards sit in below it.
+/// The GIF chevron used to write a setting nothing on screen reflected, so
+/// clicking it looked like a dead button. Two separate badges do not fit: the
+/// gap between the badge and the countdown track measures 60px, and a second
+/// `15 FPS` badge needs 66px with its gap.
+fn header(video_fps: u32, gif_fps: u32, countdown: impl IntoElement) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -526,7 +534,7 @@ fn header(video_fps: u32, countdown: impl IntoElement) -> impl IntoElement {
                         .text_color(theme::text_primary())
                         .child("RapidCap"),
                 )
-                .child(badge(format!("{video_fps} FPS"))),
+                .child(badge(format!("{video_fps} / {gif_fps} FPS"))),
         )
         .child(countdown_control(countdown))
 }

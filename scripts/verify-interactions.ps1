@@ -301,21 +301,25 @@ foreach ($pane in @(@(178, 'video', @(30, 60, 120)), @(371, 'gif', @(10, 15, 24)
   Check ("the {0} chevron does not start a recording" -f $pane[1]) ([RcUi]::IsWindowVisible($panel) -and @(Extra).Count -eq 0) "the panel went away, so the click reached the card behind the pane"
 }
 
-# The header badge reads the video frame rate, so cycling has to repaint.
-$before = Shot "badge-before"
-Click ($o.X + 178) ($o.Y + 213)
-$after = Shot "badge-after"
-$differs = $false
-if ($before -and $after) {
-  for ($x = 150; $x -lt 200 -and -not $differs; $x++) {
-    for ($y = 60; $y -lt 92; $y++) {
-      if ($before.GetPixel($x, $y).ToArgb() -ne $after.GetPixel($x, $y).ToArgb()) { $differs = $true; break }
+# The header badge carries both frame rates, so either chevron has to repaint
+# it. The GIF one is the reason the badge grew a second number: before that it
+# wrote a setting nothing on screen reflected.
+foreach ($pane in @(@(178, 'video'), @(371, 'gif'))) {
+  $before = Shot ("badge-before-" + $pane[1])
+  Click ($o.X + $pane[0]) ($o.Y + 213)
+  $after = Shot ("badge-after-" + $pane[1])
+  $differs = $false
+  if ($before -and $after) {
+    for ($x = 160; $x -lt 260 -and -not $differs; $x++) {
+      for ($y = 60; $y -lt 92; $y++) {
+        if ($before.GetPixel($x, $y).ToArgb() -ne $after.GetPixel($x, $y).ToArgb()) { $differs = $true; break }
+      }
     }
   }
+  Check ("the FPS badge repaints when the {0} chevron writes" -f $pane[1]) $differs "the badge is identical after the frame rate changed"
+  if ($before) { $before.Dispose() }
+  if ($after) { $after.Dispose() }
 }
-Check "the FPS badge repaints when the chevron writes" $differs "the badge is identical after the frame rate changed"
-if ($before) { $before.Dispose() }
-if ($after) { $after.Dispose() }
 
 # --- footer ----------------------------------------------------------------
 Write-Host ""
