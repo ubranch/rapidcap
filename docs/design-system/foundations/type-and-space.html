@@ -1,0 +1,130 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Type, space &amp; edges</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --text-primary:#FCFCFC;
+    --text-label:#DDDDDD; --text-muted:#7A7A7A; --accent:#3478F6;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:660px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  table { border-collapse:collapse; width:100%; max-width:760px; }
+  td, th { text-align:left; padding:9px 12px; border-bottom:1px solid #1C1C1C; vertical-align:middle; }
+  th { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; }
+  .bar { background:var(--accent); height:12px; border-radius:2px; }
+  .card {
+    background:var(--bg-card); border:1px solid #202020; box-shadow:inset 0 1px 0 #414141;
+    border-radius:8px;
+  }
+  .radii { display:flex; gap:9px; flex-wrap:wrap; }
+  .radius { width:104px; height:74px; display:flex; align-items:flex-end; justify-content:center;
+            padding-bottom:9px; font-size:11px; color:var(--text-muted); }
+  pre { background:var(--bg-card); border:1px solid #202020; border-radius:8px; padding:14px;
+        font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--text-label);
+        overflow:auto; line-height:1.7; max-width:760px; }
+  .scan { display:flex; gap:0; flex-direction:column; max-width:420px; }
+  .scan div { display:flex; align-items:center; gap:12px; font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; }
+  .scan i { width:120px; height:14px; display:block; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:660px; }
+  .note b { color:var(--text-label); font-weight:500; }
+</style>
+</head>
+<body>
+  <h1>Type, space &amp; edges</h1>
+  <p class="lede">One spacing value. One radius. Nothing else is allowed to appear — if a layout seems to need a seventh number, the layout is wrong.</p>
+
+  <h2>Type ramp</h2>
+  <table>
+    <tr><th>Element</th><th>Size</th><th>Weight</th><th>Color</th><th>Sample</th></tr>
+    <tr><td>Wordmark</td><td><code>22px</code></td><td>700</td><td><code>#FCFCFC</code></td><td style="font-size:22px;font-weight:700;color:#FCFCFC;letter-spacing:-.01em">RapidCap</td></tr>
+    <tr><td>Row label</td><td><code>14px</code></td><td>500</td><td><code>#DDDDDD</code></td><td style="font-size:14px;font-weight:500">No System Audio</td></tr>
+    <tr><td>Titlebar title</td><td><code>12px</code></td><td>500</td><td><code>#8A8A8A</code></td><td style="font-size:12px;font-weight:500;color:#8A8A8A">RapidCap</td></tr>
+    <tr><td>Card label</td><td><code>13px</code></td><td>500</td><td><code>#DDDDDD</code></td><td style="font-size:13px;font-weight:500">Region</td></tr>
+    <tr><td>Badge / pill</td><td><code>11px</code></td><td>500</td><td><code>#E2E2E2</code></td><td style="font-size:11px;font-weight:500;color:#E2E2E2">60 FPS</td></tr>
+    <tr><td>Status pill</td><td><code>11px</code></td><td>500</td><td><code>#A9A9A9</code></td><td style="font-size:11px;font-weight:500;color:#A9A9A9">Off</td></tr>
+  </table>
+  <div class="note">Stack: <code>-apple-system, "SF Pro Text", "Segoe UI Variable Text", Inter, sans-serif</code>. On Windows the panel lands on Segoe UI Variable Text — the 30px wordmark needs <code>letter-spacing:-.01em</code> there to match the reference tightness.</div>
+
+  <h2>Spacing — one value</h2>
+  <table>
+    <tr><th>Token</th><th></th><th>Every use</th></tr>
+    <tr><td><code>9px</code></td><td><div class="bar" style="width:9px"></div></td><td>Grid column gap, grid row gap, grid→rows, row→row. No exceptions.</td></tr>
+    <tr><td><code>12px</code></td><td><div class="bar" style="width:12px"></div></td><td>Panel body padding · row horizontal padding</td></tr>
+    <tr><td><code>10px</code></td><td><div class="bar" style="width:10px"></div></td><td>Icon→label gap inside a row</td></tr>
+    <tr><td><code>4px</code></td><td><div class="bar" style="width:4px"></div></td><td>Between titlebar action buttons — matches the 4px a 36px button leaves in a 44px bar</td></tr>
+  </table>
+  <div class="note">Compacted from the first pass: body padding was <code>18px</code>. The <code>9px</code> gap did not move — the panel got shorter by shrinking elements, not by breaking the one-spacing-value rule.</div>
+
+  <h2>Fixed dimensions</h2>
+  <table>
+    <tr><th>Element</th><th>Size</th><th>Note</th></tr>
+    <tr><td>Panel</td><td><code>400 × ~300</code></td><td>Width is fixed. Long names truncate, never wrap.</td></tr>
+    <tr><td>Titlebar</td><td><code>400 × 44</code></td><td>No bottom border — the tone step separates it</td></tr>
+    <tr><td>Mode card</td><td><code>flex 1 × 64</code></td><td>2 × 2 grid, ~183px each at 400 panel width</td></tr>
+    <tr><td>Chevron pane</td><td><code>34px</code> wide</td><td>Full card height, 1px divider on its left</td></tr>
+    <tr><td>Footer</td><td><code>376 × 36</code></td><td>Chips left, status text right, <code>6px</code> gap</td></tr>
+    <tr><td>Chip</td><td><code>36px</code> tall</td><td>Raised: border + top highlight. Capped at <code>152px</code></td></tr>
+    <tr><td>Status well</td><td><code>28px</code> tall</td><td>Recessed: no border, <code>inset 0 1px 3px rgba(0,0,0,.55)</code></td></tr>
+    <tr><td>Recording HUD</td><td><code>~132 × 36</code></td><td>Content-sized pill, 999px radius</td></tr>
+    <tr><td>Float label</td><td><code>30px</code> tall</td><td>Overlay badge + hint share one shape</td></tr>
+    <tr><td>Segment slot</td><td><code>32 × 32</code></td><td>Ring is 2px, no fill flood</td></tr>
+    <tr><td>Logo mark</td><td><code>34 × 34</code></td><td>Rounded square, 10px radius</td></tr>
+  </table>
+
+  <h2>Touch targets</h2>
+  <table>
+    <tr><th>Control</th><th>Hit box</th><th>Note</th></tr>
+    <tr><td>Mode card</td><td><code>~183 × 64</code></td><td>Whole card; chevron pane is a separate <code>34 × 64</code> target</td></tr>
+    <tr><td>Footer chip</td><td><code>36px</code> tall</td><td>Free-standing pill, never shares an edge</td></tr>
+    <tr><td>HUD icon button</td><td><code>28 × 28</code></td><td>Circular, inside a 36px pill — tooltip carries the label</td></tr>
+    <tr><td>Titlebar action</td><td><code>36 × 36</code></td><td>Rounded hover pill at <code>#2A2A2A</code>, 4px apart</td></tr>
+    <tr><td>Window control</td><td><code>46 × 44</code></td><td>Full bar height, flush — the corner is clickable</td></tr>
+    <tr><td>Segment slot</td><td><code>32 × 32</code></td><td>Smallest target in the product; arrow keys are the accessible path</td></tr>
+  </table>
+  <div class="note"><b>36px floor</b> on anything that is not a segment slot. Compact means less padding between targets, never smaller targets — the panel shrank ~80px in height while every hit box grew or held.</div>
+
+  <h2>Radii</h2>
+  <div class="radii">
+    <div class="card radius" style="border-radius:8px">8px · card, row</div>
+    <div class="card radius" style="border-radius:12px">12px · panel, mark</div>
+    <div class="card radius" style="border-radius:999px">999px · pill, track</div>
+  </div>
+
+  <h2>Card edge treatment</h2>
+  <p class="lede">Not a flat stroke. Vertical scan through a row top edge:</p>
+  <div class="scan">
+    <div><i style="background:#202020"></i> <span>#202020 &nbsp;outer border</span></div>
+    <div><i style="background:#414141"></i> <span>#414141 &nbsp;inner top highlight — 1px only</span></div>
+    <div><i style="background:#212121"></i> <span>#212121</span></div>
+    <div><i style="background:#1A1A1A"></i> <span>#1A1A1A</span></div>
+    <div><i style="background:#1C1C1C"></i> <span>#1C1C1C &nbsp;fill</span></div>
+  </div>
+  <pre>/* raised — cards, rows, chips */
+background: var(--bg-card);
+border: 1px solid var(--border-card);
+box-shadow: inset 0 1px 0 var(--border-top);
+
+/* recessed — status well, any read-only field */
+background: var(--bg-card);
+border: none;
+box-shadow: inset 0 1px 3px rgba(0,0,0,.55);</pre>
+  <div class="note"><b>Do not</b> apply the highlight to all four sides. It reads as a bevel and the whole panel goes cheap.</div>
+  <div class="note">Same fill, opposite depth. Raised means pressable; recessed means read-only. That pair is the only affordance signal in the product — there is no third state, and nothing read-only ever gets a border.</div>
+
+  <h2>Icons</h2>
+  <div class="note" style="border-color:var(--text-muted)">
+    Single-weight line, <b>1.5px stroke</b>, 24px viewBox. Row icons render at 18px, card icons at 20px, titlebar at 17px.
+    Never mix filled and outline in the same surface — the one exception is the recording dot, which is filled by definition.
+  </div>
+</body>
+</html>

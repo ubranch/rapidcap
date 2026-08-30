@@ -1,0 +1,124 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Content &amp; voice</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-well:#161616;
+    --border-card:#202020; --border-top:#414141;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  table { border-collapse:collapse; width:100%; max-width:780px; }
+  td, th { text-align:left; padding:9px 12px; border-bottom:1px solid #1C1C1C; vertical-align:top; font-size:12px; }
+  th { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; }
+  .bad { color:#FF8A8A; }
+  .good { color:#8FB6FB; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+  ul { margin:8px 0 0; padding-left:18px; font-size:12px; color:var(--text-muted); line-height:1.8; }
+</style>
+</head>
+<body>
+  <h1>Content &amp; voice</h1>
+  <p class="lede">A capture tool speaks in five to seven words at a time. Every string in RapidCap is read at a glance, mid-task, by someone who is trying to do something else — so the voice is plain, present tense, and never explains itself.</p>
+
+  <h2>The rules</h2>
+  <div class="note">
+    <ul>
+      <li><b>Sentence case</b> everywhere. <code>Output folder</code>, not <code>Output Folder</code>. Title case is a 1990s toolbar.</li>
+      <li><b>No terminal punctuation</b> on labels, statuses or errors. A full stop on a four-word label is noise. Ellipsis is allowed and means "still working".</li>
+      <li><b>Verbs for actions, nouns for things.</b> A button says <code>Stop</code>. A readout says <code>Recording</code>.</li>
+      <li><b>Never say the obvious noun.</b> <code>60 FPS</code> in the value means the label is <code>Frame rate</code>, not <code>Video frame rate setting</code>.</li>
+      <li><b>Never apologise, never blame.</b> No "Sorry", no "You must", no "Please try again".</li>
+      <li><b>Numbers are facts, not prose.</b> <code>1280 × 720</code>, <code>00:42</code>, <code>12.4 MB</code> — with the multiplication sign, not the letter x.</li>
+    </ul>
+  </div>
+
+  <h2>Status strings</h2>
+  <table>
+    <tr><th>State</th><th>String</th><th>Not</th></tr>
+    <tr><td><code>Idle</code></td><td class="good">Ready</td><td class="bad">Idle · Waiting for input · Ready to capture</td></tr>
+    <tr><td><code>Selecting</code></td><td class="good">Selecting · Esc to cancel</td><td class="bad">Please select a region</td></tr>
+    <tr><td>target set</td><td class="good">Selected 1280 × 720</td><td class="bad">Region selected: 1280x720 px</td></tr>
+    <tr><td><code>Countdown</code></td><td class="good">Video starts in 3</td><td class="bad">Starting in 3 seconds…</td></tr>
+    <tr><td><code>Recording</code></td><td class="good">Recording · 00:42</td><td class="bad">REC Video 00:42 · currently recording</td></tr>
+    <tr><td><code>Paused</code></td><td class="good">Paused · 00:42</td><td class="bad">Recording paused by user</td></tr>
+    <tr><td><code>Finalizing</code></td><td class="good">Finalizing…</td><td class="bad">Please wait while we encode your video</td></tr>
+    <tr><td>saved</td><td class="good">Copied · 00:42 · 12.4 MB</td><td class="bad">Your capture was saved successfully!</td></tr>
+  </table>
+  <div class="note">
+    The state word is never repeated in the pill beside it. If the well says <code>Recording · 00:42</code>, the dot
+    is red and that is the whole badge — a <code>REC</code> pill next to the word "Recording" says it twice.
+  </div>
+
+  <h2>Errors</h2>
+  <p class="lede">Formula: <b>what failed — why</b>. Sentence case, no prefix, no full stop, no error code in the visible string.</p>
+  <table>
+    <tr><th>Situation</th><th>String</th><th>Not</th></tr>
+    <tr><td>Disk full</td><td class="good">Recording failed — disk full</td><td class="bad">Error: IoError(Os { code: 112 })</td></tr>
+    <tr><td>Capture API busy</td><td class="good">Screen capture unavailable — another app is using the display</td><td class="bad">Failed to acquire Graphics Capture session</td></tr>
+    <tr><td>Encoder failure</td><td class="good">Encoding failed — see details</td><td class="bad">nvenc session limit reached (device 0)</td></tr>
+    <tr><td>Folder gone</td><td class="good">Cannot save — output folder is missing</td><td class="bad">The system cannot find the path specified</td></tr>
+    <tr><td>Hotkey taken</td><td class="good">Ctrl + Shift + PrtSc is used by another app</td><td class="bad">RegisterHotKey failed with 1409</td></tr>
+  </table>
+  <div class="note" style="border-color:var(--warn)">
+    <b>The raw error still matters</b> — it goes in the tooltip and behind <b>Copy log</b>, never in the bar. That
+    means <code>CaptureState::Error(String)</code> has to carry two strings, a summary and a detail, rather than one
+    blob formatted for a developer.
+  </div>
+
+  <h2>Buttons and menus</h2>
+  <table>
+    <tr><th>Use</th><th>Instead of</th></tr>
+    <tr><td class="good">Stop</td><td class="bad">Stop recording now</td></tr>
+    <tr><td class="good">Retry</td><td class="bad">Try again</td></tr>
+    <tr><td class="good">Change</td><td class="bad">Browse…</td></tr>
+    <tr><td class="good">Show in folder</td><td class="bad">Reveal in File Explorer</td></tr>
+    <tr><td class="good">Keep on top</td><td class="bad">Always on top</td></tr>
+    <tr><td class="good">More settings…</td><td class="bad">Advanced options</td></tr>
+    <tr><td class="good">No captures yet</td><td class="bad">Nothing to see here!</td></tr>
+  </table>
+  <div class="note">
+    A trailing <code>…</code> means "this opens something else and you can still back out". <code>More settings…</code>
+    earns it. <code>Change</code> does not, because the file dialog is the action, not a detour.
+  </div>
+
+  <h2>File names</h2>
+  <p class="lede">Today: <code>{process}_{10 random alphanumerics}</code> from <code>OutputNamer</code>, falling back to <code>Screen</code> when the process name is empty. Real output: <code>Screen_9ENJ4BwCIG.png</code>, <code>Telegram_XDdde2nqvu.png</code>, <code>explorer_RtscSVLXL9.png</code>.</p>
+  <table>
+    <tr><th>Property</th><th>Now</th><th>Should be</th></tr>
+    <tr><td>Sorts by name in the right order</td><td class="bad">No — random suffix</td><td class="good">Yes, timestamp leads</td></tr>
+    <tr><td>Findable a week later</td><td class="bad">No — nothing is searchable</td><td class="good">Date and source app both in the name</td></tr>
+    <tr><td>Collision-safe</td><td class="good">Yes</td><td class="good">Yes, seconds plus a short suffix</td></tr>
+    <tr><td>Safe on Windows</td><td class="good">Yes — illegal characters mapped to <code>_</code></td><td class="good">Unchanged</td></tr>
+  </table>
+  <div class="note">
+    <b>Proposal:</b> <code>{process}_{YYYY-MM-DD_HH-mm-ss}.{ext}</code> — <code>Telegram_2026-08-27_14-32-05.png</code>.
+    Same sanitising, same fallback to <code>Screen</code>, one extra field. It sorts chronologically in Explorer with no
+    effort, and "the screenshot I took on Tuesday" becomes findable. Keep a 4-character random suffix only if two
+    captures can land in the same second.
+  </div>
+
+  <h2>Tooltips</h2>
+  <div class="note">
+    <ul>
+      <li>Every icon-only control has one. No exceptions.</li>
+      <li>Name the action, then the shortcut: <code>Pause · F9</code>. Not <code>Click to pause the recording</code>.</li>
+      <li>Add state when the icon carries it: <code>System audio is off — click to choose a device</code>.</li>
+      <li>Never repeat a visible label. A chip reading <code>Documents</code> gets the full path as its tooltip, not the word "Documents".</li>
+    </ul>
+  </div>
+</body>
+</html>

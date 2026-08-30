@@ -1,0 +1,115 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Motion</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-hover:#242424; --bg-well:#161616;
+    --border-card:#202020; --border-top:#414141;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  table { border-collapse:collapse; width:100%; max-width:780px; }
+  td, th { text-align:left; padding:9px 12px; border-bottom:1px solid #1C1C1C; vertical-align:top; font-size:12px; }
+  th { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; }
+  .bar { height:10px; border-radius:2px; background:var(--accent); }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+  ul { margin:8px 0 0; padding-left:18px; font-size:12px; color:var(--text-muted); line-height:1.8; }
+  .demo { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+  .chip { height:36px; padding:0 14px; border-radius:999px; background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+          color:var(--text-label); font-size:12px; font-weight:500; display:inline-flex;
+          align-items:center; cursor:pointer; }
+  .chip.h120 { transition:background 120ms cubic-bezier(.2,0,0,1); }
+  .chip.h120:hover { background:var(--bg-hover); }
+  .chip.p80:active { transform:scale(.985); }
+  .chip.p80 { transition:transform 80ms cubic-bezier(.2,0,0,1), background 120ms cubic-bezier(.2,0,0,1); }
+  .chip.none:hover { background:var(--bg-hover); }
+  .pulse { width:9px; height:9px; border-radius:50%; background:var(--rec);
+           animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.45 } }
+  .well { height:36px; padding:0 14px; border-radius:999px; background:var(--bg-card);
+          box-shadow:inset 0 1px 3px rgba(0,0,0,.55); display:inline-flex; align-items:center; gap:8px;
+          font-size:12px; color:var(--text-pill); }
+  .cap { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.5; }
+</style>
+</head>
+<body>
+  <h1>Motion</h1>
+  <p class="lede">A capture tool is judged on whether it got out of the way in time. Motion here exists to confirm a press and to soften a colour change — never to introduce a surface, and never on anything the user is timing.</p>
+
+  <h2>Durations</h2>
+  <table>
+    <tr><th>Token</th><th></th><th>Used by</th></tr>
+    <tr><td><code>80ms</code></td><td><div class="bar" style="width:16px"></div></td><td>Press — <code>scale(.985)</code> on cards, chips, buttons</td></tr>
+    <tr><td><code>120ms</code></td><td><div class="bar" style="width:24px"></div></td><td>Hover fill, focus ring, icon colour</td></tr>
+    <tr><td><code>160ms</code></td><td><div class="bar" style="width:32px"></div></td><td>Menu open, saved chip in and out, error bar replacing the footer</td></tr>
+    <tr><td><code>240ms</code></td><td><div class="bar" style="width:48px"></div></td><td>HUD idle fade to 55%, and back on hover</td></tr>
+  </table>
+  <div class="note">Four values, no more. Anything that seems to need a fifth is either instant or should not move.</div>
+
+  <h2>Easing</h2>
+  <table>
+    <tr><th>Curve</th><th>Where</th></tr>
+    <tr><td><code>cubic-bezier(.2, 0, 0, 1)</code></td><td>Everything that changes size, position or fill. Fast out of the gate, settles quietly.</td></tr>
+    <tr><td><code>linear</code></td><td>Pure opacity fades — the HUD idle fade and the saved chip expiry. Eased opacity reads as a flicker.</td></tr>
+  </table>
+
+  <h2>Feel it</h2>
+  <div class="demo">
+    <button class="chip h120 p80">Hover and press me</button>
+    <button class="chip none">No transition</button>
+    <span class="well"><span class="pulse"></span>Recording · 00:42</span>
+  </div>
+  <div class="cap">Left: 120ms fill, 80ms press. Middle: the same chip with no transition — the fill snaps and reads as a glitch rather than a response. Right: the recording dot, the only looping animation in the product.</div>
+
+  <h2>What never animates</h2>
+  <table>
+    <tr><th>Surface</th><th>Why</th></tr>
+    <tr><td>Region overlay appearing</td><td>The user pressed a hotkey to capture something that is happening now. A 160ms fade is 160ms of the wrong frame.</td></tr>
+    <tr><td>Region frame and selection rect</td><td>They track the cursor. Any easing turns into lag.</td></tr>
+    <tr><td>HUD moving to a new region</td><td>It jumps. Watching a bar slide across the screen after every re-selection gets old on the second capture.</td></tr>
+    <tr><td>Timer digits, size badge</td><td>Numbers that animate cannot be read at a glance, which is the only reason they exist.</td></tr>
+    <tr><td>Tray icon state</td><td>Windows redraws it on its own schedule; a tween there is a flicker.</td></tr>
+    <tr><td>Status text swaps</td><td>Cross-fading two strings makes both unreadable for the duration. Swap the text, animate nothing.</td></tr>
+    <tr><td>Panel showing after tray click</td><td>Show it. The click already was the transition.</td></tr>
+  </table>
+
+  <h2>The one loop</h2>
+  <div class="note" style="border-color:var(--rec)">
+    <b>The recording dot pulses, 2s, <code>1 → .45 → 1</code>.</b> It is the only looping animation in the product,
+    it exists because a static red dot is indistinguishable from a decoration, and it is the difference between
+    "is this recording?" and knowing. It runs in the HUD, the panel status well and the tray icon — the same rhythm in
+    all three, so they read as one signal. Nothing else in RapidCap is allowed to loop.
+  </div>
+
+  <h2>Reduced motion</h2>
+  <div class="note">
+    <ul>
+      <li>System reduced-motion on: every duration goes to <code>0</code>, including the press scale.</li>
+      <li>The recording pulse becomes a static dot at full opacity — the state must still be visible.</li>
+      <li>The HUD idle fade stays, at <code>0ms</code>: it snaps between 100% and 55%. The point is screen presence, not the transition.</li>
+    </ul>
+  </div>
+
+  <h2>Implementation</h2>
+  <div class="note" style="border-color:var(--warn)">
+    <b>GPUI has no CSS transitions.</b> Hover and press fills are style variants applied on state, so they land
+    instantly today — which is acceptable and is what ships now. The three that need real animation are the pulse,
+    the HUD idle fade and the saved chip expiry; each is a <code>cx.spawn</code> loop driving one interpolated value,
+    not a general animation system. Do not build a tween engine for three values.
+  </div>
+</body>
+</html>

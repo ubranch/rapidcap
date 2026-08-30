@@ -1,0 +1,183 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Settings</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-titlebar:#1C1C1C; --bg-card:#1C1C1C; --bg-hover:#242424;
+    --bg-track:#282828; --bg-well:#161616; --bg-tb-hover:#2A2A2A;
+    --border-card:#202020; --border-top:#414141; --border-divider:#3A3A3A;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
+    --gap:9px; --radius:8px;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:#0A0A0A; color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 24px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .cases { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:10px; max-width:400px; line-height:1.55; }
+
+  .panel { width:400px; background:var(--bg-body); border-radius:12px; overflow:hidden;
+           box-shadow:0 18px 48px rgba(0,0,0,.6); }
+  .tb { height:44px; background:var(--bg-titlebar); display:flex; align-items:center; }
+  .tb-drag { flex:1; height:100%; display:flex; align-items:center; gap:8px; padding-left:6px; }
+  .tb-title { font-size:12px; font-weight:500; color:var(--text-label); }
+  .tb-actions { display:flex; align-items:center; }
+  .act { width:36px; height:36px; border-radius:8px; border:none; background:none; color:var(--text-muted);
+         display:flex; align-items:center; justify-content:center; cursor:pointer; margin-left:4px; }
+  .act:hover { background:var(--bg-tb-hover); color:var(--text-primary); }
+  .win { width:46px; height:44px; border:none; background:none; color:var(--text-muted);
+         display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .win:hover { background:var(--bg-tb-hover); color:var(--text-primary); }
+  .win.close { border-top-right-radius:12px; }
+  .win.close:hover { background:var(--danger); color:#fff; }
+
+  .body { padding:12px; display:flex; flex-direction:column; gap:var(--gap); max-height:520px; overflow:auto; }
+  .sect { font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+          color:var(--text-muted); padding:2px 4px 0; }
+  .card { display:flex; flex-direction:column; gap:2px; background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+          border-radius:var(--radius); padding:4px; }
+  .row { height:44px; padding:0 10px; border-radius:6px; display:flex; align-items:center; gap:10px; }
+  .row:hover { background:var(--bg-hover); }
+  .row .lbl { flex:1; min-width:0; font-size:13px; color:var(--text-label); line-height:1.35; }
+  .row .lbl small { display:block; font-size:11px; color:var(--text-muted); margin-top:3px; }
+  .row.tall { height:54px; }
+
+  .tog { width:38px; height:22px; border-radius:999px; background:var(--bg-track); position:relative;
+         cursor:pointer; flex:none; box-shadow:inset 0 1px 2px rgba(0,0,0,.5); }
+  .tog i { position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#8A8A8A; }
+  .tog.on { background:var(--accent); box-shadow:none; }
+  .tog.on i { left:19px; background:#fff; }
+  .sel { height:30px; padding:0 6px 0 11px; border-radius:999px; background:var(--bg-card);
+         border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+         display:inline-flex; align-items:center; gap:5px; cursor:pointer; flex:none;
+         font-size:12px; font-weight:500; color:var(--text-label); line-height:1; }
+  .sel:hover { background:var(--bg-hover); }
+  .sel .cv { color:var(--text-muted); display:flex; }
+  .step { height:30px; display:inline-flex; align-items:center; border-radius:999px; background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top); flex:none; overflow:hidden; }
+  .step button { width:30px; height:30px; border:none; background:none; color:var(--text-pill);
+                 display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px;
+                 font-family:var(--font); }
+  .step button:hover { background:var(--bg-hover); color:var(--text-primary); }
+  .step .v { min-width:52px; text-align:center; font-size:12px; font-weight:500;
+             font-variant-numeric:tabular-nums; color:var(--text-label); }
+  .path { flex:1; min-width:0; height:30px; padding:0 4px 0 11px; border-radius:999px; background:var(--bg-well);
+          box-shadow:inset 0 1px 3px rgba(0,0,0,.55); display:flex; align-items:center; gap:8px; }
+  .path .p { flex:1; min-width:0; font-size:12px; color:var(--text-pill); line-height:1;
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .path button { height:24px; padding:0 10px; border-radius:999px; border:none; background:#2A2A2A;
+                 color:var(--text-label); font-size:11px; font-weight:500; cursor:pointer; flex:none;
+                 font-family:var(--font); }
+  .hk { height:30px; padding:0 11px; border-radius:999px; background:var(--bg-well);
+        box-shadow:inset 0 1px 3px rgba(0,0,0,.55); display:inline-flex; align-items:center;
+        font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--text-label);
+        cursor:pointer; flex:none; }
+  .hk.clash { box-shadow:inset 0 0 0 1px rgba(232,163,61,.55); color:#F0C07A; }
+  .meta { font-size:11px; color:var(--text-muted); padding:2px 6px 0; line-height:1.6; }
+  .ghost { height:30px; padding:0 12px; border-radius:999px; border:1px solid var(--border-card);
+           background:var(--bg-card); box-shadow:inset 0 1px 0 var(--border-top); color:var(--text-label);
+           font-family:var(--font); font-size:12px; font-weight:500; cursor:pointer; flex:none; }
+  .ghost:hover { background:var(--bg-hover); }
+  .ghost.danger { color:#FF8A8A; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:16px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+</style>
+</head>
+<body>
+  <h1>Settings</h1>
+  <p class="lede">Same 400px window, scrolled instead of tabbed — there are six sections, and tabs for six sections is furniture. Every field maps to a real key in <code>Settings</code>; nothing here is invented.</p>
+
+  <div class="cases">
+    <div>
+      <div class="panel">
+        <div class="tb">
+          <div class="tb-drag">
+            <button class="act" title="Back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <span class="tb-title">Settings</span>
+          </div>
+          <div class="tb-actions">
+            <button class="win"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
+            <button class="win close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          </div>
+        </div>
+
+        <div class="body">
+          <div class="sect">Capture</div>
+          <div class="card">
+            <div class="row"><span class="lbl">Countdown</span><span class="step"><button>−</button><span class="v">5 s</span><button>+</button></span></div>
+            <div class="row tall"><span class="lbl">Copy to clipboard<small>Screenshots only — recordings are always saved to disk</small></span><span class="tog on"><i></i></span></div>
+            <div class="row"><span class="lbl">Hide panel while capturing</span><span class="tog on"><i></i></span></div>
+          </div>
+
+          <div class="sect">Video</div>
+          <div class="card">
+            <div class="row"><span class="lbl">Frame rate</span><span class="sel">60 FPS <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+            <div class="row tall"><span class="lbl">Quality<small>3 Mbps · NVENC preset p7, tune hq</small></span><span class="sel">High <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+          </div>
+
+          <div class="sect">GIF</div>
+          <div class="card">
+            <div class="row"><span class="lbl">Frame rate</span><span class="sel">15 FPS <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+            <div class="row tall"><span class="lbl">Dithering<small>Sierra 2-4A keeps gradients smooth at 256 colours</small></span><span class="sel">Sierra 2-4A <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+          </div>
+
+          <div class="sect">Audio</div>
+          <div class="card">
+            <div class="row"><span class="lbl">System audio</span><span class="sel">Off <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+            <div class="row"><span class="lbl">Bitrate</span><span class="sel">128 kbps <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+          </div>
+
+          <div class="sect">Hotkeys</div>
+          <div class="card">
+            <div class="row"><span class="lbl">Capture region</span><span class="hk">Alt + Q</span></div>
+            <div class="row"><span class="lbl">Capture window</span><span class="hk">Alt + PrtSc</span></div>
+            <div class="row"><span class="lbl">Record video</span><span class="hk">Alt + E</span></div>
+            <div class="row tall"><span class="lbl">Record GIF<small>Taken by Windows Snipping Tool</small></span><span class="hk clash">Ctrl + Shift + PrtSc</span></div>
+          </div>
+
+          <div class="sect">Storage</div>
+          <div class="card">
+            <div class="row"><span class="lbl" style="flex:none;width:64px">Save to</span>
+              <span class="path"><span class="p" title="C:\Users\inspire\Documents\RapidCap">…\Documents\RapidCap</span><button>Change</button></span>
+            </div>
+            <div class="row tall"><span class="lbl">Convert large PNGs to JPEG<small>Above 2 MB, at quality 90</small></span><span class="tog on"><i></i></span></div>
+          </div>
+
+          <div class="card">
+            <div class="row"><span class="lbl">Reset all settings</span><button class="ghost danger">Reset</button></div>
+          </div>
+          <div class="meta">RapidCap 0.1.0 · settings schema v1 · <code>%APPDATA%\RapidCap\settings.json</code></div>
+        </div>
+      </div>
+      <div class="caption">Six sections, section labels outside the cards so a card is always one group of related rows. Scrolls as one column; the titlebar keeps a Back arrow because Settings replaces the panel rather than opening beside it.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Every field is a real key.</b> Countdown → <code>countdown_seconds</code>, quality → <code>video.bitrate</code>
+    + <code>preset</code> + <code>tune</code>, dithering → <code>gif.dither</code>, JPEG conversion →
+    <code>screenshot.png_to_jpeg_threshold_bytes</code> and <code>jpeg_quality</code>, hotkeys →
+    <code>HotkeySettings</code>. Nothing was added to make the screen look fuller.
+  </div>
+  <div class="note">
+    <b>What the screen hides on purpose.</b> <code>schema_version</code>, <code>palette_stats_mode</code>,
+    <code>audio.channels</code> and the raw NVENC preset strings stay out of the UI — they are either derived,
+    or the kind of value that belongs in the JSON for the one person a year who needs it. The footer line names
+    that file so that person can find it.
+  </div>
+  <div class="note" style="border-color:var(--warn)">
+    <b>Hotkey conflicts are the risk.</b> <code>Settings::default()</code> binds
+    <code>Ctrl+Shift+Print Screen</code> for GIF, which Windows Snipping Tool already owns, and
+    <code>global-hotkey</code> registration fails silently today. The field needs a clash state and a real
+    registration result to show it — the amber ring above is the design, not the behaviour.
+  </div>
+</body>
+</html>

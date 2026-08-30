@@ -1,0 +1,169 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Tray</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-hover:#242424;
+    --border-card:#202020; --border-top:#414141; --border-divider:#3A3A3A;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.5; }
+  .row { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .icons { display:flex; gap:18px; align-items:flex-end; }
+  .ic { text-align:center; }
+  .ic .lbl { font-size:10px; color:var(--text-muted); margin-top:8px; }
+
+  /* windows taskbar strip */
+  .taskbar { display:inline-flex; align-items:center; gap:14px; height:44px; padding:0 14px;
+             background:#1A1A1A; border-radius:8px; border:1px solid var(--border-card); }
+  .taskbar .slot { width:24px; height:24px; display:flex; align-items:center; justify-content:center; }
+  .clock { font-size:11px; color:var(--text-pill); line-height:1.2; text-align:right; }
+
+  /* context menu */
+  .menu { width:220px; padding:5px; border-radius:10px; background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:0 14px 36px rgba(0,0,0,.6); }
+  .mi { height:32px; padding:0 10px; border-radius:6px; display:flex; align-items:center; gap:9px;
+        font-size:12px; color:var(--text-label); cursor:pointer; }
+  .mi:hover { background:var(--bg-hover); }
+  .mi .ico { color:var(--text-muted); display:flex; flex:none; }
+  .mi .right { margin-left:auto; font-size:11px; color:var(--text-muted); font-family:"Cascadia Mono",Consolas,monospace; }
+  .mi.danger { color:#FF8A8A; }
+  .mi.danger .ico { color:#FF8A8A; }
+  .msep { height:1px; background:var(--border-card); margin:5px 6px; }
+  .mhead { padding:7px 10px 5px; font-size:10px; font-weight:600; letter-spacing:.06em;
+           text-transform:uppercase; color:var(--text-muted); }
+  .mstate { padding:2px 10px 8px; font-size:12px; color:var(--text-label); display:flex; align-items:center; gap:7px; }
+  .sdot { width:7px; height:7px; border-radius:50%; background:var(--text-muted); flex:none; }
+  .sdot.rec { background:var(--rec); }
+  .sdot.warn { background:var(--warn); }
+
+  table { border-collapse:collapse; width:100%; max-width:760px; }
+  td, th { text-align:left; padding:9px 12px; border-bottom:1px solid #1C1C1C; vertical-align:top; font-size:12px; }
+  th { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+  .bad { color:#FF8A8A; }
+</style>
+</head>
+<body>
+  <h1>Tray</h1>
+  <p class="lede">RapidCap minimises to tray, so for most of its life this 16px square <b>is</b> the product. It is currently a flat blue block — <code>Icon::from_rgba([34, 92, 197, 255].repeat(16 * 16))</code> in <code>platform.rs:263</code> — with no state, no shape and no relationship to the app.</p>
+
+  <h2>Icon states</h2>
+  <div class="icons">
+    <div class="ic">
+      <svg width="48" height="48" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3"/>
+      </svg>
+      <div class="lbl">Idle</div>
+    </div>
+    <div class="ic">
+      <svg width="48" height="48" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3" opacity=".45"/>
+        <circle cx="16" cy="16" r="6.5" fill="#FF2D2D"/>
+      </svg>
+      <div class="lbl">Recording</div>
+    </div>
+    <div class="ic">
+      <svg width="48" height="48" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3" opacity=".45"/>
+        <rect x="12" y="11" width="3" height="10" rx="1.2" fill="#FCFCFC"/>
+        <rect x="17" y="11" width="3" height="10" rx="1.2" fill="#FCFCFC"/>
+      </svg>
+      <div class="lbl">Paused</div>
+    </div>
+    <div class="ic">
+      <svg width="48" height="48" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3" opacity=".45"/>
+        <rect x="14.5" y="9.5" width="3" height="8" rx="1.5" fill="#E8A33D"/>
+        <circle cx="16" cy="21" r="1.8" fill="#E8A33D"/>
+      </svg>
+      <div class="lbl">Error</div>
+    </div>
+    <div class="ic">
+      <svg width="48" height="48" viewBox="0 0 32 32">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3" opacity=".45"/>
+        <circle cx="16" cy="16" r="6.5" fill="#3478F6"/>
+      </svg>
+      <div class="lbl">Finalizing</div>
+    </div>
+  </div>
+  <div class="caption">The ring is the app mark, straight off the panel header. The centre carries the state — filled red while recording, pause bars when held, amber when something failed, accent while encoding.</div>
+
+  <h2>At real size</h2>
+  <div class="row" style="align-items:center;margin-top:4px">
+    <div class="taskbar">
+      <span class="slot"><svg width="16" height="16" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3"/></svg></span>
+      <span class="slot"><svg width="16" height="16" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3" opacity=".45"/><circle cx="16" cy="16" r="6.5" fill="#FF2D2D"/></svg></span>
+      <span class="slot"><svg width="16" height="16" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3" opacity=".45"/><rect x="12" y="11" width="3" height="10" rx="1.2" fill="#FCFCFC"/><rect x="17" y="11" width="3" height="10" rx="1.2" fill="#FCFCFC"/></svg></span>
+      <span class="slot"><svg width="16" height="16" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FCFCFC" stroke-width="3" opacity=".45"/><rect x="14.5" y="9.5" width="3" height="8" rx="1.5" fill="#E8A33D"/><circle cx="16" cy="21" r="1.8" fill="#E8A33D"/></svg></span>
+      <span class="clock">14:32<br>27/08/2026</span>
+    </div>
+    <div class="caption" style="max-width:300px;margin-top:0">16px on a Windows 11 tray. A 3px ring survives; anything thinner blurs at 100% scaling. Ship 16, 20, 24 and 32px rasters — Windows picks by DPI and will not resample kindly.</div>
+  </div>
+
+  <h2>Context menu</h2>
+  <div class="row">
+    <div>
+      <div class="menu">
+        <div class="mhead">RapidCap</div>
+        <div class="mstate"><span class="sdot"></span>Ready</div>
+        <div class="msep"></div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3m12-4v3a1 1 0 0 1-1 1h-3"/></svg></span>Capture region<span class="right">Alt+Q</span></div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg></span>Capture window<span class="right">Alt+PrtSc</span></div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="m21.5 8-6 4 6 4z"/></svg></span>Record video<span class="right">Alt+E</span></div>
+        <div class="msep"></div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 5-5 4 4 3-2 4 4"/></svg></span>Show RapidCap</div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>Open output folder</div>
+        <div class="msep"></div>
+        <div class="mi danger"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="m15 8 4 4-4 4M19 12h-9"/></svg></span>Exit</div>
+      </div>
+      <div class="caption">Idle. The header repeats the state so the menu answers "what is it doing" before the user reads a single item.</div>
+    </div>
+
+    <div>
+      <div class="menu">
+        <div class="mhead">RapidCap</div>
+        <div class="mstate"><span class="sdot rec"></span>Recording · 00:42</div>
+        <div class="msep"></div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5" width="3.4" height="14" rx="1.2"/><rect x="13.6" y="5" width="3.4" height="14" rx="1.2"/></svg></span>Pause</div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.4"/></svg></span>Stop recording<span class="right">Alt+E</span></div>
+        <div class="msep"></div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 5-5 4 4 3-2 4 4"/></svg></span>Show RapidCap</div>
+        <div class="mi"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>Open output folder</div>
+        <div class="msep"></div>
+        <div class="mi danger"><span class="ico"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="m15 8 4 4-4 4M19 12h-9"/></svg></span>Exit</div>
+      </div>
+      <div class="caption">Recording. Capture commands are replaced by Pause and Stop — the menu never offers a command the state machine would reject with <code>CommandError::Busy</code>.</div>
+    </div>
+  </div>
+
+  <h2>What is missing in code</h2>
+  <table>
+    <tr><th>Now (<code>platform.rs:224</code>)</th><th>This spec</th></tr>
+    <tr><td class="bad">Flat blue 16×16 square, one icon forever</td><td>Ring mark, five state variants, four DPI sizes</td></tr>
+    <tr><td class="bad">3 items: Show / Open output folder / Exit</td><td>State header, 3 capture commands with hotkeys, contextual Pause / Stop</td></tr>
+    <tr><td class="bad">No tooltip</td><td>Hover tooltip mirrors the state header</td></tr>
+    <tr><td class="bad">Menu identical in every state</td><td>Items swap on <code>CaptureState</code>, matching the transitions in <code>state.rs</code></td></tr>
+  </table>
+
+  <div class="note">
+    <b>The tray icon is the only UI during a recording</b> — the panel is minimised and the HUD is a 36px pill on
+    another part of the screen. If the icon does not change while recording, the user has no way to tell a running
+    capture from an idle app except by finding the HUD.
+  </div>
+</body>
+</html>

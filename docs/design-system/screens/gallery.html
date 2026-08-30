@@ -1,0 +1,211 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Gallery &amp; first run</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-titlebar:#1C1C1C; --bg-card:#1C1C1C; --bg-hover:#242424;
+    --bg-well:#161616; --bg-tb-hover:#2A2A2A;
+    --border-card:#202020; --border-top:#414141; --border-divider:#3A3A3A;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
+    --gap:9px; --radius:8px;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:#0A0A0A; color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 24px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .cases { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:10px; max-width:400px; line-height:1.55; }
+
+  .panel { width:400px; background:var(--bg-body); border-radius:12px; overflow:hidden;
+           box-shadow:0 18px 48px rgba(0,0,0,.6); }
+  .tb { height:44px; background:var(--bg-titlebar); display:flex; align-items:center; }
+  .tb-drag { flex:1; height:100%; display:flex; align-items:center; gap:8px; padding-left:6px; }
+  .tb-title { font-size:12px; font-weight:500; color:var(--text-label); }
+  .tb-actions { display:flex; align-items:center; }
+  .act { width:36px; height:36px; border-radius:8px; border:none; background:none; color:var(--text-muted);
+         display:flex; align-items:center; justify-content:center; cursor:pointer; margin-left:4px; }
+  .act:hover { background:var(--bg-tb-hover); color:var(--text-primary); }
+  .win { width:46px; height:44px; border:none; background:none; color:var(--text-muted);
+         display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .win:hover { background:var(--bg-tb-hover); color:var(--text-primary); }
+  .win.close { border-top-right-radius:12px; }
+  .win.close:hover { background:var(--danger); color:#fff; }
+  .body { padding:12px; display:flex; flex-direction:column; gap:var(--gap); }
+
+  /* filter chips */
+  .filters { display:flex; gap:6px; }
+  .fchip { height:30px; padding:0 12px; border-radius:999px; background:var(--bg-card);
+           border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+           color:var(--text-pill); font-family:var(--font); font-size:12px; font-weight:500;
+           line-height:1; display:inline-flex; align-items:center; cursor:pointer; }
+  .fchip:hover { background:var(--bg-hover); }
+  .fchip.on { background:rgba(52,120,246,.16); border-color:rgba(52,120,246,.45); color:#8FB6FB; }
+  .grow { flex:1; }
+
+  /* grid */
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:var(--gap); }
+  .item { position:relative; border-radius:var(--radius); overflow:hidden; background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top); cursor:pointer; }
+  .thumb { height:72px; background:linear-gradient(140deg,#3A3A3A,#252525); position:relative; }
+  .thumb.b { background:linear-gradient(140deg,#2E3A48,#1E2630); }
+  .thumb.c { background:linear-gradient(140deg,#463A2E,#2A231C); }
+  .thumb.d { background:linear-gradient(140deg,#2E4638,#1C2A22); }
+  .kind { position:absolute; left:6px; top:6px; height:18px; padding:0 6px; border-radius:999px;
+          background:rgba(17,17,17,.82); color:#FCFCFC; font-size:9px; font-weight:600;
+          letter-spacing:.04em; display:inline-flex; align-items:center; gap:4px; }
+  .dur { position:absolute; right:6px; bottom:6px; height:18px; padding:0 6px; border-radius:999px;
+         background:rgba(17,17,17,.82); color:#FCFCFC; font-size:10px;
+         display:inline-flex; align-items:center; font-variant-numeric:tabular-nums; }
+  .meta { padding:7px 8px 8px; }
+  .fname { font-size:11px; color:var(--text-label); line-height:1;
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .when { font-size:10px; color:var(--text-muted); margin-top:4px; line-height:1; }
+  .item.sel { border-color:var(--accent); }
+  .hover-acts { position:absolute; inset:0 0 auto 0; height:72px; display:flex; align-items:center;
+                justify-content:center; gap:5px; background:rgba(10,10,10,.62); }
+  .ha { width:28px; height:28px; border-radius:50%; border:none; background:rgba(28,28,28,.92);
+        color:var(--text-label); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+  .ha:hover { background:#2E2E2E; color:var(--text-primary); }
+  .ha.del:hover { background:var(--danger); color:#fff; }
+
+  /* empty state */
+  .empty { padding:26px 18px 22px; text-align:center; background:var(--bg-well);
+           box-shadow:inset 0 1px 3px rgba(0,0,0,.55); border-radius:var(--radius); }
+  .empty .ring { width:44px; height:44px; margin:0 auto 12px; border-radius:50%;
+                 border:3px solid #3A3A3A; }
+  .empty h3 { margin:0 0 6px; font-size:13px; font-weight:600; color:var(--text-label); }
+  .empty p { margin:0 auto; font-size:11px; color:var(--text-muted); line-height:1.6; max-width:250px; }
+  .keys { display:flex; flex-direction:column; gap:4px; margin-top:14px; }
+  .keyrow { display:flex; align-items:center; justify-content:space-between; gap:10px;
+            font-size:11px; color:var(--text-muted); padding:0 20px; }
+  .kbd { font-family:"Cascadia Mono",Consolas,monospace; font-size:10px; color:var(--text-label);
+         background:#242424; border-radius:4px; padding:3px 6px; line-height:1; }
+
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:16px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+</style>
+</head>
+<body>
+  <h1>Gallery &amp; first run</h1>
+  <p class="lede">The titlebar's Recent captures button currently leads nowhere. This is what it opens — and what it looks like the first time, when the folder is empty.</p>
+
+  <div class="cases">
+    <div>
+      <div class="panel">
+        <div class="tb">
+          <div class="tb-drag">
+            <button class="act" title="Back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <span class="tb-title">Recent captures</span>
+          </div>
+          <div class="tb-actions">
+            <button class="act" title="Open output folder"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+            <button class="win"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
+            <button class="win close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          </div>
+        </div>
+
+        <div class="body">
+          <div class="filters">
+            <button class="fchip on">All</button>
+            <button class="fchip">Images</button>
+            <button class="fchip">Video</button>
+            <button class="fchip">GIF</button>
+          </div>
+
+          <div class="grid">
+            <div class="item sel">
+              <div class="thumb b">
+                <span class="kind">PNG</span>
+                <div class="hover-acts">
+                  <button class="ha" title="Copy"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/></svg></button>
+                  <button class="ha" title="Show in folder"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+                  <button class="ha del" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12"/></svg></button>
+                </div>
+              </div>
+              <div class="meta"><div class="fname">Screen_9EN.png</div><div class="when">2 min ago</div></div>
+            </div>
+
+            <div class="item">
+              <div class="thumb c"><span class="kind">MP4</span><span class="dur">00:42</span></div>
+              <div class="meta"><div class="fname">Screen_JI2.mp4</div><div class="when">18 min ago</div></div>
+            </div>
+
+            <div class="item">
+              <div class="thumb d"><span class="kind">GIF</span><span class="dur">00:08</span></div>
+              <div class="meta"><div class="fname">Screen_XuT.gif</div><div class="when">1 h ago</div></div>
+            </div>
+
+            <div class="item">
+              <div class="thumb"><span class="kind">JPG</span></div>
+              <div class="meta"><div class="fname">Screen_cFA.jpg</div><div class="when">Yesterday</div></div>
+            </div>
+
+            <div class="item">
+              <div class="thumb b"><span class="kind">PNG</span></div>
+              <div class="meta"><div class="fname">Screen_yey.png</div><div class="when">Yesterday</div></div>
+            </div>
+
+            <div class="item">
+              <div class="thumb c"><span class="kind">MP4</span><span class="dur">02:15</span></div>
+              <div class="meta"><div class="fname">Screen_PPB.mp4</div><div class="when">26 Aug</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">Three columns at 400px wide — a 118px thumb is enough to recognise your own screenshot, and a fourth column would not be. Hover reveals copy, reveal and delete; the whole tile opens the file.</div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="tb">
+          <div class="tb-drag">
+            <button class="act"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <span class="tb-title">Recent captures</span>
+          </div>
+          <div class="tb-actions">
+            <button class="act"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+            <button class="win"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
+            <button class="win close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+          </div>
+        </div>
+        <div class="body">
+          <div class="empty">
+            <div class="ring"></div>
+            <h3>No captures yet</h3>
+            <p>Everything you capture lands in <code>Documents\RapidCap</code> and shows up here.</p>
+            <div class="keys">
+              <div class="keyrow"><span>Capture region</span><span class="kbd">Alt + Q</span></div>
+              <div class="keyrow"><span>Capture window</span><span class="kbd">Alt + PrtSc</span></div>
+              <div class="keyrow"><span>Record video</span><span class="kbd">Alt + E</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption">First run. The empty state is recessed — it is a container with nothing in it, not a card you can press — and it spends its space teaching the three hotkeys instead of apologising.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>The gallery is a view of the folder, not a database.</b> It lists <code>AppPaths.capture_root</code> sorted by
+    modified time. Delete moves to the Recycle Bin. Nothing is indexed, nothing needs migrating, and a file dropped
+    into that folder by hand shows up like any other — which is the behaviour a capture tool should have.
+  </div>
+  <div class="note">
+    <b>Filters come from the extension</b>, so they cost nothing: <code>.png</code>/<code>.jpg</code> are Images,
+    <code>.mp4</code> is Video, <code>.gif</code> is GIF. The screenshot pipeline already switches PNG to JPEG above
+    2 MB, so both extensions appear under Images.
+  </div>
+  <div class="note" style="border-color:var(--warn)">
+    <b>Thumbnails are the one real cost.</b> Decoding a folder of 4K PNGs on every open will stutter. Generate at
+    <code>236px</code> wide (2× the tile), cache next to the file in <code>%LOCALAPPDATA%</code>, and render the tile
+    from a placeholder tone until the thumb arrives — never block the window on disk.
+  </div>
+</body>
+</html>

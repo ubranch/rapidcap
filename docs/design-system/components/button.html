@@ -1,0 +1,199 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Cards, rows &amp; controls</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-chevron:#323232; --bg-track:#282828;
+    --bg-pill:#282828; --bg-pill-off:#3A3A3A; --bg-hover:#242424;
+    --border-card:#202020; --border-top:#414141; --border-divider:#444444;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-badge:#E2E2E2; --text-muted:#7A7A7A;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A;
+    --gap:9px; --radius:8px;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:660px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  h3 { font-size:11px; font-weight:500; color:var(--text-muted); margin:0 0 8px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .stack { display:flex; flex-direction:column; gap:var(--gap); max-width:376px; }
+  .cols { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:660px; }
+  .note b { color:var(--text-label); font-weight:500; }
+
+  .card {
+    position:relative;
+    width:183px; height:64px; border-radius:var(--radius); background:var(--bg-card);
+    border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+    display:flex; overflow:hidden; cursor:pointer; color:var(--text-label);
+  }
+  .card .main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+  .card .lbl { font-size:13px; font-weight:500; line-height:1; }
+  /* absolute, not in flow: main must centre on the whole card */
+  .card .chev { position:absolute; right:0; top:0; bottom:0; width:34px;
+                background:var(--bg-chevron); border-left:1px solid var(--border-divider);
+                display:flex; align-items:center; justify-content:center; }
+  .card.hover { background:var(--bg-hover); }
+  .card.press { transform:scale(.985); }
+  .card.active { border-color:var(--accent); background:rgba(52,120,246,.16); }
+  .card.focus { outline:2px solid var(--accent); outline-offset:2px; }
+  .card.disabled { opacity:.4; cursor:default; }
+  .card.rec .main { color:var(--rec); }
+
+  .footer { width:376px; height:36px; display:flex; align-items:center; gap:6px; }
+  .chip { height:36px; padding:0 12px; display:inline-flex; align-items:center; gap:7px;
+          border-radius:999px; background:var(--bg-card); border:1px solid var(--border-card);
+          box-shadow:inset 0 1px 0 var(--border-top); color:var(--text-label);
+          font-family:var(--font); font-size:12px; font-weight:500; line-height:1;
+          cursor:pointer; max-width:152px; }
+  .chip.hover, .chip:hover { background:var(--bg-hover); }
+  .chip.focus { outline:2px solid var(--accent); outline-offset:2px; }
+  .chip .ico { color:var(--text-muted); display:flex; flex:none; }
+  .chip .txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip.off .txt { color:#A9A9A9; }
+  .chip.on .ico { color:#8FB6FB; }
+  .grow { flex:1; }
+  .status { height:28px; padding:0 12px; border-radius:999px;
+            background:var(--bg-card); box-shadow:inset 0 1px 3px rgba(0,0,0,.55);
+            display:inline-flex; align-items:center; gap:7px;
+            font-size:12px; font-weight:500; color:#A9A9A9; line-height:1;
+            font-variant-numeric:tabular-nums; white-space:nowrap; cursor:default; }
+  .status.live { color:var(--text-label); }
+  .sdot { width:7px; height:7px; border-radius:50%; background:var(--text-muted); flex:none; }
+  .sdot.on { background:var(--accent); }
+  .sdot.rec { background:var(--rec); }
+
+  .seg { display:inline-flex; gap:2px; padding:5px; border-radius:999px; background:var(--bg-track); }
+  .seg > button { width:32px; height:32px; border-radius:50%; border:2px solid transparent; background:none;
+    color:var(--text-muted); display:flex; align-items:center; justify-content:center; cursor:pointer;
+    font-family:var(--font); font-size:12px; font-weight:600; line-height:1; }
+  .seg > button[aria-checked="true"] { border-color:var(--accent); color:var(--text-primary); }
+
+  .hud { display:inline-flex; align-items:center; gap:var(--gap); padding:0 10px 0 14px; height:52px; width:400px;
+         background:rgba(28,28,28,.97); border:1px solid var(--border-card); border-radius:var(--radius);
+         box-shadow:inset 0 1px 0 var(--border-top); color:#FCFCFC; }
+  .hud-btn { height:34px; padding:0 13px; display:inline-flex; align-items:center; border-radius:var(--radius);
+             border:1px solid #3A3A3A; background:#242424; color:#FCFCFC; cursor:pointer;
+             font-family:var(--font); font-size:13px; line-height:1; flex:none; }
+  .hud-btn.danger { background:var(--danger); border-color:var(--danger); }
+  .hud .dot { width:9px; height:9px; border-radius:50%; background:var(--rec); flex:none; }
+  .scan { font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--text-muted); line-height:1.7; }
+</style>
+</head>
+<body>
+  <h1>Cards, rows &amp; controls</h1>
+  <p class="lede">Three interactive shapes total: the mode card, the device row, the segmented slot. Everything the panel does is one of these. No fourth shape gets invented.</p>
+
+  <h2>Mode card — ~183 × 64</h2>
+  <div class="cols">
+    <div><h3>Rest</h3><div class="card"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3m12-4v3a1 1 0 0 1-1 1h-3"/></svg><div class="lbl">Region</div></div></div></div>
+    <div><h3>Hover</h3><div class="card hover"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3m12-4v3a1 1 0 0 1-1 1h-3"/></svg><div class="lbl">Region</div></div></div></div>
+    <div><h3>Selected</h3><div class="card active"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3m12-4v3a1 1 0 0 1-1 1h-3"/></svg><div class="lbl">1280 × 720</div></div></div></div>
+    <div><h3>Focus visible</h3><div class="card focus"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3m12-4v3a1 1 0 0 1-1 1h-3"/></svg><div class="lbl">Region</div></div></div></div>
+    <div><h3>Recording</h3><div class="card rec"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="16" height="16" rx="3"/></svg><div class="lbl">Stop Video</div></div></div></div>
+    <div><h3>Disabled</h3><div class="card disabled"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14"/></svg><div class="lbl">GIF</div></div></div></div>
+  </div>
+
+  <h2>Split button — Video &amp; GIF only</h2>
+  <div class="cols">
+    <div><h3>Rest</h3><div class="card"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="m21.5 8-6 4 6 4z"/></svg><div class="lbl">Video</div></div><div class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div></div></div>
+    <div><h3>Chevron hover</h3><div class="card"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14"/></svg><div class="lbl">GIF</div></div><div class="chev" style="background:#3C3C3C"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div></div></div>
+    <div><h3>Horizontal scan</h3><div class="scan">
+      main pane &nbsp;#1C1C1C&nbsp; 0..148<br>
+      divider &nbsp;&nbsp;&nbsp;#444444&nbsp; 148..149<br>
+      chevron &nbsp;&nbsp;&nbsp;#323232&nbsp; 149..183
+    </div></div>
+  </div>
+  <div class="note">
+    <b>The chevron does not push the label.</b> It is absolutely positioned on the right edge, outside the flow, so the
+    icon and label centre on the full card width. In flow it stole 34px from the centring box and split cards sat
+    visibly left of unsplit ones — a 17px drift, plainly readable against the Region and Window cards above them.
+  </div>
+  <div class="note">The chevron pane is <b>lighter than the card</b>, not the same fill. It opens the FPS menu — <code>60</code> for video, <code>15</code> for GIF, both read from <code>Settings</code>. Region and Window carry no chevron: their target is picked on the overlay, not in a menu.</div>
+
+  <h2>Footer — 376 × 36, chips + status</h2>
+  <div class="stack">
+    <div class="footer">
+      <button class="chip off"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="m17 10 4 4m0-4-4 4"/></svg></span><span class="txt">No audio</span></button>
+      <button class="chip"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="txt">Documents</span></button>
+      <span class="grow"></span>
+      <span class="status"><span class="sdot"></span>Ready</span>
+    </div>
+
+    <div class="footer">
+      <button class="chip on hover"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M17 9.5a3.5 3.5 0 0 1 0 5M20 7a7 7 0 0 1 0 10"/></svg></span><span class="txt">Realtek High Definition Audio</span></button>
+      <button class="chip focus"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span class="txt">Documents</span></button>
+      <span class="grow"></span>
+      <span class="status"><span class="sdot on"></span>Selected</span>
+    </div>
+
+    <div class="footer">
+      <button class="chip on"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M17 9.5a3.5 3.5 0 0 1 0 5"/></svg></span></button>
+      <button class="chip"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></button>
+      <span class="grow"></span>
+      <span class="status live"><span class="sdot rec"></span>Recording · 00:42</span>
+    </div>
+
+    <div class="footer">
+      <button class="chip on"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M17 9.5a3.5 3.5 0 0 1 0 5"/></svg></span></button>
+      <button class="chip"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></button>
+      <span class="grow"></span>
+      <span class="status live"><span class="sdot"></span>Finalizing Video…</span>
+    </div>
+  </div>
+  <div class="note">
+    <b>Three kinds of thing, three treatments.</b> Audio is a toggle and folder is an action, so both are chips —
+    <b>raised</b>: 1px <code>#202020</code> border plus a <code>#414141</code> top highlight, 36px tall, hover state.
+    Status is a readout, so it is <b>recessed</b>: same <code>#1C1C1C</code> fill, but no border, no top highlight and
+    an <code>inset 0 1px 3px rgba(0,0,0,.55)</code> inner shadow, 28px tall, no hover. Same material, opposite depth —
+    one sits on the panel, the other is cut into it.
+  </div>
+  <div class="note">
+    An earlier pass left the status as bare text on the panel background. It read as a leftover rather than a field,
+    and the recording state had nothing to anchor it. The well gives it a container without ever making it look
+    pressable — the depth cue does the work a border would have done wrong.
+  </div>
+  <div class="note">
+    Chips are content-sized and cap at <code>152px</code>, truncating the device name. When the status goes live the
+    chips <b>shed their labels before the status truncates</b> — a running timer outranks a folder name. Chip and
+    status never share an edge; the <code>6px</code> gap and the <code>flex:1</code> spacer keep them apart at any
+    string length.
+  </div>
+
+  <h2>Segmented control — countdown</h2>
+  <div class="cols" style="align-items:center">
+    <div class="seg" role="radiogroup" aria-label="Countdown">
+      <button role="radio" aria-checked="false" title="No countdown"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12z"/></svg></button>
+      <button role="radio" aria-checked="false">3</button>
+      <button role="radio" aria-checked="true">5</button>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);max-width:340px;line-height:1.6">
+      Track <code>#282828</code>, slots 32 × 32. Active state is a <b>2px accent ring only</b> — no fill flood, no pill slider.
+      Maps to <code>Settings.countdown_seconds</code>; default is <code>5</code>.
+    </div>
+  </div>
+
+  <h2>HUD button — recording overlay only</h2>
+  <div class="hud">
+    <span class="dot"></span>
+    <span style="font-size:13px;flex:1;font-variant-numeric:tabular-nums">REC Video 00:42 <span style="color:#A9A9A9">· 1280 × 720</span></span>
+    <button class="hud-btn">Pause</button>
+    <button class="hud-btn danger">Stop</button>
+  </div>
+  <div class="note">The HUD wears the same chrome as a card — <code>#1C1C1C</code> at 97%, 1px <code>#202020</code>, inset top highlight. <b>No red border:</b> the region frame already owns red, and two red rectangles on one screen read as an error. The dot is the only red surface here; Stop keeps its fill because it is a destructive button, not chrome.</div>
+
+  <h2>State table</h2>
+  <div class="note" style="border-color:var(--rec)">
+    <b>Measured:</b> rest, selected (accent ring), off pill. <b>Inferred</b> — verify against the build before shipping:
+    hover <code>#242424</code> 120ms · pressed <code>scale(.985)</code> 80ms · focus-visible 2px accent outline at 2px offset ·
+    disabled 40% opacity · enabled pill <code>rgba(52,120,246,.20)</code>.
+  </div>
+</body>
+</html>

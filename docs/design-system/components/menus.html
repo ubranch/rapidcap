@@ -1,0 +1,168 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Menus</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-chevron:#323232; --bg-hover:#242424;
+    --border-card:#202020; --border-top:#414141; --border-divider:#444444;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --warn:#E8A33D;
+    --gap:9px; --radius:8px;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.5; max-width:260px; }
+  .row { display:flex; gap:26px; flex-wrap:wrap; align-items:flex-start; }
+
+  /* one menu shape for every menu in the product */
+  .menu { width:212px; padding:5px; border-radius:10px; background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:0 14px 36px rgba(0,0,0,.6); }
+  .menu.wide { width:248px; }
+  .mhead { padding:7px 10px 5px; font-size:10px; font-weight:600; letter-spacing:.06em;
+           text-transform:uppercase; color:var(--text-muted); }
+  .mi { height:32px; padding:0 10px; border-radius:6px; display:flex; align-items:center; gap:9px;
+        font-size:12px; color:var(--text-label); cursor:pointer; }
+  .mi:hover, .mi.hover { background:var(--bg-hover); }
+  .mi .ico { color:var(--text-muted); display:flex; flex:none; width:15px; }
+  .mi .txt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mi .right { font-size:11px; color:var(--text-muted); font-family:"Cascadia Mono",Consolas,monospace; flex:none; }
+  .mi .tick { color:var(--accent); display:flex; flex:none; }
+  .mi.sel { color:var(--text-primary); }
+  .mi.dis { opacity:.4; cursor:default; }
+  .mi.dis:hover { background:none; }
+  .msep { height:1px; background:var(--border-card); margin:5px 6px; }
+
+  /* anchor demo */
+  .card { position:relative; width:183px; height:64px; border-radius:var(--radius); background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+          display:flex; overflow:hidden; color:var(--text-label); }
+  .card .main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+  .card .lbl { font-size:13px; font-weight:500; line-height:1; }
+  .card .chev { position:absolute; right:0; top:0; bottom:0; width:34px; background:var(--bg-chevron);
+                border-left:1px solid var(--border-divider); display:flex; align-items:center; justify-content:center; }
+  .card .chev.open { background:#3C3C3C; }
+  .anchor { display:inline-flex; flex-direction:column; align-items:flex-start; gap:6px; }
+  .chip { height:36px; padding:0 12px; display:inline-flex; align-items:center; gap:7px;
+          border-radius:999px; background:var(--bg-card); border:1px solid var(--border-card);
+          box-shadow:inset 0 1px 0 var(--border-top); color:var(--text-label);
+          font-family:var(--font); font-size:12px; font-weight:500; line-height:1; cursor:pointer; }
+  .chip.open { background:var(--bg-hover); border-color:#2E2E2E; }
+  .chip .ico { color:var(--text-muted); display:flex; }
+
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+  ul { margin:8px 0 0; padding-left:18px; font-size:12px; color:var(--text-muted); line-height:1.8; }
+</style>
+</head>
+<body>
+  <h1>Menus</h1>
+  <p class="lede">One shape for every menu: 10px radius, 5px padding, 32px items with a 6px hover radius inside. The chevron panes, the audio chip and the tray all open the same object — a menu is never bespoke.</p>
+
+  <h2>FPS menu — under a chevron</h2>
+  <div class="row">
+    <div class="anchor">
+      <div class="card">
+        <div class="main">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="m21.5 8-6 4 6 4z"/></svg>
+          <div class="lbl">Video</div>
+        </div>
+        <div class="chev open"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+      <div class="menu">
+        <div class="mhead">Frame rate</div>
+        <div class="mi"><span class="ico"></span><span class="txt">30 FPS</span></div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tick" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">60 FPS</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">120 FPS</span></div>
+        <div class="msep"></div>
+        <div class="mhead">Quality</div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">High</span><span class="right">3 Mbps</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">Balanced</span><span class="right">1.5 Mbps</span></div>
+        <div class="msep"></div>
+        <div class="mi"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4m0-12.8-1.4 1.4m-10 10-1.4 1.4"/></svg></span><span class="txt">More settings…</span></div>
+      </div>
+      <div class="caption">Anchored to the chevron's right edge, 6px below the card. Values write straight to <code>Settings.video</code>.</div>
+    </div>
+
+    <div class="anchor">
+      <div class="card">
+        <div class="main">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14"/></svg>
+          <div class="lbl">GIF</div>
+        </div>
+        <div class="chev open"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div>
+      </div>
+      <div class="menu">
+        <div class="mhead">Frame rate</div>
+        <div class="mi"><span class="ico"></span><span class="txt">10 FPS</span></div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">15 FPS</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">24 FPS</span></div>
+        <div class="msep"></div>
+        <div class="mi dis"><span class="ico"></span><span class="txt">Loop forever</span></div>
+        <div class="caption" style="padding:2px 10px 6px;margin:0">Disabled items stay visible at 40% — a hidden option teaches nothing.</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Audio device — from the chip</h2>
+  <div class="row">
+    <div class="anchor">
+      <button class="chip open">
+        <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="m17 10 4 4m0-4-4 4"/></svg></span>
+        No audio
+      </button>
+      <div class="menu wide">
+        <div class="mhead">System audio</div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Off</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt" title="Speakers (Realtek High Definition Audio)">Speakers (Realtek High Defin…</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">Headset (Arctis Nova Pro)</span></div>
+        <div class="msep"></div>
+        <div class="mhead">Microphone</div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Off</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">Microphone (Arctis Nova Pro)</span></div>
+      </div>
+      <div class="caption">Two groups, one menu. Device names truncate at the menu width and keep the full string in the tooltip.</div>
+    </div>
+
+    <div class="anchor">
+      <button class="chip open">
+        <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="m17 10 4 4m0-4-4 4"/></svg></span>
+        No audio
+      </button>
+      <div class="menu wide">
+        <div class="mhead">System audio</div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Off</span></div>
+        <div class="caption" style="padding:4px 10px 8px;margin:0;max-width:none">No capture devices found. Plug one in and reopen this menu.</div>
+      </div>
+      <div class="caption">Empty state. The menu says what to do next instead of showing an empty box.</div>
+    </div>
+  </div>
+
+  <h2>Rules</h2>
+  <div class="note">
+    <ul>
+      <li>Menu width is fixed per menu — <code>212px</code> default, <code>248px</code> where device names live. Items truncate, the menu never grows.</li>
+      <li>Selection is a <b>tick in the icon column</b>, not a highlighted row. Highlight means hover, and one meaning per treatment.</li>
+      <li>Group headers are the same 10px uppercase label used everywhere else in the system.</li>
+      <li>Disabled items stay at 40% opacity. Removing them makes the menu shift between openings.</li>
+      <li>A menu that would be empty shows a sentence instead — never an empty container.</li>
+      <li>Opening a menu marks its trigger: the chevron pane goes <code>#3C3C3C</code>, a chip takes its hover fill.</li>
+    </ul>
+  </div>
+  <div class="note" style="border-color:var(--warn)">
+    <b>None of this exists in code.</b> The chevron panes render but open nothing, and the audio chip has no picker
+    behind it. <code>Settings</code> already holds <code>video.fps</code>, <code>video.bitrate</code>,
+    <code>gif.fps</code> and <code>audio</code>, so the menus have somewhere to write — the plumbing is the missing
+    half, not the model.
+  </div>
+</body>
+</html>

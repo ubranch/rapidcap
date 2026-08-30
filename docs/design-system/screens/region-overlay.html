@@ -1,0 +1,145 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Region overlay</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --text-primary:#FCFCFC;
+    --text-label:#DDDDDD; --text-muted:#8A8A8A; --accent:#3478F6; --warn:#E8A33D;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 24px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:660px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:0 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .cases { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:10px; max-width:440px; line-height:1.55; }
+
+  .desktop { position:relative; width:440px; height:276px; border-radius:8px; overflow:hidden;
+             background:linear-gradient(140deg,#3A3A3A 0%,#242424 55%,#2C2C2C 100%);
+             box-shadow:0 18px 48px rgba(0,0,0,.6); }
+  .app { position:absolute; background:#EFEFEF; border-radius:6px; overflow:hidden;
+         box-shadow:0 8px 22px rgba(0,0,0,.45); }
+  .app-bar { height:16px; background:#D8D8D8; }
+  .app-body { padding:9px; }
+  .line { height:5px; border-radius:3px; background:#C4C4C4; margin-bottom:5px; }
+
+  .scrim { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+  .rect { position:absolute; border:2px solid var(--accent); background:rgba(52,120,246,.14); }
+  .rect.drag { background:rgba(0,0,0,.18); }
+  /* one float shape — see Pills & status */
+  .badge, .hint { position:absolute; display:inline-flex; align-items:center; height:30px; padding:0 11px;
+           border-radius:8px; background:rgba(28,28,28,.92); color:#FCFCFC; font-size:13px;
+           line-height:1; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .badge { top:9px; left:9px; }
+  .hint { top:18px; right:18px; }
+  .cursor { position:absolute; width:11px; height:11px; border:1.5px solid #FCFCFC; border-radius:50%; }
+  .handle { position:absolute; width:7px; height:7px; background:#FCFCFC; border-radius:1px; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:24px; max-width:660px; }
+  .note b { color:var(--text-label); font-weight:500; }
+</style>
+</head>
+<body>
+  <h1>Region overlay</h1>
+  <p class="lede">A transparent popup sized to the display under the cursor. One surface serves both capture modes — drag for a region, click for a window. <code>Esc</code> cancels and closes.</p>
+
+  <div class="cases">
+    <div>
+      <h2>Dragging a region</h2>
+      <div class="desktop">
+        <div class="app" style="left:36px;top:38px;width:210px;height:136px">
+          <div class="app-bar"></div>
+          <div class="app-body"><div class="line" style="width:80%"></div><div class="line" style="width:62%"></div><div class="line" style="width:71%"></div><div class="line" style="width:44%"></div></div>
+        </div>
+        <div class="app" style="left:220px;top:110px;width:188px;height:126px">
+          <div class="app-bar"></div>
+          <div class="app-body"><div class="line" style="width:66%"></div><div class="line" style="width:83%"></div><div class="line" style="width:50%"></div></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="rect drag" style="left:62px;top:66px;width:222px;height:126px">
+          <div class="badge">1280 × 720</div>
+          <div class="handle" style="left:-4px;top:-4px"></div>
+          <div class="handle" style="right:-4px;top:-4px"></div>
+          <div class="handle" style="left:-4px;bottom:-4px"></div>
+          <div class="handle" style="right:-4px;bottom:-4px"></div>
+        </div>
+        <div class="cursor" style="left:280px;top:188px"></div>
+        <div class="hint">Click window or drag region · Esc cancel</div>
+      </div>
+      <div class="caption">The rect grows from the anchor toward the live cursor in any direction. The badge reports <b>physical</b> pixels — logical size × <code>scale_factor</code>, so a 150% display reads the real output size.</div>
+    </div>
+
+    <div>
+      <h2>Hovering a window</h2>
+      <div class="desktop">
+        <div class="app" style="left:36px;top:38px;width:210px;height:136px">
+          <div class="app-bar"></div>
+          <div class="app-body"><div class="line" style="width:80%"></div><div class="line" style="width:62%"></div><div class="line" style="width:71%"></div><div class="line" style="width:44%"></div></div>
+        </div>
+        <div class="app" style="left:220px;top:110px;width:188px;height:126px">
+          <div class="app-bar"></div>
+          <div class="app-body"><div class="line" style="width:66%"></div><div class="line" style="width:83%"></div><div class="line" style="width:50%"></div></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="rect" style="left:36px;top:38px;width:210px;height:136px">
+          <div class="badge">chrome.exe</div>
+        </div>
+        <div class="cursor" style="left:132px;top:104px"></div>
+        <div class="hint">Click window · Esc cancel</div>
+      </div>
+      <div class="caption">Hover snaps to the real window bounds under the cursor and labels it by process name. Same 2px accent border, accent tint instead of the neutral drag fill.</div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:32px">Multi-monitor</h2>
+  <div class="cases">
+    <div>
+      <div style="display:flex;align-items:flex-end;gap:10px">
+        <div style="position:relative;width:240px;height:150px;border-radius:6px;overflow:hidden;background:linear-gradient(140deg,#3A3A3A,#242424)">
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,.55)"></div>
+          <div style="position:absolute;left:40px;top:38px;width:120px;height:66px;border:2px solid var(--accent);background:rgba(0,0,0,.18)">
+            <span style="position:absolute;top:6px;left:6px;display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:rgba(28,28,28,.92);color:#FCFCFC;font-size:11px">1280 × 720</span>
+          </div>
+          <span style="position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:6px;background:rgba(28,28,28,.92);color:#FCFCFC;font-size:11px">Esc cancel</span>
+          <span style="position:absolute;left:8px;bottom:6px;font-size:10px;color:#8A8A8A">Display 1 · cursor here</span>
+        </div>
+        <div style="position:relative;width:170px;height:106px;border-radius:6px;overflow:hidden;background:linear-gradient(140deg,#3A3A3A,#242424)">
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,.55)"></div>
+          <span style="position:absolute;left:8px;bottom:6px;font-size:10px;color:#8A8A8A">Display 2 · dimmed, inert</span>
+        </div>
+      </div>
+      <div class="caption" style="max-width:430px">Every display dims. Only the one under the cursor takes input — the others are a scrim and nothing else, so a stray click on the second monitor cancels rather than captures the wrong thing.</div>
+    </div>
+  </div>
+
+  <table style="border-collapse:collapse;width:100%;max-width:760px;margin-top:18px">
+    <tr><th style="text-align:left;padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">Situation</th><th style="text-align:left;padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">Behaviour</th></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Which display</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">The one under the cursor at the moment the hotkey fires</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Other displays</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Scrim only, click-through disabled, Esc still cancels</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Cursor crosses to another display</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Selection clamps at the active display edge. It does not follow.</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Mixed DPI</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Each overlay uses its own <code>scale_factor</code>; the badge always reports physical pixels</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Window straddling two displays</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Hover highlights its full bounds, capture includes the off-screen part</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Display disconnected mid-selection</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Cancel to <code>Idle</code>, no capture, no error bar</td></tr>
+  </table>
+
+  <div class="note" style="border-color:var(--warn)">
+    <b>Code delta:</b> <code>open_region_overlay</code> calls <code>monitor_under_cursor()</code> and opens
+    <b>one</b> window on that display. Today the other monitors stay bright and fully live — the desktop looks normal
+    while the app is modal, which is the worst of both. This spec needs a scrim window per display, with only the
+    active one handling mouse events.
+  </div>
+
+  <div class="note">
+    Overlay chrome uses the panel's own tones — badge and hint are <code>rgba(28,28,28,.92)</code>, which is
+    <code>--bg-card</code> at 92%. <b>Accent, not white</b>, marks the selection: white edges disappear over bright
+    content, and the product already spends its one colour on selection state.
+  </div>
+</body>
+</html>

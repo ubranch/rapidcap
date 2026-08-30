@@ -1,0 +1,192 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Errors &amp; feedback</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-hover:#242424;
+    --border-card:#202020; --border-top:#414141; --border-divider:#444444;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
+    --gap:9px; --radius:8px;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.55; max-width:400px; }
+  .stack { display:flex; flex-direction:column; gap:18px; align-items:flex-start; }
+
+  /* footer pieces, same as the Panel */
+  .footer { width:376px; height:36px; display:flex; align-items:center; gap:6px; }
+  .chip { height:36px; padding:0 12px; display:inline-flex; align-items:center; gap:7px;
+          border-radius:999px; background:var(--bg-card); border:1px solid var(--border-card);
+          box-shadow:inset 0 1px 0 var(--border-top); color:var(--text-label);
+          font-family:var(--font); font-size:12px; font-weight:500; line-height:1;
+          cursor:pointer; max-width:152px; }
+  .chip:hover { background:var(--bg-hover); }
+  .chip .ico { color:var(--text-muted); display:flex; flex:none; }
+  .chip .txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip.saved { border-color:rgba(52,120,246,.45); background:rgba(52,120,246,.12); }
+  .chip.saved .ico { color:#8FB6FB; }
+  .grow { flex:1; }
+  .status { height:28px; padding:0 12px; border-radius:999px; background:var(--bg-card);
+            box-shadow:inset 0 1px 3px rgba(0,0,0,.55); display:inline-flex; align-items:center; gap:7px;
+            font-size:12px; font-weight:500; color:var(--text-pill); line-height:1;
+            font-variant-numeric:tabular-nums; white-space:nowrap; cursor:default; }
+  .status.live { color:var(--text-label); }
+  .sdot { width:7px; height:7px; border-radius:50%; background:var(--text-muted); flex:none; }
+  .sdot.on { background:var(--accent); }
+  .sdot.rec { background:var(--rec); }
+  .sdot.warn { background:var(--warn); }
+
+  /* error bar — replaces the whole footer */
+  .errbar { width:376px; height:36px; display:flex; align-items:center; gap:9px; padding:0 6px 0 12px;
+            border-radius:999px; background:rgba(232,163,61,.12);
+            box-shadow:inset 0 0 0 1px rgba(232,163,61,.35); }
+  .errbar .msg { flex:1; min-width:0; font-size:12px; font-weight:500; color:#F0C07A; line-height:1;
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ghost { height:26px; padding:0 10px; border-radius:999px; border:none; background:rgba(232,163,61,.16);
+           color:#F0C07A; font-family:var(--font); font-size:11px; font-weight:500; line-height:1;
+           cursor:pointer; flex:none; }
+  .ghost:hover { background:rgba(232,163,61,.26); }
+  .xbtn { width:26px; height:26px; border-radius:50%; border:none; background:none; color:#F0C07A;
+          display:inline-flex; align-items:center; justify-content:center; cursor:pointer; flex:none; }
+  .xbtn:hover { background:rgba(232,163,61,.2); }
+
+  /* dimmed panel body during selection */
+  .cards { width:376px; display:grid; grid-template-columns:1fr 1fr; gap:var(--gap); }
+  .card { position:relative; height:64px; border-radius:var(--radius); background:var(--bg-card);
+          border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+          display:flex; overflow:hidden; color:var(--text-label); }
+  .card .main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+  .card .lbl { font-size:13px; font-weight:500; line-height:1; }
+  .card .chev { position:absolute; right:0; top:0; bottom:0; width:34px; background:#323232;
+                border-left:1px solid var(--border-divider); display:flex; align-items:center; justify-content:center; }
+  .dimmed .card { opacity:.45; }
+  .dimmed .card.armed { opacity:1; border-color:var(--accent); background:rgba(52,120,246,.16); }
+
+  table { border-collapse:collapse; width:100%; max-width:760px; }
+  td, th { text-align:left; padding:9px 12px; border-bottom:1px solid #1C1C1C; vertical-align:top; font-size:12px; }
+  th { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+</style>
+</head>
+<body>
+  <h1>Errors &amp; feedback</h1>
+  <p class="lede">Three states the product has in code and had nothing in design: <code>CaptureState::Error</code>, a successful save, and the panel while the overlay is open.</p>
+
+  <h2>Error — replaces the footer</h2>
+  <div class="stack">
+    <div>
+      <div class="errbar">
+        <span class="sdot warn"></span>
+        <span class="msg">Recording failed — disk full</span>
+        <button class="ghost">Retry</button>
+        <button class="xbtn" title="Dismiss"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="caption">The whole footer becomes the error. Chips are gone — nothing else matters until this is read.</div>
+    </div>
+
+    <div>
+      <div class="errbar">
+        <span class="sdot warn"></span>
+        <span class="msg">Screen capture unavailable — another app is using the display</span>
+        <button class="xbtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="caption">Not everything can be retried. Retry appears only when the failed command is idempotent.</div>
+    </div>
+
+    <div>
+      <div class="errbar" style="background:rgba(232,163,61,.12)">
+        <span class="sdot warn"></span>
+        <span class="msg" title="Encoder error: nvenc session limit reached (device 0)">Encoding failed — see details</span>
+        <button class="ghost">Copy log</button>
+        <button class="xbtn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="caption">Long technical strings are summarised; the raw error lives in the tooltip and behind Copy log.</div>
+    </div>
+  </div>
+
+  <div class="note" style="border-color:var(--warn)">
+    <b>Amber, not red.</b> Red already means "capture is running" in this product — a red error bar under a red
+    recording frame is unreadable. <code>--warn #E8A33D</code> is the only new colour in the system, and it exists
+    solely so failure never gets confused with recording.
+  </div>
+
+  <div class="note">
+    <b>Code delta:</b> <code>controller.rs:124</code> silently drops the error on the next command
+    (<code>if matches!(self.state, CaptureState::Error(_)) { self.state = CaptureState::Idle; }</code>), so today the
+    message vanishes when the user clicks anything. This spec needs the error to survive until dismissed or until the
+    next capture <em>succeeds</em>, and <code>Error(String)</code> to carry a short summary plus the raw detail
+    rather than one blob.
+  </div>
+
+  <h2>Saved — a chip that expires</h2>
+  <div class="stack">
+    <div>
+      <div class="footer">
+        <button class="chip off"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="m17 10 4 4m0-4-4 4"/></svg></span><span class="txt">No audio</span></button>
+        <button class="chip saved"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span class="txt">Screen_9EN.png</span></button>
+        <span class="grow"></span>
+        <span class="status"><span class="sdot on"></span>Copied</span>
+      </div>
+      <div class="caption">A screenshot saved. The chip is pressable — it opens the file. It replaces the folder chip for <b>6s</b>, then fades back.</div>
+    </div>
+
+    <div>
+      <div class="footer">
+        <button class="chip on"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M17 9.5a3.5 3.5 0 0 1 0 5"/></svg></span></button>
+        <button class="chip saved"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span class="txt">Screen_JI2.mp4</span></button>
+        <span class="grow"></span>
+        <span class="status"><span class="sdot on"></span>00:42 · 12.4 MB</span>
+      </div>
+      <div class="caption">A recording saved. Duration and file size land in the status well — the two things you check before sending a clip.</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>The confirmation is a control, not a toast.</b> A toast that floats over the desktop is one more thing to
+    dismiss; a chip in the footer is already where the user's eye is, is clickable, and expires on its own. Saving is
+    the moment the product earns trust — today <code>SavedCapture</code> succeeds and nothing on screen changes at all.
+  </div>
+
+  <h2>Selecting — panel behind the overlay</h2>
+  <div class="stack">
+    <div>
+      <div class="cards dimmed">
+        <div class="card armed"><div class="main"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3m12-4v3a1 1 0 0 1-1 1h-3"/></svg><div class="lbl">Region</div></div></div>
+        <div class="card"><div class="main"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg><div class="lbl">Window</div></div></div>
+        <div class="card"><div class="main"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="m21.5 8-6 4 6 4z"/></svg><div class="lbl">Video</div></div><div class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div></div>
+        <div class="card"><div class="main"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14"/></svg><div class="lbl">GIF</div></div><div class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div></div>
+      </div>
+      <div class="footer" style="margin-top:9px">
+        <span class="grow"></span>
+        <span class="status live"><span class="sdot on"></span>Selecting · Esc to cancel</span>
+      </div>
+      <div class="caption">While the overlay is open the panel steps back: every card drops to <b>45%</b> except the armed one, chips hide, and the status well carries the escape route. On a single monitor the user never sees this — on two, it is the difference between a frozen app and an obvious one.</div>
+    </div>
+  </div>
+
+  <h2>State coverage</h2>
+  <table>
+    <tr><th>CaptureState</th><th>Panel</th><th>HUD</th></tr>
+    <tr><td><code>Idle</code></td><td>Ready · chips visible</td><td>—</td></tr>
+    <tr><td><code>Selecting(kind)</code></td><td>Dimmed, armed card lit, Esc hint</td><td>—</td></tr>
+    <tr><td><code>Countdown(kind, n)</code></td><td>Card shows Cancel</td><td>Wide pill, target + format</td></tr>
+    <tr><td><code>Recording(kind)</code></td><td>Card red, reads Stop</td><td>Dot + timer</td></tr>
+    <tr><td><code>Paused(kind)</code></td><td>Card reads Stop</td><td>Gray dot, frozen timer</td></tr>
+    <tr><td><code>Finalizing(kind)</code></td><td>Status well: Finalizing…</td><td>Cancel only</td></tr>
+    <tr><td><code>Error(String)</code></td><td>Amber bar replaces footer</td><td>Closes</td></tr>
+    <tr><td>saved (transient)</td><td>Saved chip, 6s</td><td>Closes</td></tr>
+  </table>
+</body>
+</html>

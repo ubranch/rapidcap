@@ -1,0 +1,200 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Recording HUD</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-hover:#2A2A2A;
+    --border-card:#202020; --border-top:#414141; --border-divider:#3A3A3A;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A;
+    --gap:9px; --radius:8px;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.55; max-width:420px; }
+  .stack { display:flex; flex-direction:column; gap:16px; align-items:flex-start; }
+  .side { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+
+  /* ---------- HUD: content-sized pill, 36px tall ---------- */
+  .hud {
+    height:36px; display:inline-flex; align-items:center; gap:4px; padding:4px;
+    border-radius:999px; background:rgba(28,28,28,.97);
+    border:1px solid var(--border-card);
+    box-shadow:inset 0 1px 0 var(--border-top), 0 8px 24px rgba(0,0,0,.5);
+    color:var(--text-primary); font-variant-numeric:tabular-nums;
+  }
+  .hud .lead { display:inline-flex; align-items:center; gap:7px; padding:0 4px 0 8px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--rec); flex:none; }
+  .dot.idle { background:var(--text-muted); }
+  .dot.paused { background:var(--text-pill); }
+  .time { font-size:13px; line-height:1; letter-spacing:.01em; }
+  .kind { font-size:13px; line-height:1; color:var(--text-pill); }
+  .sep { width:1px; height:18px; background:var(--border-divider); margin:0 2px; }
+  .ib {
+    width:28px; height:28px; border-radius:50%; border:none; background:none; color:var(--text-pill);
+    display:inline-flex; align-items:center; justify-content:center; cursor:pointer; flex:none;
+  }
+  .ib:hover { background:var(--bg-hover); color:var(--text-primary); }
+  .ib.stop { background:var(--danger); color:#FFFFFF; }
+  .ib.stop:hover { background:#D93B3B; }
+  .hud.dim { opacity:.55; }
+
+  /* stage */
+  .stage { position:relative; width:640px; height:360px; border-radius:8px; overflow:hidden;
+           background:linear-gradient(140deg,#3A3A3A 0%,#242424 55%,#2C2C2C 100%); }
+  .region { position:absolute; left:120px; top:40px; width:400px; height:230px; background:rgba(255,255,255,.05); }
+  .region > i { position:absolute; background:var(--rec); }
+  .region > i.t { left:-3px; top:-3px; width:calc(100% + 6px); height:3px; }
+  .region > i.b { left:-3px; bottom:-3px; width:calc(100% + 6px); height:3px; }
+  .region > i.l { left:-3px; top:0; width:3px; height:100%; }
+  .region > i.r { right:-3px; top:0; width:3px; height:100%; }
+  .stage .hud { position:absolute; left:243px; top:279px; }
+  .tag { position:absolute; font-size:10px; color:var(--text-muted); background:rgba(28,28,28,.92);
+         padding:3px 7px; border-radius:6px; }
+
+  table { border-collapse:collapse; width:100%; max-width:760px; }
+  td, th { text-align:left; padding:9px 12px; border-bottom:1px solid #1C1C1C; vertical-align:top; font-size:12px; }
+  th { font-size:10px; font-weight:600; color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; }
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+  .old { height:52px; width:400px; display:inline-flex; align-items:center; gap:9px; padding:0 10px 0 14px;
+         border-radius:8px; background:rgba(28,28,28,.97); border:1px solid var(--border-card);
+         box-shadow:inset 0 1px 0 var(--border-top); color:#FCFCFC; }
+  .old button { height:34px; padding:0 13px; border-radius:8px; border:1px solid var(--border-divider);
+                background:#242424; color:#FCFCFC; font-family:var(--font); font-size:13px; }
+  .old button.d { background:var(--danger); border-color:var(--danger); }
+</style>
+</head>
+<body>
+  <h1>Recording HUD</h1>
+  <p class="lede">A content-sized pill, <b>36px tall</b>, floated 9px below the region. While recording it is <b>~132px wide</b> — small enough to sit over a desktop for an hour without being in the way, big enough that Stop is never a hard target.</p>
+
+  <h2>States</h2>
+  <div class="stack">
+    <div class="side">
+      <div class="hud">
+        <span class="lead"><span class="dot"></span><span class="time">00:42</span></span>
+        <span class="sep"></span>
+        <button class="ib" title="Pause · F9" aria-label="Pause recording">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5" width="3.4" height="14" rx="1.2"/><rect x="13.6" y="5" width="3.4" height="14" rx="1.2"/></svg>
+        </button>
+        <button class="ib stop" title="Stop · F10" aria-label="Stop recording">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.4"/></svg>
+        </button>
+      </div>
+      <div class="caption" style="margin-top:0">Recording. Dot + timer + two icon buttons — nothing else earns its pixels while a capture runs.</div>
+    </div>
+
+    <div class="side">
+      <div class="hud">
+        <span class="lead"><span class="dot paused"></span><span class="time">00:42</span></span>
+        <span class="sep"></span>
+        <button class="ib" title="Resume · F9" aria-label="Resume recording">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
+        </button>
+        <button class="ib stop" title="Stop · F10" aria-label="Stop recording">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.4"/></svg>
+        </button>
+      </div>
+      <div class="caption" style="margin-top:0">Paused. Dot goes gray, timer freezes, pause glyph becomes play.</div>
+    </div>
+
+    <div class="side">
+      <div class="hud">
+        <span class="lead"><span class="dot idle"></span><span class="time">3</span><span class="kind">Video · 1280 × 720</span></span>
+        <span class="sep"></span>
+        <button class="ib" title="Cancel · Esc" aria-label="Cancel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="caption" style="margin-top:0">Countdown — the one moment the bar is allowed to be wide. Target and format are shown while there is still time to cancel, then collapse away.</div>
+    </div>
+
+    <div class="side">
+      <div class="hud">
+        <span class="lead"><span class="dot idle"></span><span class="kind">Finalizing…</span></span>
+        <span class="sep"></span>
+        <button class="ib" title="Cancel" aria-label="Cancel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="caption" style="margin-top:0">Encoding. No pause, cancel only.</div>
+    </div>
+
+    <div class="side">
+      <div class="hud dim">
+        <span class="lead"><span class="dot"></span><span class="time">04:17</span></span>
+        <span class="sep"></span>
+        <button class="ib"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5" width="3.4" height="14" rx="1.2"/><rect x="13.6" y="5" width="3.4" height="14" rx="1.2"/></svg></button>
+        <button class="ib stop"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.4"/></svg></button>
+      </div>
+      <div class="caption" style="margin-top:0">Idle fade — after 3s without a pointer nearby the bar drops to <code>55%</code> opacity, and returns to full on hover. Long recordings stop feeling watched.</div>
+    </div>
+  </div>
+
+  <h2>Placement</h2>
+  <div class="stage">
+    <div class="region"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i></div>
+    <div class="hud">
+      <span class="lead"><span class="dot"></span><span class="time">00:42</span></span>
+      <span class="sep"></span>
+      <button class="ib"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5" width="3.4" height="14" rx="1.2"/><rect x="13.6" y="5" width="3.4" height="14" rx="1.2"/></svg></button>
+      <button class="ib stop"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.4"/></svg></button>
+    </div>
+    <div class="tag" style="left:120px;top:16px">3px frame · outside the capture area</div>
+    <div class="tag" style="left:392px;top:281px">9px below · centred</div>
+  </div>
+  <div class="caption" style="max-width:640px">Same placement rules, far less mass. Controls sit under the thing they control, and the pill is narrow enough that it rarely overlaps anything worth seeing.</div>
+
+  <h2>What it replaced</h2>
+  <div class="old">
+    <span class="dot"></span>
+    <span style="flex:1;font-size:13px">REC Video 00:42 <span style="color:#A9A9A9">· 1280 × 720</span></span>
+    <button>Pause</button>
+    <button class="d">Stop</button>
+  </div>
+  <table style="margin-top:14px">
+    <tr><th></th><th>Before</th><th>Now</th></tr>
+    <tr><td>Size</td><td>400 × 52 fixed</td><td>~132 × 36, content-sized</td></tr>
+    <tr><td>Screen area</td><td>20,800px²</td><td><b>4,750px²</b> — 77% less</td></tr>
+    <tr><td>Buttons</td><td>Text, 34px tall</td><td>Icon, 28px circular, tooltip + hotkey</td></tr>
+    <tr><td>Status</td><td>Kind, timer and target, always</td><td>Timer only; target shows during countdown</td></tr>
+  </table>
+  <div class="note">
+    The old bar carried <code>REC</code>, the format name and the dimensions for the entire recording. All three are
+    answers to questions you ask once, before you start — not while you are working. The dot says recording, the
+    timer says how long, and the frame on screen says what. Everything else was decoration at 400px wide.
+  </div>
+
+  <h2>Fallbacks</h2>
+  <table>
+    <tr><th>Situation</th><th>Placement</th></tr>
+    <tr><td>Normal</td><td><code>9px</code> below the region, centred on it</td></tr>
+    <tr><td>Region bottom within <code>45px</code> of the screen bottom</td><td><code>9px</code> above the region top</td></tr>
+    <tr><td>Neither fits — region fills the display</td><td><code>9px</code> inside the region bottom</td></tr>
+    <tr><td>Region narrower than the pill</td><td>Pill centres on the region, clamped to stay on screen</td></tr>
+  </table>
+
+  <div class="note" style="border-color:var(--rec)">
+    <b>Red is the frame and the dot.</b> Stop keeps its <code>#C92A2A</code> fill because it is a destructive
+    button, not chrome. No red border on the bar — two red rectangles on one screen read as an error.
+  </div>
+
+  <div class="note">
+    <b>Code delta:</b> <code>open_recording_hud</code> is <code>420 × 58</code> at <code>y = region.y - 66.0</code>.
+    This spec needs a content-sized window ~<code>132 × 36</code> at <code>y = region.y + region.height + 9</code>,
+    with icon buttons replacing the text ones in <code>RecordingHud::render</code>. Hotkeys shown in tooltips
+    (<code>F9</code> / <code>F10</code>) are not in <code>HotkeySettings</code> yet — add them or drop the hint.
+  </div>
+</body>
+</html>

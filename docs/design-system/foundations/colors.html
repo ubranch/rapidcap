@@ -1,0 +1,152 @@
+<!-- @dsCard group="Foundations" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Color tokens</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-pill-off:#3A3A3A;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#7A7A7A;
+    --accent:#3478F6; --rec:#FF2D2D;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:660px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(172px,1fr)); gap:9px; }
+  .sw { border:1px solid #202020; box-shadow:inset 0 1px 0 #414141; border-radius:8px; overflow:hidden; background:var(--bg-card); }
+  .chip { height:56px; }
+  .meta { padding:9px 11px; }
+  .name { font-size:12px; font-weight:500; color:var(--text-label); }
+  .hex { font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--text-muted); margin-top:2px; }
+  .use { font-size:11px; color:var(--text-muted); margin-top:5px; line-height:1.4; }
+  .checker {
+    background-image:linear-gradient(45deg,#2a2a2a 25%,transparent 25%),linear-gradient(-45deg,#2a2a2a 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#2a2a2a 75%),linear-gradient(-45deg,transparent 75%,#2a2a2a 75%);
+    background-size:12px 12px; background-position:0 0,0 6px,6px -6px,-6px 0;
+  }
+  .note { border-left:2px solid var(--rec); padding-left:11px; font-size:12px; color:var(--text-muted); line-height:1.6; margin-top:14px; max-width:660px; }
+  .note b { color:var(--text-label); font-weight:500; }
+  pre { background:var(--bg-card); border:1px solid #202020; border-radius:8px; padding:14px;
+        font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--text-label); overflow:auto; line-height:1.6; }
+  .pillrow { display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+  .pill { padding:4px 11px; border-radius:999px; font-size:11px; font-weight:500; }
+</style>
+</head>
+<body>
+  <h1>Color tokens</h1>
+  <p class="lede">Pure neutral grayscale — <code>R = G = B</code> on every surface. No blue-gray tint anywhere. Colour appears exactly twice: the accent ring on an active control, and the recording red.</p>
+
+  <h2>Surfaces</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#111111"></div><div class="meta"><div class="name">bg-body</div><div class="hex">#111111</div><div class="use">Panel body below titlebar</div></div></div>
+    <div class="sw"><div class="chip" style="background:#1C1C1C"></div><div class="meta"><div class="name">bg-titlebar</div><div class="hex">#1C1C1C</div><div class="use">Strip is <b>lighter</b> than body</div></div></div>
+    <div class="sw"><div class="chip" style="background:#1C1C1C"></div><div class="meta"><div class="name">bg-card</div><div class="hex">#1C1C1C</div><div class="use">Mode cards + device rows</div></div></div>
+    <div class="sw"><div class="chip" style="background:#242424"></div><div class="meta"><div class="name">bg-hover</div><div class="hex">#242424</div><div class="use">Card / row hover — inferred</div></div></div>
+    <div class="sw"><div class="chip" style="background:#323232"></div><div class="meta"><div class="name">bg-chevron</div><div class="hex">#323232</div><div class="use">Split-button dropdown pane</div></div></div>
+    <div class="sw"><div class="chip" style="background:#282828"></div><div class="meta"><div class="name">bg-track</div><div class="hex">#282828</div><div class="use">Segmented control track</div></div></div>
+    <div class="sw"><div class="chip" style="background:#282828"></div><div class="meta"><div class="name">bg-pill</div><div class="hex">#282828</div><div class="use">Header badge</div></div></div>
+    <div class="sw"><div class="chip" style="background:#3A3A3A"></div><div class="meta"><div class="name">bg-pill-off</div><div class="hex">#3A3A3A</div><div class="use">Status pill, off state</div></div></div>
+  </div>
+
+  <h2>Borders</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#202020"></div><div class="meta"><div class="name">border-card</div><div class="hex">#202020</div><div class="use">Outer 1px, all four sides</div></div></div>
+    <div class="sw"><div class="chip" style="background:#414141"></div><div class="meta"><div class="name">border-top</div><div class="hex">#414141</div><div class="use">1px inner <b>top only</b></div></div></div>
+    <div class="sw"><div class="chip" style="background:#444444"></div><div class="meta"><div class="name">border-divider</div><div class="hex">#444444</div><div class="use">Split-button hairline</div></div></div>
+  </div>
+
+  <h2>Text</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#FCFCFC"></div><div class="meta"><div class="name">text-primary</div><div class="hex">#FCFCFC</div><div class="use">Wordmark, logo mark</div></div></div>
+    <div class="sw"><div class="chip" style="background:#DDDDDD"></div><div class="meta"><div class="name">text-label</div><div class="hex">#DDDDDD</div><div class="use">Card + row labels</div></div></div>
+    <div class="sw"><div class="chip" style="background:#E2E2E2"></div><div class="meta"><div class="name">text-badge</div><div class="hex">#E2E2E2</div><div class="use">Header badge text</div></div></div>
+    <div class="sw"><div class="chip" style="background:#A9A9A9"></div><div class="meta"><div class="name">text-pill</div><div class="hex">#A9A9A9</div><div class="use">Pill text — 4.6:1 on #3A3A3A</div></div></div>
+    <div class="sw"><div class="chip" style="background:#8A8A8A"></div><div class="meta"><div class="name">text-muted</div><div class="hex">#8A8A8A</div><div class="use">Titlebar icons + title at rest</div></div></div>
+    <div class="sw"><div class="chip" style="background:#7A7A7A"></div><div class="meta"><div class="name">text-dim</div><div class="hex">#7A7A7A</div><div class="use">Row icons only — never text</div></div></div>
+  </div>
+  <div class="note" style="border-color:var(--accent)">
+    Titlebar icons moved from <code>#7A7A7A</code> to <code>#8A8A8A</code>: on <code>#1C1C1C</code> the old value
+    measures <b>2.9:1</b> and the controls read as disabled. Hover goes to <code>#FCFCFC</code> so the affordance is
+    unmistakable.
+  </div>
+
+  <h2>Accent &amp; recording</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#3478F6"></div><div class="meta"><div class="name">accent</div><div class="hex">#3478F6</div><div class="use">Active segment ring, selected card</div></div></div>
+    <div class="sw"><div class="chip checker"><div style="height:100%;background:rgba(52,120,246,.16)"></div></div><div class="meta"><div class="name">accent-fill</div><div class="hex">#3478F6 · 16%</div><div class="use">Selected card fill</div></div></div>
+    <div class="sw"><div class="chip" style="background:#FF2D2D"></div><div class="meta"><div class="name">rec</div><div class="hex">#FF2D2D</div><div class="use">Region frame + HUD dot. Nothing else.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#C92A2A"></div><div class="meta"><div class="name">danger</div><div class="hex">#C92A2A</div><div class="use">Stop / Cancel button</div></div></div>
+    <div class="sw"><div class="chip" style="background:#E8A33D"></div><div class="meta"><div class="name">warn</div><div class="hex">#E8A33D</div><div class="use">Error bar, tray error badge</div></div></div>
+    <div class="sw"><div class="chip checker"><div style="height:100%;background:rgba(232,163,61,.12)"></div></div><div class="meta"><div class="name">warn-fill</div><div class="hex">#E8A33D · 12%</div><div class="use">Error bar background</div></div></div>
+    <div class="sw"><div class="chip" style="background:#F0C07A"></div><div class="meta"><div class="name">warn-text</div><div class="hex">#F0C07A</div><div class="use">Error message — 8.1:1 on the fill</div></div></div>
+  </div>
+  <div class="note" style="border-color:#E8A33D">
+    <b>Amber exists so failure never reads as recording.</b> Red is taken: it means a capture is live. An error bar in
+    <code>#FF2D2D</code> sitting under a red region frame is unreadable, and <code>#C92A2A</code> is the Stop button.
+    <code>--warn</code> is the only colour added beyond the source palette.
+  </div>
+  <div class="note">
+    <b>Deviation from the source spec:</b> accent is RapidCap's own <code>#3478F6</code>, not Cap's <code>#2382DE</code> —
+    it is already the accent in <code>window.rs</code> and sits in the same hue family. <code>rec</code> and <code>danger</code>
+    are RapidCap additions; the source panel has no recording state to colour.
+  </div>
+
+  <h2>Selection overlay</h2>
+  <div class="grid">
+    <div class="sw"><div class="chip checker"><div style="height:100%;background:rgba(0,0,0,.55)"></div></div><div class="meta"><div class="name">scrim</div><div class="hex">#000000 · 55%</div><div class="use">Full-screen dim</div></div></div>
+    <div class="sw"><div class="chip" style="background:#3478F6"></div><div class="meta"><div class="name">selection-border</div><div class="hex">#3478F6 · 2px</div><div class="use">Drag rect, window hover</div></div></div>
+    <div class="sw"><div class="chip checker"><div style="height:100%;background:rgba(52,120,246,.14)"></div></div><div class="meta"><div class="name">selection-fill</div><div class="hex">#3478F6 · 14%</div><div class="use">Inside the rect</div></div></div>
+    <div class="sw"><div class="chip checker"><div style="height:100%;background:rgba(28,28,28,.92)"></div></div><div class="meta"><div class="name">badge-float</div><div class="hex">#1C1C1C · 92%</div><div class="use">Size badge, hint pill</div></div></div>
+  </div>
+
+  <h2>Contrast</h2>
+  <div class="pillrow">
+    <span class="pill" style="background:#3A3A3A;color:#7A7A7A">Off · 2.4:1</span>
+    <span style="font-size:11px;color:var(--text-muted)">fails WCAG AA</span>
+    <span class="pill" style="background:#3A3A3A;color:#A9A9A9">Off · 4.6:1</span>
+    <span style="font-size:11px;color:var(--text-muted)">passes at <code>#A9A9A9</code></span>
+  </div>
+  <div class="note">
+    The <code>Off</code> pill carries state meaning, so it is not decorative — <code>#7A7A7A</code> on <code>#3A3A3A</code>
+    measures <b>2.4:1</b> and fails AA. Ship the pill text at <code>#A9A9A9</code> (4.6:1) and keep <code>#7A7A7A</code>
+    for icons at rest only.
+  </div>
+
+  <h2>Theme decision — dark only</h2>
+  <div class="note" style="border-color:var(--accent)">
+    <b>There is no light theme, and that is a decision rather than an omission.</b> Three of the four surfaces are dark
+    by necessity: the HUD and the region overlay float over arbitrary desktop content, and the tray icon has to read on
+    a dark taskbar. A light panel would be the only light surface in the product, and it would need a second full set
+    of raised and recessed shadows — the depth language does not invert, an inner shadow on white reads as dirt.
+  </div>
+  <div class="note">
+    <b>Code delta:</b> <code>window.rs:107-113</code> still branches on <code>window.appearance()</code> and carries a
+    full light palette. That branch should go, along with the <code>WindowAppearance</code> match — one palette,
+    no runtime check.
+  </div>
+
+  <h2>Copy-paste</h2>
+  <pre>:root {
+  --bg-body:#111111;    --bg-titlebar:#1C1C1C;  --bg-card:#1C1C1C;
+  --bg-hover:#242424;   --bg-chevron:#323232;   --bg-track:#282828;
+  --bg-pill:#282828;    --bg-pill-off:#3A3A3A;
+
+  --border-card:#202020; --border-top:#414141;  --border-divider:#444444;
+
+  --text-primary:#FCFCFC; --text-label:#DDDDDD;  --text-badge:#E2E2E2;
+  --text-pill:#A9A9A9;    --text-muted:#8A8A8A;  --text-dim:#7A7A7A;
+
+  --bg-tb-hover:#2A2A2A;  --border-tb:#3A3A3A;
+
+  --accent:#3478F6;  --rec:#FF2D2D;  --danger:#C92A2A;  --warn:#E8A33D;
+
+  --gap:9px;  --radius:8px;  --radius-pill:999px;
+}</pre>
+</body>
+</html>

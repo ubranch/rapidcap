@@ -1,0 +1,151 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RapidCap · Form controls</title>
+<style>
+  :root {
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-hover:#242424; --bg-track:#282828; --bg-well:#161616;
+    --border-card:#202020; --border-top:#414141; --border-divider:#3A3A3A;
+    --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
+    --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
+    --gap:9px; --radius:8px;
+    --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:28px; background:var(--bg-body); color:var(--text-label); font-family:var(--font); }
+  h1 { font-size:20px; font-weight:600; margin:0 0 4px; color:var(--text-primary); }
+  p.lede { margin:0 0 8px; font-size:12px; color:var(--text-muted); line-height:1.6; max-width:680px; }
+  h2 { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--text-muted); margin:28px 0 10px; }
+  code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
+  .caption { font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.5; max-width:376px; }
+  .demo { width:376px; display:flex; flex-direction:column; gap:2px;
+          background:var(--bg-card); border:1px solid var(--border-card);
+          box-shadow:inset 0 1px 0 var(--border-top); border-radius:var(--radius); padding:4px; }
+  .row { height:44px; padding:0 10px; border-radius:6px; display:flex; align-items:center; gap:10px; }
+  .row:hover { background:var(--bg-hover); }
+  .row .lbl { flex:1; min-width:0; font-size:13px; color:var(--text-label); line-height:1.35; }
+  .row .lbl small { display:block; font-size:11px; color:var(--text-muted); margin-top:3px; }
+  .row.tall { height:54px; }
+
+  /* toggle */
+  .tog { width:38px; height:22px; border-radius:999px; background:var(--bg-track); position:relative;
+         cursor:pointer; flex:none; box-shadow:inset 0 1px 2px rgba(0,0,0,.5); }
+  .tog i { position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%;
+           background:#8A8A8A; transition:none; }
+  .tog.on { background:var(--accent); box-shadow:none; }
+  .tog.on i { left:19px; background:#FFFFFF; }
+  .tog.focus { outline:2px solid var(--accent); outline-offset:3px; }
+
+  /* select — value + chevron, reads as a chip */
+  .sel { height:30px; padding:0 6px 0 11px; border-radius:999px; background:var(--bg-card);
+         border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+         display:inline-flex; align-items:center; gap:5px; cursor:pointer; flex:none;
+         font-size:12px; font-weight:500; color:var(--text-label); line-height:1; }
+  .sel:hover { background:var(--bg-hover); }
+  .sel .cv { color:var(--text-muted); display:flex; }
+  .sel.focus { outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* stepper */
+  .step { height:30px; display:inline-flex; align-items:center; border-radius:999px;
+          background:var(--bg-card); border:1px solid var(--border-card);
+          box-shadow:inset 0 1px 0 var(--border-top); flex:none; overflow:hidden; }
+  .step button { width:30px; height:30px; border:none; background:none; color:var(--text-pill);
+                 display:flex; align-items:center; justify-content:center; cursor:pointer;
+                 font-family:var(--font); font-size:14px; }
+  .step button:hover { background:var(--bg-hover); color:var(--text-primary); }
+  .step button:disabled { opacity:.35; cursor:default; }
+  .step button:disabled:hover { background:none; }
+  .step .v { min-width:54px; text-align:center; font-size:12px; font-weight:500;
+             font-variant-numeric:tabular-nums; color:var(--text-label); }
+
+  /* path field — recessed, read-only display + action */
+  .path { flex:1; min-width:0; height:30px; padding:0 4px 0 11px; border-radius:999px;
+          background:var(--bg-well); box-shadow:inset 0 1px 3px rgba(0,0,0,.55);
+          display:flex; align-items:center; gap:8px; }
+  .path .p { flex:1; min-width:0; font-size:12px; color:var(--text-pill); line-height:1;
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; direction:rtl; text-align:left; }
+  .path button { height:24px; padding:0 10px; border-radius:999px; border:none; background:#2A2A2A;
+                 color:var(--text-label); font-family:var(--font); font-size:11px; font-weight:500;
+                 cursor:pointer; flex:none; }
+  .path button:hover { background:#343434; }
+
+  /* hotkey field */
+  .hk { height:30px; padding:0 11px; border-radius:999px; background:var(--bg-well);
+        box-shadow:inset 0 1px 3px rgba(0,0,0,.55); display:inline-flex; align-items:center; gap:5px;
+        font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--text-label);
+        cursor:pointer; flex:none; }
+  .hk:hover { background:#1A1A1A; }
+  .hk.capturing { box-shadow:inset 0 0 0 1px var(--accent); color:#8FB6FB; }
+  .hk.clash { box-shadow:inset 0 0 0 1px rgba(232,163,61,.55); color:#F0C07A; }
+
+  .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
+          line-height:1.6; margin-top:14px; max-width:680px; }
+  .note b { color:var(--text-label); font-weight:500; }
+  ul { margin:8px 0 0; padding-left:18px; font-size:12px; color:var(--text-muted); line-height:1.8; }
+</style>
+</head>
+<body>
+  <h1>Form controls</h1>
+  <p class="lede">Five controls, enough for every setting the product has. All of them follow the one depth rule: <b>raised means you press it, recessed means you read it</b>.</p>
+
+  <h2>Toggle</h2>
+  <div class="demo">
+    <div class="row"><span class="lbl">Copy screenshots to clipboard</span><span class="tog on"><i></i></span></div>
+    <div class="row"><span class="lbl">Play a sound on capture</span><span class="tog"><i></i></span></div>
+    <div class="row"><span class="lbl">Launch at login</span><span class="tog focus"><i></i></span></div>
+    <div class="row tall"><span class="lbl">Hide the panel while recording<small>The tray icon and HUD stay visible</small></span><span class="tog on"><i></i></span></div>
+  </div>
+  <div class="caption">38 × 22, knob 16. Off is a recessed track — the same inner shadow the status well uses — so an unset toggle reads as an empty slot rather than a dark button.</div>
+
+  <h2>Select</h2>
+  <div class="demo">
+    <div class="row"><span class="lbl">Video frame rate</span><span class="sel">60 FPS <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+    <div class="row"><span class="lbl">Quality</span><span class="sel">High <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+    <div class="row tall"><span class="lbl">GIF dithering<small>sierra2_4a keeps gradients smooth at 256 colours</small></span><span class="sel focus">Sierra 2-4A <span class="cv"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></span></span></div>
+  </div>
+  <div class="caption">Same pill as a footer chip, 30px instead of 36 because it lives inside a row. Opens the standard menu.</div>
+
+  <h2>Stepper</h2>
+  <div class="demo">
+    <div class="row"><span class="lbl">Countdown</span><span class="step"><button disabled>−</button><span class="v">Off</span><button>+</button></span></div>
+    <div class="row"><span class="lbl">Countdown</span><span class="step"><button>−</button><span class="v">5 s</span><button>+</button></span></div>
+    <div class="row"><span class="lbl">JPEG quality</span><span class="step"><button>−</button><span class="v">90</span><button>+</button></span></div>
+  </div>
+  <div class="caption">For short bounded ranges only. Ends disable rather than wrap, and the value uses tabular digits so the control does not resize as you click.</div>
+
+  <h2>Path field</h2>
+  <div class="demo">
+    <div class="row"><span class="lbl" style="flex:none;width:78px">Save to</span>
+      <span class="path"><span class="p">C:\Users\inspire\Documents\RapidCap</span><button>Change</button></span>
+    </div>
+  </div>
+  <div class="caption">Recessed, read-only, truncated from the <b>left</b> — the tail of a path is the part that identifies it. Full string in the tooltip.</div>
+
+  <h2>Hotkey field</h2>
+  <div class="demo">
+    <div class="row"><span class="lbl">Capture region</span><span class="hk">Alt + Q</span></div>
+    <div class="row"><span class="lbl">Record video</span><span class="hk capturing">Press keys…</span></div>
+    <div class="row tall"><span class="lbl">Record GIF<small>Already used by Windows Snipping Tool</small></span><span class="hk clash">Ctrl + Shift + PrtSc</span></div>
+  </div>
+  <div class="caption">Recessed like the path field — it displays a binding, it is not a button. Capturing shows an accent ring; a conflict shows the amber ring and names the owner underneath.</div>
+
+  <h2>Rules</h2>
+  <div class="note">
+    <ul>
+      <li>Row height <code>44px</code>, or <code>54px</code> when the label carries a second line. Rows are borderless inside a card and use a 6px hover radius.</li>
+      <li>Every control sits <b>right-aligned</b> in its row. The label column is the only thing that ever wraps.</li>
+      <li>Secondary text is 11px <code>#8A8A8A</code>, one line, and explains a consequence — never repeats the label.</li>
+      <li>Focus is the same 2px accent outline everywhere, offset 2px (3px on the toggle, which has no border of its own).</li>
+      <li>No control shows a unit twice. <code>60 FPS</code> in the value means the label is just "Video frame rate".</li>
+    </ul>
+  </div>
+  <div class="note" style="border-color:var(--warn)">
+    <b>None of these exist in code.</b> <code>Settings</code> is written to disk by <code>SettingsStore</code> and read
+    at startup, but nothing in the UI mutates it — every value in the app today comes from
+    <code>Settings::default()</code> or hand-editing the JSON.
+  </div>
+</body>
+</html>
