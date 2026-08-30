@@ -19,6 +19,8 @@ public class RcWin {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int index);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
+  [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
 }
 "@ -ErrorAction SilentlyContinue
@@ -27,6 +29,24 @@ $proc = Get-Process -Name RapidCap -ErrorAction SilentlyContinue | Select-Object
 if (-not $proc) { Write-Host "FAIL  RapidCap is not running"; exit 1 }
 $h = [IntPtr]$proc.MainWindowHandle
 if (-not [RcWin]::IsWindowVisible($h)) { Write-Host "FAIL  window is not visible"; exit 1 }
+
+# Everything below measures a screen grab, which is in *physical* pixels, while
+# the design is specified in *logical* ones. On a 100% display those are the
+# same number and the difference never shows. At 125% every band is 1.25x the
+# size the design names, and this script used to report ten failures against an
+# app that was laying out correctly.
+#
+# The awareness is pinned rather than inherited: loading System.Drawing flips
+# the process into per-monitor mode on its own, so an un-pinned run measures
+# physical or logical depending on what happened to be loaded first.
+$PER_MONITOR_V2 = [IntPtr](-4)
+[void][RcWin]::SetThreadDpiAwarenessContext($PER_MONITOR_V2)
+$scale = [RcWin]::GetDpiForWindow($h) / 96.0
+
+# Logical -> physical, for a coordinate the design gives us.
+function Px([double]$logical) { [int][Math]::Round($logical * $scale) }
+# Physical -> logical, for a distance we measured off the bitmap.
+function Lg([double]$physical) { $physical / $scale }
 
 # Capture by moving the panel to a clear patch and pinning it topmost, rather
 # than by activating it. A background console cannot take the foreground -
@@ -67,6 +87,12 @@ function Expect([string]$name, $got, $want) {
 function ExpectNear([string]$name, $got, $want) {
   Check $name ([Math]::Abs($got - $want) -le 1) "expected $want +/-1, measured $got"
 }
+# Measured physical distance against a logical design value. Rounding is done
+# per element by GPUI, so a logical pixel of slack is the honest tolerance.
+function ExpectLogical([string]$name, $physical, $want) {
+  $got = [Math]::Round((Lg $physical), 1)
+  Check $name ([Math]::Abs($got - $want) -le 1) "expected $want logical px +/-1, measured $got ($physical physical)"
+}
 
 # --- measure, never assume -------------------------------------------------
 
@@ -84,7 +110,9 @@ $bodyTop = $y
 
 # Walk a column inside the left card, well clear of the centred icon and label.
 # x=196 lands in the 9px gap between the two cards; x=30 is 18px into the card.
-$col = 30
+# Stated in design (logical) pixels and converted, so the probe lands in the
+# same place on a 100% and a 125% display.
+$col = Px 30
 # Card and chip bands are the runs of card tone bounded by body tone.
 $bands = @()
 $inBand = $false
@@ -97,60 +125,61 @@ for ($y = $bodyTop; $y -lt $H - 2; $y++) {
 
 Write-Host ""
 Write-Host "RapidCap panel - pixel conformance" -ForegroundColor Cyan
-Write-Host ("  window {0} x {1}, client top at y={2}" -f $W, $H, $top)
+Write-Host ("  window {0} x {1} physical at {2}x scale, client top at y={3}" -f $W, $H, $scale, $top)
 Write-Host ""
 
 Write-Host "Geometry"
-ExpectNear "panel width 400" ($W - 2) 400
-ExpectNear "titlebar height 44" $titlebarH 44
+# The 2px is the physical resize border, subtracted before converting.
+ExpectLogical "panel width 400" ($W - 2) 400
+ExpectLogical "titlebar height 44" $titlebarH 44
 # The header contributes bands of its own (badge, segmented track), so the two
 # card rows and the footer are the last three.
 Check "at least three bands found" ($bands.Count -ge 3) "found $($bands.Count)"
 if ($bands.Count -ge 3) {
   $bands = $bands[-3..-1]
-  Expect "card row 1 height 64" $bands[0].Height 64
-  Expect "card row 2 height 64" $bands[1].Height 64
-  Expect "gap between card rows 9" ($bands[1].Top - ($bands[0].Top + $bands[0].Height)) 9
-  Expect "gap card row 2 to footer 9" ($bands[2].Top - ($bands[1].Top + $bands[1].Height)) 9
-  Expect "footer chip height 36" $bands[2].Height 36
+  ExpectLogical "card row 1 height 64" $bands[0].Height 64
+  ExpectLogical "card row 2 height 64" $bands[1].Height 64
+  ExpectLogical "gap between card rows 9" ($bands[1].Top - ($bands[0].Top + $bands[0].Height)) 9
+  ExpectLogical "gap card row 2 to footer 9" ($bands[2].Top - ($bands[1].Top + $bands[1].Height)) 9
+  ExpectLogical "footer chip height 36" $bands[2].Height 36
   # pad 12 + header 40 + header margin-bottom 3 + the column gap 9 that the flex
   # container adds between every pair of children.
-  Expect "body padding above card row 1" ($bands[0].Top - $bodyTop) (12 + 40 + 3 + 9)
-  ExpectNear "body padding below footer 12" ($H - 1 - ($bands[2].Top + $bands[2].Height)) 12
+  ExpectLogical "body padding above card row 1" ($bands[0].Top - $bodyTop) (12 + 40 + 3 + 9)
+  ExpectLogical "body padding below footer 12" ($H - 1 - ($bands[2].Top + $bands[2].Height)) 12
 }
 
 Write-Host ""
 Write-Host "Tokens"
 $cardTop = if ($bands.Count -ge 1) { $bands[0].Top } else { $bodyTop }
-Check "titlebar #1C1C1C" ((Hex ([int]($W / 2)) ($top + 20)) -eq '#1C1C1C') ("got " + (Hex ([int]($W / 2)) ($top + 20)))
-Check "body #111111" ((Hex 6 ($bodyTop + 20)) -eq '#111111') ("got " + (Hex 6 ($bodyTop + 20)))
+Check "titlebar #1C1C1C" ((Hex ([int]($W / 2)) ($top + (Px 20))) -eq '#1C1C1C') ("got " + (Hex ([int]($W / 2)) ($top + (Px 20))))
+Check "body #111111" ((Hex (Px 6) ($bodyTop + (Px 20))) -eq '#111111') ("got " + (Hex (Px 6) ($bodyTop + (Px 20))))
 Check "card border #202020" ((Hex $col $cardTop) -eq '#202020') ("got " + (Hex $col $cardTop))
 # Sampled at x=60: the highlight is inset by the corner radius, so x=30 sits in
 # the curve on the pill and would read the fill.
-Check "card top highlight #414141" ((Hex 60 ($cardTop + 1)) -eq '#414141') ("got " + (Hex 60 ($cardTop + 1)))
-Check "card fill #1C1C1C" ((Hex $col ($cardTop + 20)) -eq '#1C1C1C') ("got " + (Hex $col ($cardTop + 20)))
+Check "card top highlight #414141" ((Hex (Px 60) ($cardTop + 1)) -eq '#414141') ("got " + (Hex (Px 60) ($cardTop + 1)))
+Check "card fill #1C1C1C" ((Hex $col ($cardTop + (Px 20))) -eq '#1C1C1C') ("got " + (Hex $col ($cardTop + (Px 20))))
 
 # The Video card is one undivided surface now that the frame rate control is
 # gone. Scan its row right-to-left: no split-button hairline, and the card fill
 # runs all the way to the edge.
 $cardRight = 0
 if ($bands.Count -ge 2) {
-  $mid = $bands[1].Top + 32
-  for ($x = [int]($W / 2) - 4; $x -gt 20; $x--) {
+  $mid = $bands[1].Top + (Px 32)
+  for ($x = [int]($W / 2) - (Px 4); $x -gt (Px 20); $x--) {
     if ((Hex $x $mid) -ne '#111111') { $cardRight = $x; break }
   }
   $divider = 0
-  for ($x = $cardRight; $x -gt 20; $x--) {
+  for ($x = $cardRight; $x -gt (Px 20); $x--) {
     if ((Hex $x $mid) -eq '#444444') { $divider = $x; break }
   }
   Check "the Video card has no split-button divider" ($divider -eq 0) "a #444444 divider is still drawn at x=$divider"
-  Check "card fill runs to the right edge" ((Hex ($cardRight - 6) $mid) -eq '#1C1C1C') ("got " + (Hex ($cardRight - 6) $mid))
+  Check "card fill runs to the right edge" ((Hex ($cardRight - (Px 6)) $mid) -eq '#1C1C1C') ("got " + (Hex ($cardRight - (Px 6)) $mid))
 }
 
 # Segmented control: the active slot draws a 2px accent ring.
 $foundAccent = $false
-for ($y = $bodyTop; $y -lt $bodyTop + 60 -and -not $foundAccent; $y++) {
-  for ($x = [int]($W / 2); $x -lt $W - 4; $x++) {
+for ($y = $bodyTop; $y -lt $bodyTop + (Px 60) -and -not $foundAccent; $y++) {
+  for ($x = [int]($W / 2); $x -lt $W - (Px 4); $x++) {
     if ((Hex $x $y) -eq '#3478F6') { $foundAccent = $true; break }
   }
 }
@@ -167,11 +196,11 @@ Write-Host ""
 Write-Host "Artifacts"
 if ($bands.Count -ge 3) {
   $chipTop = $bands[2].Top
-  $chipMid = $chipTop + 18
+  $chipMid = $chipTop + (Px 18)
   $chipL = 0
-  for ($x = 6; $x -lt $W - 6; $x++) { if ((Hex $x $chipMid) -ne '#111111') { $chipL = $x; break } }
+  for ($x = (Px 6); $x -lt $W - (Px 6); $x++) { if ((Hex $x $chipMid) -ne '#111111') { $chipL = $x; break } }
   $chipR = 0
-  for ($x = $chipL; $x -lt $W - 6; $x++) { if ((Hex $x $chipMid) -eq '#111111') { $chipR = $x - 1; break } }
+  for ($x = $chipL; $x -lt $W - (Px 6); $x++) { if ((Hex $x $chipMid) -eq '#111111') { $chipR = $x - 1; break } }
   Check "footer chip found" ($chipL -gt 0 -and $chipR -gt $chipL) "measured x $chipL..$chipR"
 
   # A pill's radius is half its height, so its top edge only goes flat 18px in.
@@ -179,8 +208,8 @@ if ($bands.Count -ge 3) {
   for ($x = 0; $x -lt $W; $x++) { if ((Hex $x ($chipTop + 1)) -eq '#414141') { $hl += $x } }
   Check "chip highlight is drawn" ($hl.Count -gt 0) "no #414141 on the chip top row"
   if ($hl.Count -gt 0) {
-    Check "chip highlight clears the left cap" (($hl[0] - $chipL) -ge 17) ("highlight starts " + ($hl[0] - $chipL) + "px into a chip whose cap is 18px wide - it is cutting across the curve")
-    Check "chip highlight clears the right cap" (($chipR - $hl[-1]) -ge 17) ("highlight ends " + ($chipR - $hl[-1]) + "px short of the right cap")
+    Check "chip highlight clears the left cap" (($hl[0] - $chipL) -ge (Px 17)) ("highlight starts " + [Math]::Round((Lg ($hl[0] - $chipL)), 1) + " logical px into a chip whose cap is 18px wide - it is cutting across the curve")
+    Check "chip highlight clears the right cap" (($chipR - $hl[-1]) -ge (Px 17)) ("highlight ends " + [Math]::Round((Lg ($chipR - $hl[-1])), 1) + " logical px short of the right cap")
   }
 }
 
