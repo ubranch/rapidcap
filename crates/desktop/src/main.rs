@@ -174,6 +174,11 @@ fn main() -> anyhow::Result<()> {
                         controller.update(cx, |controller, cx| {
                             controller.finish_screenshot(result, cx)
                         });
+                        // Opening the overlay minimised the panel, and
+                        // `activate_window` only raises and focuses - it cannot
+                        // un-minimise. Without this the panel simply never came
+                        // back after a screenshot.
+                        show_main_window();
                         let _ = recording_window.update(cx, |_view, window, _cx| {
                             window.activate_window();
                         });
