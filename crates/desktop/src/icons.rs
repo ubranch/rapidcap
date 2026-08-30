@@ -78,7 +78,9 @@ impl Icon {
             Self::Pause => {
                 r#"<rect x="7" y="5" width="3.4" height="14" rx="1.2" fill="black" stroke="none"/><rect x="13.6" y="5" width="3.4" height="14" rx="1.2" fill="black" stroke="none"/>"#
             }
-            Self::Play => r#"<path d="M8 5.5v13l11-6.5z" fill="black" stroke="none"/>"#,
+            // Spans 7-17 on both axes, exactly like `Pause`, so swapping the two
+            // inside a button does not shift the glyph or change its weight.
+            Self::Play => r#"<path d="M7 5.5v13l10-6.5z" fill="black" stroke="none"/>"#,
             Self::Stop => {
                 r#"<rect x="5" y="5" width="14" height="14" rx="2.4" fill="black" stroke="none"/>"#
             }
@@ -132,38 +134,41 @@ impl Icon {
         }
     }
 
-    /// Stable asset name, without directory or extension.
-    const fn name(self) -> &'static str {
+    /// The asset path GPUI resolves this icon through.
+    ///
+    /// Spelled out per variant rather than built from a stem: `source` is hit
+    /// once per icon per frame, and a `format!` there allocated on every one.
+    const fn source_path(self) -> &'static str {
         match self {
-            Self::Region => "region",
-            Self::Window => "window",
-            Self::Video => "video",
-            Self::Gif => "gif",
-            Self::Gallery => "gallery",
-            Self::Folder => "folder",
-            Self::Pause => "pause",
-            Self::Play => "play",
-            Self::Stop => "stop",
-            Self::Dot => "dot",
-            Self::Clock => "clock",
-            Self::Instant => "instant",
-            Self::AudioOff => "audio-off",
-            Self::AudioLow => "audio-low",
-            Self::AudioOn => "audio-on",
-            Self::Microphone => "microphone",
-            Self::Mark => "mark",
-            Self::KeepOnTop => "keep-on-top",
-            Self::Settings => "settings",
-            Self::Minimize => "minimize",
-            Self::Close => "close",
-            Self::Back => "back",
-            Self::Check => "check",
-            Self::Copy => "copy",
-            Self::Delete => "delete",
-            Self::Saved => "saved",
-            Self::Open => "open",
-            Self::Exit => "exit",
-            Self::Warning => "warning",
+            Self::Region => "icons/region.svg",
+            Self::Window => "icons/window.svg",
+            Self::Video => "icons/video.svg",
+            Self::Gif => "icons/gif.svg",
+            Self::Gallery => "icons/gallery.svg",
+            Self::Folder => "icons/folder.svg",
+            Self::Pause => "icons/pause.svg",
+            Self::Play => "icons/play.svg",
+            Self::Stop => "icons/stop.svg",
+            Self::Dot => "icons/dot.svg",
+            Self::Clock => "icons/clock.svg",
+            Self::Instant => "icons/instant.svg",
+            Self::AudioOff => "icons/audio-off.svg",
+            Self::AudioLow => "icons/audio-low.svg",
+            Self::AudioOn => "icons/audio-on.svg",
+            Self::Microphone => "icons/microphone.svg",
+            Self::Mark => "icons/mark.svg",
+            Self::KeepOnTop => "icons/keep-on-top.svg",
+            Self::Settings => "icons/settings.svg",
+            Self::Minimize => "icons/minimize.svg",
+            Self::Close => "icons/close.svg",
+            Self::Back => "icons/back.svg",
+            Self::Check => "icons/check.svg",
+            Self::Copy => "icons/copy.svg",
+            Self::Delete => "icons/delete.svg",
+            Self::Saved => "icons/saved.svg",
+            Self::Open => "icons/open.svg",
+            Self::Exit => "icons/exit.svg",
+            Self::Warning => "icons/warning.svg",
         }
     }
 
@@ -182,8 +187,8 @@ impl Icon {
     }
 
     /// The asset path GPUI resolves through [`IconAssets`].
-    pub fn source(self) -> SharedString {
-        SharedString::from(format!("icons/{}.svg", self.name()))
+    pub const fn source(self) -> SharedString {
+        SharedString::new_static(self.source_path())
     }
 
     /// Render at `size` in `colour`.
@@ -211,15 +216,9 @@ pub struct IconAssets;
 
 impl AssetSource for IconAssets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
-        let Some(name) = path
-            .strip_prefix("icons/")
-            .and_then(|rest| rest.strip_suffix(".svg"))
-        else {
-            return Ok(None);
-        };
         Ok(ALL_ICONS
             .iter()
-            .find(|icon| icon.name() == name)
+            .find(|icon| icon.source_path() == path)
             .map(|icon| Cow::Owned(icon.to_svg().into_bytes())))
     }
 
@@ -319,7 +318,7 @@ mod tests {
 
     #[test]
     fn icon_names_are_unique() {
-        let mut names: Vec<_> = ALL.iter().map(|icon| icon.name()).collect();
+        let mut names: Vec<_> = ALL.iter().map(|icon| icon.source_path()).collect();
         names.sort_unstable();
         let count = names.len();
         names.dedup();
