@@ -346,7 +346,10 @@ mod tests {
         // `RADIUS_PILL` is larger than any pill is tall, so a pill has to clamp
         // to half its own height or the caps stop being semicircles.
         assert_eq!(pill_radius(CHIP_H), 18.0);
-        assert!(pill_radius(CHIP_H) > RADIUS, "a pill is rounder than a card");
+        assert!(
+            pill_radius(CHIP_H) > RADIUS,
+            "a pill is rounder than a card"
+        );
     }
 
     #[test]

@@ -17,7 +17,9 @@ fn pixels() -> Vec<u8> {
 }
 
 fn stem(process_name: &str) -> String {
-    OutputNamer::for_test(SUFFIX).unwrap().file_stem(process_name)
+    OutputNamer::for_test(SUFFIX)
+        .unwrap()
+        .file_stem(process_name)
 }
 
 #[test]

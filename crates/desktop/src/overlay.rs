@@ -156,8 +156,16 @@ impl Render for RegionOverlay {
                     )))
                     .child(drag_handle().left(px(HANDLE_INSET)).top(px(HANDLE_INSET)))
                     .child(drag_handle().right(px(HANDLE_INSET)).top(px(HANDLE_INSET)))
-                    .child(drag_handle().left(px(HANDLE_INSET)).bottom(px(HANDLE_INSET)))
-                    .child(drag_handle().right(px(HANDLE_INSET)).bottom(px(HANDLE_INSET))),
+                    .child(
+                        drag_handle()
+                            .left(px(HANDLE_INSET))
+                            .bottom(px(HANDLE_INSET)),
+                    )
+                    .child(
+                        drag_handle()
+                            .right(px(HANDLE_INSET))
+                            .bottom(px(HANDLE_INSET)),
+                    ),
             );
         } else if let Some(target) = &self.hovered {
             let (region, label) = match target {
@@ -415,10 +423,8 @@ impl Render for RecordingHud {
         // Long recordings stop feeling watched: after three quiet seconds the bar
         // drops to 55% and comes back on hover. Only while something is running -
         // a countdown is asking a question and has to stay legible.
-        let faded = matches!(
-            state,
-            CaptureState::Recording(_) | CaptureState::Paused(_)
-        ) && self.pointer_seen.elapsed() >= HUD_FADE_AFTER;
+        let faded = matches!(state, CaptureState::Recording(_) | CaptureState::Paused(_))
+            && self.pointer_seen.elapsed() >= HUD_FADE_AFTER;
         // The window is a transparent letterbox; the pill inside it is what the
         // user sees, so it can size to its content the way the spec asks.
         div()
@@ -489,11 +495,16 @@ impl Render for RecordingHud {
                     // sideways at the exact moment the pointer was heading for
                     // it; it greys out instead.
                     .child(
-                        hud_button("rapidcap.hud-pause", pause_label, pause_icon, false, can_pause)
-                            .when(can_pause, |button| {
-                                button
-                                    .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx)))
-                            }),
+                        hud_button(
+                            "rapidcap.hud-pause",
+                            pause_label,
+                            pause_icon,
+                            false,
+                            can_pause,
+                        )
+                        .when(can_pause, |button| {
+                            button.on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx)))
+                        }),
                     )
                     .child(
                         hud_button(
@@ -854,5 +865,4 @@ mod tests {
         let (x, _) = hud_origin(&narrow, screen);
         assert_eq!(x, 0.0);
     }
-
 }

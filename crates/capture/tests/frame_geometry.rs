@@ -93,7 +93,10 @@ fn an_intersection_that_only_touches_an_edge_is_not_a_capture() {
     // Sharing a border means zero overlapping pixels, and a one-pixel overlap
     // is under the same two-pixel floor the drag uses.
     let monitor = region(0, 0, 1920, 1080);
-    assert_eq!(region(-400, 0, 400, 100).intersection(monitor.clone()), None);
+    assert_eq!(
+        region(-400, 0, 400, 100).intersection(monitor.clone()),
+        None
+    );
     assert_eq!(region(-400, 0, 401, 100).intersection(monitor), None);
 }
 

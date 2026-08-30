@@ -221,9 +221,9 @@ impl Render for MainWindow {
                                     false,
                                     recording_video,
                                 )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.dispatch(CaptureCommand::ToggleVideo, cx)
-                                }))
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| this.dispatch(CaptureCommand::ToggleVideo, cx),
+                                )),
                             )
                             .child(
                                 mode_card(
@@ -236,9 +236,9 @@ impl Render for MainWindow {
                                     false,
                                     recording_gif,
                                 )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.dispatch(CaptureCommand::ToggleGif, cx)
-                                }))
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| this.dispatch(CaptureCommand::ToggleGif, cx),
+                                )),
                             ),
                     )
                     .child(match error {
@@ -264,10 +264,13 @@ impl Render for MainWindow {
                                     },
                                     Some(audio),
                                 )
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.controller
-                                        .update(cx, |controller, cx| controller.toggle_audio(cx));
-                                })),
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.controller.update(cx, |controller, cx| {
+                                            controller.toggle_audio(cx)
+                                        });
+                                    },
+                                )),
                             )
                             .child(
                                 chip(

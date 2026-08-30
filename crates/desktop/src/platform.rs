@@ -1,12 +1,12 @@
 use std::{
     cell::Cell,
     mem::size_of,
+    os::windows::ffi::OsStrExt as _,
+    path::{Path, PathBuf},
     sync::{
         OnceLock,
         atomic::{AtomicBool, Ordering},
     },
-    os::windows::ffi::OsStrExt as _,
-    path::{Path, PathBuf},
     thread,
     time::Duration,
 };
@@ -27,19 +27,18 @@ use tray_icon::{
 use windows::{
     Win32::{
         Foundation::{
-            CloseHandle, COLORREF, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND,
+            COLORREF, CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND,
             LPARAM, LRESULT, POINT, RECT, WPARAM,
         },
         Graphics::{
             Dwm::{
-                DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_EXTENDED_FRAME_BOUNDS,
-                DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWM_WINDOW_CORNER_PREFERENCE,
+                DWM_WINDOW_CORNER_PREFERENCE, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
+                DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
                 DwmGetWindowAttribute, DwmSetWindowAttribute,
             },
             Gdi::{
                 CombineRgn, CreateRectRgn, CreateSolidBrush, DeleteObject, GetMonitorInfoW,
-                MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, RGN_DIFF,
-                SetWindowRgn,
+                MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, RGN_DIFF, SetWindowRgn,
             },
         },
         System::LibraryLoader::GetModuleHandleW,
@@ -51,16 +50,15 @@ use windows::{
             HiDpi::GetDpiForWindow,
             Shell::ShellExecuteW,
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, FindWindowW, GWL_STYLE, GW_HWNDNEXT,
+                CreateWindowExW, DefWindowProcW, FindWindowW, GW_HWNDNEXT, GWL_STYLE,
                 GetClientRect, GetCursorPos, GetTopWindow, GetWindow, GetWindowLongPtrW,
                 GetWindowRect, GetWindowThreadProcessId, HWND_NOTOPMOST, HWND_TOPMOST, IsIconic,
                 IsWindowVisible, LWA_ALPHA, RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW,
                 SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
                 SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow, SetLayeredWindowAttributes,
-                SetWindowLongPtrW, SetWindowPos, ShowWindow, WNDCLASSW,
-                WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-                WS_CAPTION, WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_POPUP, WS_SYSMENU,
-                WS_THICKFRAME,
+                SetWindowLongPtrW, SetWindowPos, ShowWindow, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED,
+                WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+                WS_MAXIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
             },
         },
     },
@@ -614,12 +612,7 @@ fn frame_window() -> Option<HWND> {
     let class = w!("RapidCapRecordingFrame");
     let instance = HINSTANCE(unsafe { GetModuleHandleW(None) }.ok()?.0);
     let brush = unsafe { CreateSolidBrush(COLORREF(frame_colour())) };
-    unsafe extern "system" fn proc(
-        window: HWND,
-        message: u32,
-        w: WPARAM,
-        l: LPARAM,
-    ) -> LRESULT {
+    unsafe extern "system" fn proc(window: HWND, message: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         unsafe { DefWindowProcW(window, message, w, l) }
     }
     let window_class = WNDCLASSW {

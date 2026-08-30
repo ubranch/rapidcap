@@ -51,7 +51,10 @@ fn saving_over_an_existing_file_replaces_it_whole() {
 
     assert_eq!(store.load().unwrap(), Settings::default());
     let raw = std::fs::read(temp.path().join("settings.json")).unwrap();
-    assert!(!raw.ends_with(b"xxxx"), "old bytes must not survive the tail");
+    assert!(
+        !raw.ends_with(b"xxxx"),
+        "old bytes must not survive the tail"
+    );
 }
 
 #[test]
