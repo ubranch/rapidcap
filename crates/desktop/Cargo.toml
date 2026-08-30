@@ -10,6 +10,9 @@ publish.workspace = true
 name = "RapidCap"
 path = "src/main.rs"
 
+[build-dependencies]
+embed-resource = "3.0.11"
+
 [dependencies]
 anyhow.workspace = true
 async-channel.workspace = true
@@ -21,6 +24,7 @@ serde_json.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
+raw-window-handle.workspace = true
 tray-icon.workspace = true
 windows.workspace = true
 

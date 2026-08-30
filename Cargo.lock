@@ -4638,10 +4638,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
+ "embed-resource",
  "global-hotkey",
  "gpui",
  "gpui_platform",
  "rapidcap-capture",
+ "raw-window-handle",
  "serde_json",
  "tempfile",
  "tracing",

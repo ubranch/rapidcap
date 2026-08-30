@@ -1,0 +1,6 @@
+// Resource ID 1 is not decoration: GPUI's Windows platform layer looks the
+// window-class icon up by that exact ordinal
+// (`LoadImageW(module, PCWSTR(1 as _), IMAGE_ICON, ..)`), and the shell picks
+// the lowest-numbered icon for the exe. One entry covers Explorer, the
+// taskbar, alt-tab and the window corner.
+1 ICON "assets/rapidcap.ico"
