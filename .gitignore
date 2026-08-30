@@ -1,4 +1,5 @@
-/dist/
-/assets/ffmpeg/bin/
-*.tmp
 *.part
+*.tmp
+/assets/ffmpeg/bin/
+/dist/
+/target/
