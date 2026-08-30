@@ -1,5 +1,10 @@
 use std::{
+    cell::Cell,
     mem::size_of,
+    sync::{
+        OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
     os::windows::ffi::OsStrExt as _,
     path::{Path, PathBuf},
     thread,
@@ -13,7 +18,7 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
 };
 use gpui::Global;
-use rapidcap_capture::{CaptureCommand, CaptureTarget, PhysicalRegion};
+use rapidcap_capture::{CaptureCommand, CaptureState, CaptureTarget, PhysicalRegion};
 use serde_json::{Value, json};
 use tray_icon::{
     Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
@@ -21,23 +26,48 @@ use tray_icon::{
 };
 use windows::{
     Win32::{
-        Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HWND, RECT},
-        Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute},
+        Foundation::{
+            CloseHandle, COLORREF, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HINSTANCE, HWND,
+            LPARAM, LRESULT, POINT, RECT, WPARAM,
+        },
+        Graphics::{
+            Dwm::{
+                DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_EXTENDED_FRAME_BOUNDS,
+                DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWM_WINDOW_CORNER_PREFERENCE,
+                DwmGetWindowAttribute, DwmSetWindowAttribute,
+            },
+            Gdi::{
+                CombineRgn, CreateRectRgn, CreateSolidBrush, DeleteObject, GetMonitorInfoW,
+                MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, RGN_DIFF,
+                SetWindowRgn,
+            },
+        },
+        System::LibraryLoader::GetModuleHandleW,
         System::Threading::{
             CreateMutexW, GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32,
             PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
         },
         UI::{
+            HiDpi::GetDpiForWindow,
             Shell::ShellExecuteW,
             WindowsAndMessaging::{
-                FindWindowW, GW_HWNDNEXT, GetTopWindow, GetWindow, GetWindowThreadProcessId,
-                IsIconic, IsWindowVisible, SW_HIDE, SW_RESTORE, SW_SHOWNORMAL, SetForegroundWindow,
-                ShowWindow,
+                CreateWindowExW, DefWindowProcW, FindWindowW, GWL_STYLE, GW_HWNDNEXT,
+                GetClientRect, GetCursorPos, GetTopWindow, GetWindow, GetWindowLongPtrW,
+                GetWindowRect, GetWindowThreadProcessId, HWND_NOTOPMOST, HWND_TOPMOST, IsIconic,
+                IsWindowVisible, LWA_ALPHA, RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW,
+                SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+                SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow, SetLayeredWindowAttributes,
+                SetWindowLongPtrW, SetWindowPos, ShowWindow, WNDCLASSW,
+                WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+                WS_CAPTION, WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_POPUP, WS_SYSMENU,
+                WS_THICKFRAME,
             },
         },
     },
     core::{PCWSTR, PWSTR, w},
 };
+
+use crate::tray::{self, TrayState};
 
 const APP_ID: &str = "com.inspire.rapidcap";
 const MENU_SHOW: &str = "show";
@@ -152,25 +182,26 @@ impl HotkeySpec {
     }
 }
 
+/// The five shortcuts, one per command.
+///
+/// These used to be ShareX's own defaults - Alt+Q, Alt+PrintScreen, Alt+E and
+/// friends - on the theory that muscle memory should carry over. Measured on a
+/// machine with ShareX installed, four of the five failed to register: ShareX
+/// holds them, `RegisterHotKey` is first-come-first-served, and RapidCap lost
+/// every race it entered. Copying a running competitor's bindings guarantees a
+/// collision with exactly the users most likely to try this app.
+///
+/// Ctrl+Shift+letter, mnemonic per command, none of them claimed by Windows.
 pub fn hotkey_specs() -> [HotkeySpec; 5] {
+    const CTRL_SHIFT: Modifiers = Modifiers::CONTROL.union(Modifiers::SHIFT);
     [
-        HotkeySpec::new(Modifiers::ALT, Code::KeyQ, CaptureCommand::CaptureRegion),
-        HotkeySpec::new(
-            Modifiers::ALT,
-            Code::PrintScreen,
-            CaptureCommand::CaptureActiveWindow,
-        ),
-        HotkeySpec::new(Modifiers::ALT, Code::KeyE, CaptureCommand::ToggleVideo),
-        HotkeySpec::new(
-            Modifiers::SHIFT | Modifiers::ALT,
-            Code::PrintScreen,
-            CaptureCommand::ToggleVideo,
-        ),
-        HotkeySpec::new(
-            Modifiers::CONTROL | Modifiers::SHIFT,
-            Code::PrintScreen,
-            CaptureCommand::ToggleGif,
-        ),
+        // A for area.
+        HotkeySpec::new(CTRL_SHIFT, Code::KeyA, CaptureCommand::CaptureRegion),
+        HotkeySpec::new(CTRL_SHIFT, Code::KeyW, CaptureCommand::CaptureActiveWindow),
+        // R for record.
+        HotkeySpec::new(CTRL_SHIFT, Code::KeyR, CaptureCommand::ToggleVideo),
+        HotkeySpec::new(CTRL_SHIFT, Code::KeyG, CaptureCommand::ToggleGif),
+        HotkeySpec::new(CTRL_SHIFT, Code::KeyP, CaptureCommand::TogglePause),
     ]
 }
 
@@ -179,7 +210,7 @@ pub fn probe_payload(output: impl AsRef<Path>) -> Value {
         "app_id": APP_ID,
         "version": env!("CARGO_PKG_VERSION"),
         "output": output.as_ref(),
-        "hotkeys": ["Alt+Q", "Alt+PrintScreen", "Alt+E", "Shift+Alt+PrintScreen", "Ctrl+Shift+PrintScreen"]
+        "hotkeys": ["Ctrl+Shift+A", "Ctrl+Shift+W", "Ctrl+Shift+R", "Ctrl+Shift+G", "Ctrl+Shift+P"]
     })
 }
 
@@ -194,10 +225,16 @@ pub enum PlatformEvent {
 pub struct PlatformRuntime {
     receiver: Receiver<PlatformEvent>,
     _hotkeys: GlobalHotKeyManager,
-    _tray: TrayIcon,
+    tray: TrayIcon,
+    tray_state: Cell<Option<TrayState>>,
 }
 
 impl Global for PlatformRuntime {}
+
+/// `tray_icon` wants an owned buffer; the rasteriser hands one over.
+fn tray_pixels(state: TrayState) -> Vec<u8> {
+    tray::rgba(state)
+}
 
 impl PlatformRuntime {
     pub fn start() -> anyhow::Result<Self> {
@@ -260,18 +297,46 @@ impl PlatformRuntime {
             .with_tooltip("RapidCap")
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
-            .with_icon(Icon::from_rgba([34, 92, 197, 255].repeat(16 * 16), 16, 16)?)
+            .with_icon(Icon::from_rgba(
+                tray_pixels(TrayState::Idle),
+                tray::SIZE,
+                tray::SIZE,
+            )?)
             .build()?;
 
         Ok(Self {
             receiver,
             _hotkeys: manager,
-            _tray: tray,
+            tray,
+            tray_state: Cell::new(Some(TrayState::Idle)),
         })
     }
 
     pub fn receiver(&self) -> Receiver<PlatformEvent> {
         self.receiver.clone()
+    }
+
+    /// Push the current capture state onto the tray icon and its tooltip.
+    ///
+    /// Repainting the icon is a Win32 round trip, so the last painted state is
+    /// remembered and an unchanged state is a no-op — this is called from a
+    /// controller observer that also fires on target and settings changes.
+    pub fn show_capture_state(&self, state: &CaptureState) {
+        let next = TrayState::from_capture(state);
+        if self.tray_state.get() != Some(next) {
+            match Icon::from_rgba(tray_pixels(next), tray::SIZE, tray::SIZE) {
+                Ok(icon) => {
+                    if let Err(error) = self.tray.set_icon(Some(icon)) {
+                        tracing::warn!(%error, "update tray icon");
+                    }
+                    self.tray_state.set(Some(next));
+                }
+                Err(error) => tracing::warn!(%error, "build tray icon"),
+            }
+        }
+        if let Err(error) = self.tray.set_tooltip(Some(next.tooltip(state))) {
+            tracing::warn!(%error, "update tray tooltip");
+        }
     }
 }
 
@@ -296,6 +361,78 @@ impl Drop for SingleInstance {
     }
 }
 
+/// The panel's window, handed over by GPUI at startup.
+///
+/// Not a title lookup: the overlay, the HUD and the recording frame are all
+/// GPUI windows in this process, and a lookup made while a previous instance is
+/// still shutting down finds that one's window instead - measured, that is how
+/// the panel ended up unplaced on one launch in five.
+static PANEL: OnceLock<isize> = OnceLock::new();
+
+/// Whether the user has the panel pinned. `show_main_window` has to bounce the
+/// window through `HWND_TOPMOST` to beat the foreground lock, and without this
+/// it would have no way to know whether to bounce back out again.
+static KEEP_ON_TOP: AtomicBool = AtomicBool::new(false);
+
+pub fn remember_main_window(handle: isize) {
+    let _ = PANEL.set(handle);
+}
+
+fn panel() -> Option<HWND> {
+    PANEL.get().map(|handle| HWND(*handle as *mut _))
+}
+
+/// Centre the panel at an exact client size.
+///
+/// GPUI cannot be trusted with this one. It creates every window at
+/// `CW_USEDEFAULT` and then applies the requested bounds - but only if the
+/// centre of those bounds resolves back to the same monitor it picked, and when
+/// that check fails it silently substitutes a half-screen default. Measured on
+/// this machine: four launches in five opened the panel at 1300x1389 instead of
+/// 400x302, and the fifth only came out right because `Window::resize` won the
+/// race.
+pub fn place_main_window(client_width: f32, client_height: f32) {
+    let Some(window) = panel() else { return };
+    let scale = unsafe { GetDpiForWindow(window) } as f32 / 96.0;
+    let mut frame = RECT::default();
+    let mut client = RECT::default();
+    if unsafe { GetWindowRect(window, &mut frame) }.is_err()
+        || unsafe { GetClientRect(window, &mut client) }.is_err()
+    {
+        return;
+    }
+    // The invisible resize border is whatever Windows says it is, so measure it
+    // rather than deriving it from the style.
+    let chrome_x = (frame.right - frame.left) - client.right;
+    let chrome_y = (frame.bottom - frame.top) - client.bottom;
+    let width = (client_width * scale).round() as i32 + chrome_x;
+    let height = (client_height * scale).round() as i32 + chrome_y;
+
+    let monitor = unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    let work = if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        info.rcWork
+    } else {
+        return;
+    };
+    let x = work.left + ((work.right - work.left) - width) / 2;
+    let y = work.top + ((work.bottom - work.top) - height) / 2;
+    unsafe {
+        let _ = SetWindowPos(
+            window,
+            None,
+            x,
+            y,
+            width,
+            height,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
 fn activate_existing_window() {
     // ponytail: title lookup is enough for one-window app; add IPC only if routing grows.
     for _ in 0..20 {
@@ -310,16 +447,289 @@ fn activate_existing_window() {
     }
 }
 
+/// Pin the panel above other windows. A capture tool that disappears behind the
+/// thing you are about to capture is a capture tool you fight.
+pub fn set_keep_on_top(on: bool) {
+    KEEP_ON_TOP.store(on, Ordering::Relaxed);
+    if let Some(window) = panel() {
+        let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+        let after = if on { HWND_TOPMOST } else { HWND_NOTOPMOST };
+        unsafe {
+            let _ = SetWindowPos(window, Some(after), 0, 0, 0, 0, flags);
+        }
+    }
+}
+
+/// Make the panel a fixed size: no resize grip, no maximize, no double-click
+/// zoom.
+///
+/// Done by editing the HWND style rather than by `WindowOptions::is_resizable`,
+/// which this GPUI build honours by dropping `WS_THICKFRAME` at creation - and
+/// on a window that is already `appears_transparent` that leaves a frameless
+/// style Windows never shows. Same failure as `titlebar: None`, noted in
+/// `open_main_window`.
+pub fn lock_window_size() {
+    let Some(window) = panel() else { return };
+    let style = unsafe { GetWindowLongPtrW(window, GWL_STYLE) };
+    let fixed = style & !((WS_THICKFRAME.0 | WS_MAXIMIZEBOX.0) as isize);
+    if fixed == style {
+        return;
+    }
+    unsafe {
+        SetWindowLongPtrW(window, GWL_STYLE, fixed);
+        let _ = SetWindowPos(
+            window,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
+}
+
+/// Where the cursor sits inside the panel, in screen pixels from its top-left
+/// corner. Recorded when a titlebar drag starts; [`drag_main_window`] puts the
+/// panel back under that same point on every move.
+pub fn window_drag_grab() -> Option<(i32, i32)> {
+    let window = panel()?;
+    let mut rect = RECT::default();
+    unsafe { GetWindowRect(window, &mut rect) }.ok()?;
+    let mut cursor = POINT::default();
+    unsafe { GetCursorPos(&mut cursor) }.ok()?;
+    Some((cursor.x - rect.left, cursor.y - rect.top))
+}
+
+/// Move the panel so the cursor keeps holding it at `grab`.
+///
+/// The panel is dragged by hand rather than by answering `WM_NCHITTEST` with
+/// `HTCAPTION`: that hands the drag to `DefWindowProc`'s modal move loop, and
+/// something inside this window cancels the loop - measured, the panel tracked
+/// the cursor the whole way and then snapped back to its starting rect the
+/// instant the button came up. GPUI's own `Window::start_window_move` is no
+/// help either; it is implemented for Wayland and X11 only and does nothing at
+/// all on Windows.
+pub fn drag_main_window(grab: (i32, i32)) {
+    let Some(window) = panel() else { return };
+    let mut cursor = POINT::default();
+    if unsafe { GetCursorPos(&mut cursor) }.is_err() {
+        return;
+    }
+    unsafe {
+        let _ = SetWindowPos(
+            window,
+            None,
+            cursor.x - grab.0,
+            cursor.y - grab.1,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
 pub fn hide_main_window() {
-    if let Ok(window) = unsafe { FindWindowW(PCWSTR::null(), w!("RapidCap")) } {
+    if let Some(window) = panel() {
         unsafe {
             let _ = ShowWindow(window, SW_HIDE);
         }
     }
 }
 
+/// Put the panel back on screen.
+///
+/// `hide_main_window` takes it away with `ShowWindow(SW_HIDE)`, and a hidden
+/// window is not something GPUI's `activate_window` brings back - it raises and
+/// focuses, both no-ops while `WS_VISIBLE` is off. So the un-hide has to happen
+/// here, on the same handle the hide used.
+///
+/// `SetForegroundWindow` is allowed to fail: Windows refuses it when another
+/// process holds the foreground lock. Bouncing through `HWND_TOPMOST` is the
+/// documented way to at least get the window in front of the user, which is
+/// what "Show" on a tray menu is asking for.
 pub fn show_main_window() {
-    activate_existing_window();
+    let Some(window) = panel() else {
+        activate_existing_window();
+        return;
+    };
+    unsafe {
+        let _ = ShowWindow(window, SW_SHOW);
+        let _ = ShowWindow(window, SW_RESTORE);
+        let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+        let _ = SetWindowPos(window, Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
+        if !KEEP_ON_TOP.load(Ordering::Relaxed) {
+            let _ = SetWindowPos(window, Some(HWND_NOTOPMOST), 0, 0, 0, 0, flags);
+        }
+        let _ = SetForegroundWindow(window);
+    }
+}
+
+/// The red rectangle that outlines what is being recorded.
+///
+/// One layered window with the middle cut out, not four GPUI windows. The four
+/// windows were the first attempt and they measured badly: GPUI takes window
+/// bounds in *logical* pixels and inflates them by the invisible resize border,
+/// so a 3px physical edge came out 4px wide on the sides and 30px tall on the
+/// top and bottom, offset from the region it was supposed to trace. There is no
+/// GPUI knob for "give me exactly these device pixels".
+///
+/// `WS_EX_TRANSPARENT` keeps clicks going through to whatever is being recorded,
+/// `WS_EX_NOACTIVATE` keeps it from stealing focus, and `SetWindowRgn` punches
+/// out the interior so the frame never covers a pixel of the capture.
+static FRAME_WINDOW: OnceLock<isize> = OnceLock::new();
+
+fn frame_window() -> Option<HWND> {
+    let existing = FRAME_WINDOW.get().map(|handle| HWND(*handle as *mut _));
+    if existing.is_some() {
+        return existing;
+    }
+    let class = w!("RapidCapRecordingFrame");
+    let instance = HINSTANCE(unsafe { GetModuleHandleW(None) }.ok()?.0);
+    let brush = unsafe { CreateSolidBrush(COLORREF(frame_colour())) };
+    unsafe extern "system" fn proc(
+        window: HWND,
+        message: u32,
+        w: WPARAM,
+        l: LPARAM,
+    ) -> LRESULT {
+        unsafe { DefWindowProcW(window, message, w, l) }
+    }
+    let window_class = WNDCLASSW {
+        lpfnWndProc: Some(proc),
+        hInstance: instance,
+        lpszClassName: class,
+        hbrBackground: brush,
+        ..Default::default()
+    };
+    // A second registration of the same class fails harmlessly; the window
+    // creation below is the part that has to succeed.
+    unsafe { RegisterClassW(&window_class) };
+    let window = unsafe {
+        CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+            class,
+            w!("RapidCap recording frame"),
+            WS_POPUP,
+            0,
+            0,
+            0,
+            0,
+            None,
+            None,
+            Some(instance),
+            None,
+        )
+    }
+    .ok()?;
+    unsafe {
+        let _ = SetLayeredWindowAttributes(window, COLORREF(0), 255, LWA_ALPHA);
+        // Windows 11 rounds every top-level window. A traced rectangle with
+        // rounded corners does not line up with the rectangle being recorded.
+        let square = DWMWCP_DONOTROUND;
+        let _ = DwmSetWindowAttribute(
+            window,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &raw const square as *const _,
+            size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+        );
+    }
+    let _ = FRAME_WINDOW.set(window.0 as isize);
+    Some(window)
+}
+
+/// The frame colour as the `0x00bbggrr` GDI wants.
+///
+/// Accent blue, not `theme::rec()`. The frame is the biggest thing on the
+/// display while a capture runs, and a red rectangle that size reads as an
+/// error rather than as "this is being recorded" - ShareX draws a cool border
+/// for the same reason. The red dot in the HUD still says recording.
+fn frame_colour() -> u32 {
+    let colour = gpui::Rgba::from(crate::theme::accent());
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u32;
+    channel(colour.r) | (channel(colour.g) << 8) | (channel(colour.b) << 16)
+}
+
+/// Trace `region` with a `thickness`-pixel border, in device pixels.
+pub fn show_recording_frame(region: &PhysicalRegion, thickness: u32) {
+    let Some(window) = frame_window() else { return };
+    let thickness = thickness.max(1) as i32;
+    let width = region.width as i32 + thickness * 2;
+    let height = region.height as i32 + thickness * 2;
+
+    unsafe {
+        let outer = CreateRectRgn(0, 0, width, height);
+        let inner = CreateRectRgn(thickness, thickness, width - thickness, height - thickness);
+        CombineRgn(Some(outer), Some(outer), Some(inner), RGN_DIFF);
+        let _ = DeleteObject(inner.into());
+        // Ownership of `outer` passes to the window on success.
+        if SetWindowRgn(window, Some(outer), false) == 0 {
+            let _ = DeleteObject(outer.into());
+        }
+        let _ = SetWindowPos(
+            window,
+            Some(HWND_TOPMOST),
+            region.x - thickness,
+            region.y - thickness,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+    }
+}
+
+pub fn hide_recording_frame() {
+    if let Some(window) = frame_window() {
+        unsafe {
+            let _ = ShowWindow(window, SW_HIDE);
+        }
+    }
+}
+
+/// Put a GPUI window exactly where it was asked to go, in device pixels.
+///
+/// GPUI's `window_bounds` are logical, so on any display above 100% scaling a
+/// region measured in device pixels lands somewhere else entirely. Sizing the
+/// `HWND` afterwards sidesteps the conversion.
+pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
+    let window = HWND(handle as *mut _);
+    unsafe {
+        // A transparent GPUI popup still gets the Windows 11 border and corner
+        // radius drawn around it - measured, that is the ghost rounded
+        // rectangle that framed the recording bar.
+        let square = DWMWCP_DONOTROUND;
+        let _ = DwmSetWindowAttribute(
+            window,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &raw const square as *const _,
+            size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+        );
+        let none = DWMWA_COLOR_NONE;
+        let _ = DwmSetWindowAttribute(
+            window,
+            DWMWA_BORDER_COLOR,
+            &raw const none as *const _ as *const _,
+            size_of::<u32>() as u32,
+        );
+        // Measured on the recording bar: window 360x44, client 344x36, style
+        // `0x94c00000` - `WS_CAPTION` is set even though GPUI asks for a
+        // `WindowKind::PopUp` with `WINDOW_STYLE(0x0)`. That caption frame is the
+        // 1px grey line across the top of the bar, and `DWMWA_BORDER_COLOR` does
+        // not remove it. Stripping the frame bits does, and a popup has no
+        // non-client area left to draw.
+        let style = (GetWindowLongPtrW(window, GWL_STYLE) as u32 | WS_POPUP.0)
+            & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_SYSMENU.0);
+        SetWindowLongPtrW(window, GWL_STYLE, style as isize);
+        let _ = SetWindowPos(
+            window,
+            Some(HWND_TOPMOST),
+            x,
+            y,
+            width,
+            height,
+            SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
 }
 
 pub fn open_folder(path: &Path) -> anyhow::Result<()> {
@@ -349,29 +759,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sharex_hotkeys_map_to_rapidcap_commands() {
+    fn every_command_except_cancel_has_exactly_one_shortcut() {
+        let specs = hotkey_specs();
+        let mut commands: Vec<_> = specs.iter().map(|spec| spec.command).collect();
+        commands.sort_by_key(|command| format!("{command:?}"));
+        commands.dedup();
         assert_eq!(
-            hotkey_specs(),
-            [
-                HotkeySpec::new(Modifiers::ALT, Code::KeyQ, CaptureCommand::CaptureRegion),
-                HotkeySpec::new(
-                    Modifiers::ALT,
-                    Code::PrintScreen,
-                    CaptureCommand::CaptureActiveWindow,
-                ),
-                HotkeySpec::new(Modifiers::ALT, Code::KeyE, CaptureCommand::ToggleVideo),
-                HotkeySpec::new(
-                    Modifiers::SHIFT | Modifiers::ALT,
-                    Code::PrintScreen,
-                    CaptureCommand::ToggleVideo,
-                ),
-                HotkeySpec::new(
-                    Modifiers::CONTROL | Modifiers::SHIFT,
-                    Code::PrintScreen,
-                    CaptureCommand::ToggleGif,
-                ),
-            ]
+            commands.len(),
+            specs.len(),
+            "two shortcuts fire the same command"
         );
+    }
+
+    #[test]
+    fn no_shortcut_reuses_a_sharex_default() {
+        // The whole point of the change: RapidCap's target user has ShareX
+        // installed, ShareX registers first, and a duplicate binding is a
+        // shortcut that silently never fires.
+        let sharex = [
+            (Modifiers::ALT, Code::KeyQ),
+            (Modifiers::ALT, Code::PrintScreen),
+            (Modifiers::ALT, Code::KeyE),
+            (Modifiers::SHIFT | Modifiers::ALT, Code::PrintScreen),
+            (Modifiers::CONTROL | Modifiers::SHIFT, Code::PrintScreen),
+        ];
+        for spec in hotkey_specs() {
+            assert!(
+                !sharex.contains(&(spec.modifiers, spec.code)),
+                "{:?}+{:?} collides with ShareX",
+                spec.modifiers,
+                spec.code
+            );
+        }
     }
 
     #[test]

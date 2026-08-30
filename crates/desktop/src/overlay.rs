@@ -4,7 +4,7 @@ use gpui::{
     App, AppContext as _, Bounds, Context, DisplayId, Entity, FocusHandle, KeyBinding, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Role, Subscription,
     Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
-    actions, div, point, prelude::*, px, rgba, size,
+    actions, div, point, prelude::*, px, size,
 };
 use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget, PhysicalRegion};
 use windows::Win32::{
@@ -15,7 +15,14 @@ use windows::Win32::{
     UI::WindowsAndMessaging::GetCursorPos,
 };
 
-use crate::{controller::AppController, platform::window_target_at};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+use crate::{
+    controller::AppController,
+    icons::Icon,
+    platform::{place_window, window_target_at},
+    theme,
+};
 
 actions!(rapidcap_overlay, [CancelSelection]);
 
@@ -110,7 +117,7 @@ impl Render for RegionOverlay {
             .on_action(cx.listener(Self::cancel))
             .relative()
             .size_full()
-            .bg(rgba(0x00000066))
+            .bg(theme::overlay_scrim())
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up));
@@ -128,25 +135,17 @@ impl Render for RegionOverlay {
                     .w(width)
                     .h(height)
                     .border_2()
-                    .border_color(rgba(0x4d8dffff))
-                    .bg(rgba(0x00000022))
-                    .child(
-                        div()
-                            .absolute()
-                            .top(px(8.0))
-                            .left(px(8.0))
-                            .px(px(7.0))
-                            .py(px(3.0))
-                            .rounded(px(4.0))
-                            .bg(rgba(0x111318dd))
-                            .text_color(rgba(0xffffffff))
-                            .text_size(px(12.0))
-                            .child(format!(
-                                "{} × {}",
-                                (width.as_f32() * self.scale_factor).round() as u32,
-                                (height.as_f32() * self.scale_factor).round() as u32
-                            )),
-                    ),
+                    .border_color(theme::accent())
+                    .bg(theme::overlay_drag_fill())
+                    .child(float_label(format!(
+                        "{} × {}",
+                        (width.as_f32() * self.scale_factor).round() as u32,
+                        (height.as_f32() * self.scale_factor).round() as u32
+                    )))
+                    .child(drag_handle().left(px(HANDLE_INSET)).top(px(HANDLE_INSET)))
+                    .child(drag_handle().right(px(HANDLE_INSET)).top(px(HANDLE_INSET)))
+                    .child(drag_handle().left(px(HANDLE_INSET)).bottom(px(HANDLE_INSET)))
+                    .child(drag_handle().right(px(HANDLE_INSET)).bottom(px(HANDLE_INSET))),
             );
         } else if let Some(target) = &self.hovered {
             let (region, label) = match target {
@@ -165,42 +164,64 @@ impl Render for RegionOverlay {
                     .w(px(region.width as f32 / self.scale_factor))
                     .h(px(region.height as f32 / self.scale_factor))
                     .border_2()
-                    .border_color(rgba(0x4d8dffff))
-                    .bg(rgba(0x4d8dff22))
-                    .child(
-                        div()
-                            .absolute()
-                            .top(px(8.0))
-                            .left(px(8.0))
-                            .px(px(7.0))
-                            .py(px(3.0))
-                            .rounded(px(4.0))
-                            .bg(rgba(0x111318dd))
-                            .text_color(rgba(0xffffffff))
-                            .text_size(px(12.0))
-                            .child(label.to_owned()),
-                    ),
+                    .border_color(theme::accent())
+                    .bg(theme::overlay_window_fill())
+                    .child(float_label(label.to_owned())),
             );
         }
         root = root.child(
-            div()
-                .absolute()
-                .top(px(16.0))
-                .right(px(16.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .rounded(px(6.0))
-                .bg(rgba(0x111318dd))
-                .text_color(rgba(0xffffffff))
-                .text_size(px(13.0))
-                .child(if self.kind == CaptureKind::ActiveWindowScreenshot {
+            float_label(
+                if self.kind == CaptureKind::ActiveWindowScreenshot {
                     "Click window · Esc cancel"
                 } else {
                     "Click window or drag region · Esc cancel"
-                }),
+                }
+                .to_string(),
+            )
+            .top(px(18.0))
+            .right(px(18.0))
+            .left_auto(),
         );
         root
     }
+}
+
+/// How long the recording bar waits, pointer away, before it fades.
+const HUD_FADE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Half the grip hangs outside the rect, so it straddles the 2px border rather
+/// than sitting inside the selection and covering the pixels being chosen.
+const HANDLE_INSET: f32 = -4.0;
+
+/// Corner grip. Only the drag rect gets these - a window hover is not resizable,
+/// so grips there would promise an edge the user cannot move.
+fn drag_handle() -> gpui::Div {
+    div()
+        .absolute()
+        .size(px(theme::HANDLE))
+        .rounded(px(1.0))
+        .bg(theme::text_primary())
+}
+
+/// One shape for both overlay labels. They share a screen during a drag, so a
+/// size badge and a hint pill with different heights sit on different baselines
+/// and read as two unrelated things.
+fn float_label(text: String) -> gpui::Div {
+    div()
+        .absolute()
+        .top(px(theme::GAP))
+        .left(px(theme::GAP))
+        .h(px(theme::FLOAT_H))
+        .px(px(11.0))
+        .flex()
+        .items_center()
+        .rounded(px(theme::RADIUS))
+        .border_2()
+        .border_color(theme::border_card())
+        .bg(theme::overlay_float())
+        .text_color(theme::text_primary())
+        .text_size(px(13.0))
+        .child(text)
 }
 
 pub fn overlay_key_bindings() -> Vec<KeyBinding> {
@@ -244,18 +265,12 @@ pub fn open_region_overlay(
     )
 }
 
-pub struct RecordingBorder;
-
-impl Render for RecordingBorder {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().size_full().bg(rgba(0xff2d2dff))
-    }
-}
-
 pub struct RecordingHud {
     controller: Entity<AppController>,
     target: CaptureTarget,
     countdown_since: std::time::Instant,
+    /// Last time the pointer was over the bar. Drives the idle fade.
+    pointer_seen: std::time::Instant,
     _subscription: Subscription,
 }
 
@@ -281,6 +296,7 @@ impl RecordingHud {
             controller,
             target,
             countdown_since: std::time::Instant::now(),
+            pointer_seen: std::time::Instant::now(),
             _subscription: subscription,
         }
     }
@@ -311,125 +327,190 @@ impl Render for RecordingHud {
             CaptureTarget::Region(region) => format!("{} × {}", region.width, region.height),
             CaptureTarget::Window { process_name, .. } => process_name.clone(),
         };
-        let (status, pause_label, can_pause) = match state {
+        // While a capture runs the only fact worth width is the clock. The kind
+        // and the target are shown during the countdown, when there is still a
+        // decision to make, and collapse away once recording starts.
+        let (status, pause_label, pause_icon, can_pause, dot) = match state {
             CaptureState::Countdown(kind, seconds) => (
                 format!(
                     "{} starts in {} · {target}",
-                    if kind == CaptureKind::Video {
-                        "Video"
-                    } else {
-                        "GIF"
-                    },
+                    kind_noun(kind),
                     seconds.saturating_sub(self.countdown_since.elapsed().as_secs() as u8)
                 ),
                 "Pause",
+                Icon::Pause,
                 false,
+                theme::text_muted(),
             ),
-            CaptureState::Recording(kind) => {
-                let elapsed = self.controller.read(cx).recording_elapsed().as_secs();
-                (
-                    format!(
-                        "● REC {} {:02}:{:02} · {target}",
-                        if kind == CaptureKind::Video {
-                            "Video"
-                        } else {
-                            "GIF"
-                        },
-                        elapsed / 60,
-                        elapsed % 60
-                    ),
-                    "Pause",
-                    true,
-                )
-            }
-            CaptureState::Paused(kind) => {
-                let elapsed = self.controller.read(cx).recording_elapsed().as_secs();
-                (
-                    format!(
-                        "Ⅱ PAUSED {} {:02}:{:02} · {target}",
-                        if kind == CaptureKind::Video {
-                            "Video"
-                        } else {
-                            "GIF"
-                        },
-                        elapsed / 60,
-                        elapsed % 60
-                    ),
-                    "Resume",
-                    true,
-                )
-            }
-            CaptureState::Finalizing(kind) => (
-                format!(
-                    "Finalizing {}…",
-                    if kind == CaptureKind::Video {
-                        "Video"
-                    } else {
-                        "GIF"
-                    }
-                ),
+            CaptureState::Recording(_) => (
+                clock(self.controller.read(cx).recording_elapsed().as_secs()),
                 "Pause",
-                false,
+                Icon::Pause,
+                true,
+                theme::rec(),
             ),
-            _ => ("Closing…".into(), "Pause", false),
+            CaptureState::Paused(_) => (
+                clock(self.controller.read(cx).recording_elapsed().as_secs()),
+                "Resume",
+                Icon::Play,
+                true,
+                theme::text_pill(),
+            ),
+            CaptureState::Finalizing(kind) => (
+                format!("Finalizing {}…", kind_noun(kind)),
+                "Pause",
+                Icon::Pause,
+                false,
+                theme::text_muted(),
+            ),
+            _ => (
+                "Closing…".into(),
+                "Pause",
+                Icon::Pause,
+                false,
+                theme::text_muted(),
+            ),
         };
-        let button = |id: &'static str, label: &'static str| {
-            div()
-                .id(id)
-                .accessibility_id(id)
-                .role(Role::Button)
-                .aria_label(label)
-                .px(px(12.0))
-                .h(px(34.0))
-                .flex()
-                .items_center()
-                .rounded(px(6.0))
-                .border_1()
-                .border_color(rgba(0x5a6070ff))
-                .bg(rgba(0x242832ff))
-                .text_color(rgba(0xffffffff))
-                .cursor_pointer()
-                .child(label)
-        };
+        // Long recordings stop feeling watched: after three quiet seconds the bar
+        // drops to 55% and comes back on hover. Only while something is running -
+        // a countdown is asking a question and has to stay legible.
+        let faded = matches!(
+            state,
+            CaptureState::Recording(_) | CaptureState::Paused(_)
+        ) && self.pointer_seen.elapsed() >= HUD_FADE_AFTER;
+        // The window is a transparent letterbox; the pill inside it is what the
+        // user sees, so it can size to its content the way the spec asks.
         div()
-            .id("recording-hud")
-            .accessibility_id("rapidcap.hud")
-            .role(Role::Application)
-            .aria_label("RapidCap recording controls")
             .size_full()
             .flex()
             .items_center()
-            .gap(px(8.0))
-            .px(px(10.0))
-            .border_2()
-            .border_color(rgba(0xff2d2dff))
-            .bg(rgba(0x111318f5))
-            .text_color(rgba(0xffffffff))
+            .justify_center()
+            .on_mouse_move(cx.listener(|this, _, _, cx| {
+                this.pointer_seen = std::time::Instant::now();
+                cx.notify();
+            }))
             .child(
                 div()
-                    .id("recording-hud-status")
-                    .accessibility_id("rapidcap.hud-status")
-                    .role(Role::Status)
-                    .aria_label(status.clone())
-                    .flex_1()
-                    .text_size(px(13.0))
-                    .child(status),
-            )
-            .when(can_pause, |root| {
-                root.child(
-                    button("rapidcap.hud-pause", pause_label)
-                        .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx))),
-                )
-            })
-            .child(
-                button(
-                    "rapidcap.hud-stop",
-                    if can_pause { "Stop" } else { "Cancel" },
-                )
-                .bg(rgba(0xc92a2aff))
-                .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
+                    .id("recording-hud")
+                    .accessibility_id("rapidcap.hud")
+                    .role(Role::Application)
+                    .aria_label("RapidCap recording controls")
+                    .when(faded, |pill| pill.opacity(theme::HUD_IDLE_OPACITY))
+                    .h(px(theme::HUD_H))
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .p(px(4.0))
+                    .rounded(px(theme::RADIUS_PILL))
+                    .border_2()
+                    .border_color(theme::border_card())
+                    .bg(theme::hud_bg())
+                    .shadow(theme::floating())
+                    .text_color(theme::text_primary())
+                    .child(
+                        div()
+                            .id("recording-hud-status")
+                            .accessibility_id("rapidcap.hud-status")
+                            .role(Role::Status)
+                            .aria_label(status.clone())
+                            .flex()
+                            .items_center()
+                            .gap(px(7.0))
+                            .pl(px(8.0))
+                            .pr(px(4.0))
+                            .text_size(px(13.0))
+                            .child(
+                                div()
+                                    .size(px(8.0))
+                                    .flex_none()
+                                    .rounded(px(theme::RADIUS_PILL))
+                                    .bg(dot),
+                            )
+                            .child(status),
+                    )
+                    .child(
+                        div()
+                            .w(px(theme::BORDER))
+                            .h(px(18.0))
+                            .flex_none()
+                            .bg(theme::border_divider()),
+                    )
+                    .when(can_pause, |root| {
+                        root.child(
+                            hud_button("rapidcap.hud-pause", pause_label, pause_icon, false)
+                                .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx))),
+                        )
+                    })
+                    .child(
+                        hud_button(
+                            "rapidcap.hud-stop",
+                            if can_pause { "Stop" } else { "Cancel" },
+                            if can_pause { Icon::Stop } else { Icon::Close },
+                            true,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
+                    ),
             )
     }
+}
+
+/// `MM:SS`, zero-padded so the pill does not resize as the timer rolls over.
+fn clock(seconds: u64) -> String {
+    format!("{:02}:{:02}", seconds / 60, seconds % 60)
+}
+
+fn kind_noun(kind: CaptureKind) -> &'static str {
+    match kind {
+        CaptureKind::Video => "Video",
+        CaptureKind::Gif => "GIF",
+        CaptureKind::RegionScreenshot => "Region",
+        CaptureKind::ActiveWindowScreenshot => "Window",
+    }
+}
+
+/// Circular icon button, 28px inside a 36px pill. Text labels cost width the
+/// HUD does not have — `aria_label` carries the name.
+fn hud_button(
+    id: &'static str,
+    label: &'static str,
+    icon: Icon,
+    danger: bool,
+) -> gpui::Stateful<gpui::Div> {
+    let (rest_bg, hover_bg, colour) = if danger {
+        (
+            theme::danger(),
+            theme::danger_hover(),
+            theme::text_primary(),
+        )
+    } else {
+        (
+            gpui::transparent_black(),
+            theme::bg_hover(),
+            theme::text_pill(),
+        )
+    };
+    div()
+        .id(id)
+        .accessibility_id(id)
+        .role(Role::Button)
+        .aria_label(label)
+        .size(px(28.0))
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .rounded(px(theme::RADIUS_PILL))
+        .border_2()
+        .border_color(if danger {
+            theme::danger_hover()
+        } else {
+            theme::border_card()
+        })
+        .bg(rest_bg)
+        .text_color(colour)
+        .cursor_pointer()
+        .hover(move |style| style.bg(hover_bg).text_color(theme::text_primary()))
+        .child(icon.element(px(if danger { 13.0 } else { 15.0 }), colour))
 }
 
 pub fn open_recording_hud(
@@ -440,19 +521,12 @@ pub fn open_recording_hud(
     let region = match &target {
         CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
     };
-    let width = 420.0;
-    let height = 58.0;
-    let x = region.x as f32 + (region.width as f32 - width) / 2.0;
-    let y = if region.y >= 70 {
-        region.y as f32 - 66.0
-    } else {
-        region.y as f32 + 8.0
-    };
-    cx.open_window(
+    let (x, y) = hud_origin(region, cx.primary_display().map(|display| display.bounds()));
+    let handle = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
                 origin: point(px(x), px(y)),
-                size: size(px(width), px(height)),
+                size: size(px(HUD_WINDOW_W), px(HUD_WINDOW_H)),
             })),
             titlebar: None,
             focus: true,
@@ -461,12 +535,66 @@ pub fn open_recording_hud(
             is_movable: false,
             is_resizable: false,
             is_minimizable: false,
-            window_background: WindowBackgroundAppearance::Opaque,
+            // Transparent so the pill inside can be content-sized: an opaque
+            // window would paint its own rectangle around it.
+            window_background: WindowBackgroundAppearance::Transparent,
             app_id: Some("com.inspire.rapidcap.recording-hud".into()),
             ..Default::default()
         },
         |_window, cx| cx.new(|cx| RecordingHud::new(cx, controller, target)),
-    )
+    )?;
+    // `hud_origin` works in device pixels because the region does; GPUI's
+    // window bounds are logical, so on a scaled display the bar landed short of
+    // where it was aimed. Moving the HWND afterwards skips the conversion, and
+    // strips the Windows 11 border DWM draws around a transparent popup.
+    if let Some(hwnd) = handle.update(cx, |_view, window, _cx| panel_hwnd(window))? {
+        let scale = handle.update(cx, |_view, window, _cx| window.scale_factor())?;
+        place_window(
+            hwnd,
+            x as i32,
+            y as i32,
+            (HUD_WINDOW_W * scale) as i32,
+            (HUD_WINDOW_H * scale) as i32,
+        );
+    }
+    Ok(handle)
+}
+
+/// A GPUI window's real `HWND`.
+fn panel_hwnd(window: &Window) -> Option<isize> {
+    match HasWindowHandle::window_handle(window).ok()?.as_raw() {
+        RawWindowHandle::Win32(handle) => Some(isize::from(handle.hwnd)),
+        _ => None,
+    }
+}
+
+/// The transparent letterbox the HUD pill floats in.
+const HUD_WINDOW_W: f32 = 360.0;
+const HUD_WINDOW_H: f32 = 44.0;
+
+/// Below the region and centred on it — controls belong under the thing they
+/// control. Falls back above when the region is near the screen bottom, and
+/// inside it when neither fits.
+fn hud_origin(region: &PhysicalRegion, screen: Option<Bounds<Pixels>>) -> (f32, f32) {
+    let gap = theme::GAP;
+    let region_bottom = (region.y + region.height as i32) as f32;
+    let below = region_bottom + gap;
+    let above = region.y as f32 - gap - HUD_WINDOW_H;
+
+    let screen_bottom = screen
+        .map(|bounds| f32::from(bounds.origin.y + bounds.size.height))
+        .unwrap_or(f32::MAX);
+
+    let y = if below + HUD_WINDOW_H <= screen_bottom {
+        below
+    } else if above >= 0.0 {
+        above
+    } else {
+        // Region fills the display: sit inside its bottom edge.
+        region_bottom - gap - HUD_WINDOW_H
+    };
+    let x = region.x as f32 + (region.width as f32 - HUD_WINDOW_W) / 2.0;
+    (x.max(0.0), y.max(0.0))
 }
 
 pub fn close_recording_hud<C: gpui::AppContext>(
@@ -476,80 +604,6 @@ pub fn close_recording_hud<C: gpui::AppContext>(
     if let Some(handle) = handle.take() {
         let _ = handle.update(cx, |_view, window, _cx| window.remove_window());
     }
-}
-
-pub fn open_recording_border(
-    cx: &mut App,
-    target: &CaptureTarget,
-) -> anyhow::Result<Vec<WindowHandle<RecordingBorder>>> {
-    let region = match target {
-        CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
-    };
-    recording_border_regions(region, 4)
-        .into_iter()
-        .map(|edge| {
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(Bounds {
-                        origin: point(px(edge.x as f32), px(edge.y as f32)),
-                        size: size(px(edge.width as f32), px(edge.height as f32)),
-                    })),
-                    titlebar: None,
-                    focus: false,
-                    show: true,
-                    kind: WindowKind::PopUp,
-                    is_movable: false,
-                    is_resizable: false,
-                    is_minimizable: false,
-                    window_background: WindowBackgroundAppearance::Opaque,
-                    app_id: Some("com.inspire.rapidcap.recording-border".into()),
-                    ..Default::default()
-                },
-                |_window, cx| cx.new(|_| RecordingBorder),
-            )
-        })
-        .collect()
-}
-
-pub fn close_recording_border<C: gpui::AppContext>(
-    handles: &mut Vec<WindowHandle<RecordingBorder>>,
-    cx: &mut C,
-) {
-    for handle in handles.drain(..) {
-        let _ = handle.update(cx, |_view, window, _cx| window.remove_window());
-    }
-}
-
-fn recording_border_regions(region: &PhysicalRegion, thickness: u32) -> [PhysicalRegion; 4] {
-    let x = region.x - thickness as i32;
-    let y = region.y - thickness as i32;
-    let width = region.width + thickness * 2;
-    [
-        PhysicalRegion {
-            x,
-            y,
-            width,
-            height: thickness,
-        },
-        PhysicalRegion {
-            x,
-            y: region.y + region.height as i32,
-            width,
-            height: thickness,
-        },
-        PhysicalRegion {
-            x,
-            y: region.y,
-            width: thickness,
-            height: region.height,
-        },
-        PhysicalRegion {
-            x: region.x + region.width as i32,
-            y: region.y,
-            width: thickness,
-            height: region.height,
-        },
-    ]
 }
 
 fn selected_target(
@@ -664,41 +718,53 @@ mod tests {
     }
 
     #[test]
-    fn recording_boundary_is_four_thin_edges() {
+    fn hud_sits_below_the_region_unless_there_is_no_room() {
+        let screen = Some(Bounds {
+            origin: point(px(0.0), px(0.0)),
+            size: size(px(1920.0), px(1080.0)),
+        });
         let region = PhysicalRegion {
-            x: 100,
+            x: 400,
             y: 200,
-            width: 640,
-            height: 480,
+            width: 800,
+            height: 400,
         };
-        assert_eq!(
-            recording_border_regions(&region, 4),
-            [
-                PhysicalRegion {
-                    x: 96,
-                    y: 196,
-                    width: 648,
-                    height: 4
-                },
-                PhysicalRegion {
-                    x: 96,
-                    y: 680,
-                    width: 648,
-                    height: 4
-                },
-                PhysicalRegion {
-                    x: 96,
-                    y: 200,
-                    width: 4,
-                    height: 480
-                },
-                PhysicalRegion {
-                    x: 740,
-                    y: 200,
-                    width: 4,
-                    height: 480
-                },
-            ]
-        );
+
+        // Normal: 9px under the bottom edge, centred on the region.
+        let (x, y) = hud_origin(&region, screen);
+        assert_eq!(y, 600.0 + theme::GAP);
+        assert_eq!(x, 400.0 + (800.0 - HUD_WINDOW_W) / 2.0);
+
+        // No room below: flip above the top edge.
+        let low = PhysicalRegion {
+            x: 400,
+            y: 600,
+            width: 800,
+            height: 460,
+        };
+        let (_, y) = hud_origin(&low, screen);
+        assert_eq!(y, 600.0 - theme::GAP - HUD_WINDOW_H);
+
+        // Region fills the display: sit inside its bottom edge.
+        let full = PhysicalRegion {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let (x, y) = hud_origin(&full, screen);
+        assert_eq!(y, 1080.0 - theme::GAP - HUD_WINDOW_H);
+        assert!(x >= 0.0, "the HUD never starts off the left edge");
+
+        // A region narrower than the pill still clamps on screen.
+        let narrow = PhysicalRegion {
+            x: 10,
+            y: 100,
+            width: 120,
+            height: 80,
+        };
+        let (x, _) = hud_origin(&narrow, screen);
+        assert_eq!(x, 0.0);
     }
+
 }

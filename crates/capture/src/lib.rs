@@ -7,7 +7,7 @@ mod settings;
 mod state;
 mod wgc;
 
-pub use clipboard::{ClipboardError, write_clipboard};
+pub use clipboard::{ClipboardError, write_clipboard, write_clipboard_file};
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::{NamingError, OutputNamer};
 pub use recording::{RecordingError, RecordingSession};

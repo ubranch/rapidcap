@@ -30,7 +30,7 @@ fn silent_window_keeps_compact_bounds_before_first_show() {
         .spawn()
         .unwrap();
     let process_id = child.id();
-    let _guard = ChildGuard(child);
+    let mut guard = ChildGuard(child);
     let deadline = Instant::now() + Duration::from_secs(3);
     let mut last_size = None;
 
@@ -49,6 +49,15 @@ fn silent_window_keeps_compact_bounds_before_first_show() {
                 }
             }
         }
+        // Polled rather than probed once up front: the child takes the
+        // single-instance mutex a moment after `spawn` returns, so an early
+        // check would race it. Without this the same failure surfaces as a
+        // three second timeout that blames the window size.
+        assert!(
+            guard.0.try_wait().ok().flatten().is_none(),
+            "RapidCap exited before showing a window - another instance already \
+             holds the single-instance mutex, so close the running app first"
+        );
         assert!(
             Instant::now() < deadline,
             "hidden RapidCap settled at {last_size:?}"

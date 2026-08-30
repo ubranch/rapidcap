@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use gpui::{Context, EventEmitter};
 use rapidcap_capture::{
     AppPaths, CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget,
-    RecordingError, SavedCapture, ScreenshotError, Settings, StateError,
+    RecordingError, SavedCapture, ScreenshotError, Settings, SettingsStore, StateError,
 };
 
 pub struct AppController {
@@ -15,6 +15,12 @@ pub struct AppController {
     generation: u64,
     recorded: Duration,
     recording_since: Option<Instant>,
+    /// The last failure, kept separately from `state`.
+    ///
+    /// `state` has to return to `Idle` so the next capture can start, but the
+    /// message has to outlive that: clearing it on the next command meant the
+    /// user's click dismissed a notice they had not read yet.
+    error: Option<String>,
 }
 
 impl AppController {
@@ -27,6 +33,7 @@ impl AppController {
             generation: 0,
             recorded: Duration::ZERO,
             recording_since: None,
+            error: None,
         }
     }
 
@@ -85,11 +92,13 @@ impl AppController {
         match result {
             Ok(path) => {
                 self.state = CaptureState::Idle;
+                self.error = None;
                 cx.emit(CaptureEvent::OutputSaved(path));
             }
             Err(error) => {
                 let message = error.to_string();
                 self.state = CaptureState::Error(message.clone());
+                self.error = Some(message.clone());
                 cx.emit(CaptureEvent::Failed(message));
             }
         }
@@ -105,15 +114,79 @@ impl AppController {
         match result {
             Ok(saved) => {
                 self.state = CaptureState::Idle;
+                self.error = None;
                 cx.emit(CaptureEvent::OutputSaved(saved.path));
             }
             Err(error) => {
                 let message = error.to_string();
                 self.state = CaptureState::Error(message.clone());
+                self.error = Some(message.clone());
                 cx.emit(CaptureEvent::Failed(message));
             }
         }
         cx.notify();
+    }
+
+    /// Countdown slots offered by the segmented control, in order.
+    pub const COUNTDOWN_CHOICES: [u8; 3] = [0, 3, 5];
+    /// Frame rates the Video chevron cycles through.
+    pub const VIDEO_FPS_CHOICES: [u32; 3] = [30, 60, 120];
+    /// Frame rates the GIF chevron cycles through.
+    pub const GIF_FPS_CHOICES: [u32; 3] = [10, 15, 24];
+
+    pub fn set_countdown(&mut self, seconds: u8, cx: &mut Context<Self>) {
+        if self.settings.countdown_seconds != seconds {
+            self.settings.countdown_seconds = seconds;
+            self.persist_settings();
+            cx.notify();
+        }
+    }
+
+    /// ponytail: the chevron cycles the preset list. The design has it open a
+    /// menu — that lands with the menu primitive, and the setting it writes is
+    /// the same either way.
+    pub fn cycle_video_fps(&mut self, cx: &mut Context<Self>) {
+        self.settings.video.fps = next_choice(&Self::VIDEO_FPS_CHOICES, self.settings.video.fps);
+        self.persist_settings();
+        cx.notify();
+    }
+
+    /// Mute or unmute the soundtrack on video recordings.
+    ///
+    /// Takes effect on the next recording, not the running one: FFmpeg's inputs
+    /// are fixed at spawn, so a mid-capture change would need a restart and
+    /// lose the take.
+    pub fn toggle_audio(&mut self, cx: &mut Context<Self>) {
+        self.settings.audio.enabled = !self.settings.audio.enabled;
+        self.persist_settings();
+        cx.notify();
+    }
+
+    pub fn cycle_gif_fps(&mut self, cx: &mut Context<Self>) {
+        self.settings.gif.fps = next_choice(&Self::GIF_FPS_CHOICES, self.settings.gif.fps);
+        self.persist_settings();
+        cx.notify();
+    }
+
+    /// Best effort: a settings file that cannot be written must not take the
+    /// running app down with it, but it does belong in the log.
+    fn persist_settings(&self) {
+        if let Err(error) =
+            SettingsStore::new(self.paths.settings_file.clone()).save(&self.settings)
+        {
+            tracing::warn!(%error, "persist settings");
+        }
+    }
+
+    /// The last failure, until it is dismissed or a capture succeeds.
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    pub fn dismiss_error(&mut self, cx: &mut Context<Self>) {
+        if self.error.take().is_some() {
+            cx.notify();
+        }
     }
 
     pub fn dispatch(
@@ -121,6 +194,8 @@ impl AppController {
         command: CaptureCommand,
         cx: &mut Context<Self>,
     ) -> Result<(), CommandError> {
+        // Leaving the error state is how the next capture becomes possible, but
+        // `self.error` deliberately survives — see the field comment.
         if matches!(self.state, CaptureState::Error(_)) {
             self.state = CaptureState::Idle;
         }
@@ -186,6 +261,22 @@ impl AppController {
     #[cfg(test)]
     fn set_state_for_test(&mut self, state: CaptureState) {
         self.state = state;
+    }
+
+    /// `RecordingError` wraps a private `String`, so a test cannot build one.
+    #[cfg(test)]
+    fn set_error_for_test(&mut self, message: &str) {
+        self.state = CaptureState::Error(message.to_string());
+        self.error = Some(message.to_string());
+    }
+}
+
+/// Wraps around to the first entry, so a click always changes something.
+fn next_choice<T: Copy + PartialEq>(choices: &[T], current: T) -> T {
+    let index = choices.iter().position(|value| *value == current);
+    match index {
+        Some(index) => choices[(index + 1) % choices.len()],
+        None => choices[0],
     }
 }
 
@@ -309,6 +400,48 @@ mod tests {
         assert_eq!(
             controller.read_with(cx, |controller, _| controller.state().clone()),
             CaptureState::Idle
+        );
+    }
+
+    #[gpui::test]
+    fn error_message_survives_the_next_command(cx: &mut TestAppContext) {
+        // The bug this guards shipped: `dispatch` reset the error state, so the
+        // very click the user made to read the message also threw it away.
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, _| {
+            controller.set_error_for_test("disk full");
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.error().map(str::to_owned)),
+            Some("disk full".to_string())
+        );
+
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::CaptureRegion, cx)
+                .unwrap();
+        });
+        assert!(
+            controller.read_with(cx, |controller, _| controller.error().is_some()),
+            "starting a new capture must not silently drop an unread failure"
+        );
+
+        controller.update(cx, |controller, cx| controller.dismiss_error(cx));
+        assert!(controller.read_with(cx, |controller, _| controller.error().is_none()));
+    }
+
+    #[gpui::test]
+    fn a_successful_capture_clears_the_previous_error(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, _| {
+            controller.set_error_for_test("disk full");
+        });
+        controller.update(cx, |controller, cx| {
+            controller.finish_recording(Ok(PathBuf::from("C:/out.mp4")), cx);
+        });
+        assert!(
+            controller.read_with(cx, |controller, _| controller.error().is_none()),
+            "a capture that worked answers the question the error asked"
         );
     }
 

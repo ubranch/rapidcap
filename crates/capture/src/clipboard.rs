@@ -28,17 +28,35 @@ impl fmt::Display for ClipboardError {
 
 impl std::error::Error for ClipboardError {}
 
+/// A screenshot: the pixels *and* the file, so a paste lands as an image in
+/// chat and as a file in a folder.
 pub fn write_clipboard(capture: &SavedCapture) -> Result<(), ClipboardError> {
     let dib = dibv5_bytes(&capture.rgba, capture.width, capture.height)?;
-    let path = unicode_path_bytes(&capture.path);
-    let drop = hdrop_bytes(&capture.path);
+    write_formats(&capture.path, Some(dib))
+}
+
+/// A recording: the file only.
+///
+/// Video and GIF used to skip the clipboard entirely, so stopping a recording
+/// left you with a path in a toast and nothing to paste. There is no `CF_DIBV5`
+/// to offer here - a video has no single frame to be - but `CF_HDROP` is what
+/// every file target actually reads, and it is what Explorer produces when you
+/// copy a file. Paste into chat, into a mail draft, into a folder: all work.
+pub fn write_clipboard_file(path: &Path) -> Result<(), ClipboardError> {
+    write_formats(path, None)
+}
+
+fn write_formats(path: &Path, dib: Option<Vec<u8>>) -> Result<(), ClipboardError> {
+    let text = unicode_path_bytes(path);
+    let drop = hdrop_bytes(path);
     let effect = 1_u32.to_le_bytes();
-    let mut blocks = [
-        GlobalBlock::new(&dib)?,
-        GlobalBlock::new(&path)?,
-        GlobalBlock::new(&drop)?,
-        GlobalBlock::new(&effect)?,
-    ];
+
+    let mut formats = Vec::with_capacity(4);
+    if let Some(dib) = &dib {
+        formats.push((CF_DIBV5.0 as u32, GlobalBlock::new(dib)?));
+    }
+    formats.push((CF_UNICODETEXT.0 as u32, GlobalBlock::new(&text)?));
+    formats.push((CF_HDROP.0 as u32, GlobalBlock::new(&drop)?));
 
     let mut opened = false;
     for _ in 0..5 {
@@ -59,13 +77,9 @@ pub fn write_clipboard(capture: &SavedCapture) -> Result<(), ClipboardError> {
             "register Preferred DropEffect failed".into(),
         ));
     }
-    let formats = [
-        CF_DIBV5.0 as u32,
-        CF_UNICODETEXT.0 as u32,
-        CF_HDROP.0 as u32,
-        drop_effect,
-    ];
-    for (format, block) in formats.into_iter().zip(&mut blocks) {
+    formats.push((drop_effect, GlobalBlock::new(&effect)?));
+
+    for (format, mut block) in formats {
         let handle = block.handle();
         unsafe { SetClipboardData(format, Some(HANDLE(handle.0))) }.map_err(win_error)?;
         block.transfer();

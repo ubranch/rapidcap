@@ -217,15 +217,25 @@ fn ffmpeg_args(
         "desktop".into(),
     ];
     if kind == CaptureKind::Video {
+        // The soundtrack is a second input, so it has to be declared before the
+        // output options and its codec after them. Both halves are skipped
+        // together: half an audio pipeline makes FFmpeg map a stream that does
+        // not exist. Skipping it is also the only recourse when
+        // `virtual-audio-capturer` is not installed, which otherwise fails the
+        // whole recording on an input the user never asked for.
+        if settings.audio.enabled {
+            args.extend([
+                "-f".into(),
+                "dshow".into(),
+                "-thread_queue_size".into(),
+                "1024".into(),
+                "-audio_buffer_size".into(),
+                "80".into(),
+                "-i".into(),
+                "audio=virtual-audio-capturer".into(),
+            ]);
+        }
         args.extend([
-            "-f".into(),
-            "dshow".into(),
-            "-thread_queue_size".into(),
-            "1024".into(),
-            "-audio_buffer_size".into(),
-            "80".into(),
-            "-i".into(),
-            "audio=virtual-audio-capturer".into(),
             "-c:v".into(),
             "h264_nvenc".into(),
             "-r".into(),
@@ -242,13 +252,17 @@ fn ffmpeg_args(
             "yuv420p".into(),
             "-movflags".into(),
             "+faststart".into(),
-            "-c:a".into(),
-            "aac".into(),
-            "-ac".into(),
-            settings.audio.channels.to_string(),
-            "-b:a".into(),
-            format!("{}k", settings.audio.bitrate / 1000),
         ]);
+        if settings.audio.enabled {
+            args.extend([
+                "-c:a".into(),
+                "aac".into(),
+                "-ac".into(),
+                settings.audio.channels.to_string(),
+                "-b:a".into(),
+                format!("{}k", settings.audio.bitrate / 1000),
+            ]);
+        }
     } else {
         // ponytail: direct GIF streams safely; full palette generation requires a second pass.
         args.extend(["-vf".into(), format!("fps={}", settings.gif.fps)]);
@@ -298,6 +312,30 @@ mod tests {
         assert!(joined.contains("audio=virtual-audio-capturer"));
         assert!(joined.contains("-c:v h264_nvenc -r 60 -preset p7 -tune hq -b:v 3000k"));
         assert!(joined.contains("-c:a aac -ac 2 -b:a 128k"));
+    }
+
+    #[test]
+    fn muting_audio_drops_the_input_and_the_codec_together() {
+        let mut settings = Settings::default();
+        settings.audio.enabled = false;
+        let args = ffmpeg_args(
+            CaptureKind::Video,
+            &PhysicalRegion {
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+            &settings,
+            Path::new("out.part.mp4"),
+        );
+        let joined = args.join(" ");
+        assert!(!joined.contains("virtual-audio-capturer"), "{joined}");
+        assert!(!joined.contains("dshow"), "{joined}");
+        // The codec half matters as much as the input half - an `-c:a` with no
+        // audio input is what makes FFmpeg abort instead of recording silently.
+        assert!(!joined.contains("-c:a"), "{joined}");
+        assert!(joined.contains("-c:v h264_nvenc"), "video must survive: {joined}");
     }
 
     #[test]

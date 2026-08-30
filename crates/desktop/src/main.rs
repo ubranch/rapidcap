@@ -1,8 +1,11 @@
 #![cfg_attr(not(test), windows_subsystem = "windows")]
 
 mod controller;
+mod icons;
 mod overlay;
 mod platform;
+mod theme;
+mod tray;
 mod window;
 
 use std::{
@@ -18,18 +21,16 @@ use gpui::{App, AppContext as _};
 use gpui_platform::application;
 use rapidcap_capture::{
     AppPaths, CaptureCommand, CaptureKind, CaptureState, CaptureTarget, RecordingSession,
-    SettingsStore, capture_and_save, write_clipboard,
+    SettingsStore, capture_and_save, write_clipboard, write_clipboard_file,
 };
 
 use crate::{
     controller::AppController,
-    overlay::{
-        close_recording_border, close_recording_hud, open_recording_border, open_recording_hud,
-        open_region_overlay, overlay_key_bindings,
-    },
+    icons::IconAssets,
+    overlay::{close_recording_hud, open_recording_hud, open_region_overlay, overlay_key_bindings},
     platform::{
-        PlatformEvent, PlatformRuntime, SingleInstance, hide_main_window, open_folder,
-        probe_payload, show_main_window,
+        PlatformEvent, PlatformRuntime, SingleInstance, hide_main_window, hide_recording_frame,
+        open_folder, probe_payload, show_main_window, show_recording_frame,
     },
     window::{key_bindings, open_main_window},
 };
@@ -69,20 +70,18 @@ fn main() -> anyhow::Result<()> {
     );
 
     let silent = std::env::args_os().any(|argument| argument == "--silent");
-    application().run(move |cx: &mut App| {
+    application().with_assets(IconAssets).run(move |cx: &mut App| {
         let mut bindings = key_bindings();
         bindings.extend(overlay_key_bindings());
         cx.bind_keys(bindings);
         let controller = cx.new(|_| AppController::new(settings, paths));
         let recording_stop = Arc::new(Mutex::new(None::<mpsc::Sender<RecordingControl>>));
-        let recording_border = Rc::new(RefCell::new(Vec::new()));
         let recording_hud = Rc::new(RefCell::new(None));
         let main_window =
             open_main_window(cx, controller.clone(), !silent).expect("open RapidCap main window");
         let recording_window = main_window;
         cx.subscribe(&controller, {
             let recording_stop = recording_stop.clone();
-            let recording_border = recording_border.clone();
             let recording_hud = recording_hud.clone();
             move |controller, command, cx| match command {
                 CaptureCommand::CaptureRegion
@@ -127,7 +126,7 @@ fn main() -> anyhow::Result<()> {
                     if let Some(sender) = recording_stop.lock().unwrap().take() {
                         let _ = sender.send(RecordingControl::Stop);
                     }
-                    close_recording_border(&mut recording_border.borrow_mut(), cx);
+                    hide_recording_frame();
                     close_recording_hud(&mut recording_hud.borrow_mut(), cx);
                     show_main_window();
                     let _ = main_window.update(cx, |_view, window, _cx| {
@@ -138,7 +137,7 @@ fn main() -> anyhow::Result<()> {
                     if let Some(sender) = recording_stop.lock().unwrap().take() {
                         let _ = sender.send(RecordingControl::Stop);
                     }
-                    close_recording_border(&mut recording_border.borrow_mut(), cx);
+                    hide_recording_frame();
                     close_recording_hud(&mut recording_hud.borrow_mut(), cx);
                     show_main_window();
                     let _ = main_window.update(cx, |_view, window, _cx| {
@@ -151,7 +150,6 @@ fn main() -> anyhow::Result<()> {
         .detach();
         cx.subscribe(&controller, {
             let recording_stop = recording_stop.clone();
-            let recording_border = recording_border.clone();
             let recording_hud = recording_hud.clone();
             move |controller, target: &CaptureTarget, cx| {
             let state = controller.read(cx).state().clone();
@@ -184,23 +182,18 @@ fn main() -> anyhow::Result<()> {
                     .detach();
                 }
                 CaptureState::Countdown(kind @ (CaptureKind::Video | CaptureKind::Gif), seconds) => {
-                    close_recording_border(&mut recording_border.borrow_mut(), cx);
+                    hide_recording_frame();
                     close_recording_hud(&mut recording_hud.borrow_mut(), cx);
-                    match open_recording_border(cx, &target) {
-                        Ok(handles) => *recording_border.borrow_mut() = handles,
-                        Err(error) => {
-                            tracing::error!(%error, "open recording boundary");
-                            let _ = controller.update(cx, |controller, cx| {
-                                controller.dispatch(CaptureCommand::Cancel, cx)
-                            });
-                            return;
+                    match &target {
+                        CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => {
+                            show_recording_frame(region, theme::FRAME)
                         }
                     }
                     match open_recording_hud(cx, controller.clone(), target.clone()) {
                         Ok(handle) => *recording_hud.borrow_mut() = Some(handle),
                         Err(error) => {
                             tracing::error!(%error, "open recording HUD");
-                            close_recording_border(&mut recording_border.borrow_mut(), cx);
+                            hide_recording_frame();
                             let _ = controller.update(cx, |controller, cx| {
                                 controller.dispatch(CaptureCommand::Cancel, cx)
                             });
@@ -236,8 +229,7 @@ fn main() -> anyhow::Result<()> {
                         }
                     });
                     let recording_stop = recording_stop.clone();
-                    let recording_border = recording_border.clone();
-                    let recording_hud = recording_hud.clone();
+                            let recording_hud = recording_hud.clone();
                     cx.spawn(async move |cx| {
                         match started_receiver.recv().await {
                             Ok(Ok(())) => controller.update(cx, |controller, cx| {
@@ -247,13 +239,13 @@ fn main() -> anyhow::Result<()> {
                                 controller.update(cx, |controller, cx| {
                                     controller.finish_recording(Err(error), cx)
                                 });
-                                close_recording_border(&mut recording_border.borrow_mut(), cx);
+                                hide_recording_frame();
                                 close_recording_hud(&mut recording_hud.borrow_mut(), cx);
                                 show_main_window();
                                 return;
                             }
                             Err(_) => {
-                                close_recording_border(&mut recording_border.borrow_mut(), cx);
+                                hide_recording_frame();
                                 close_recording_hud(&mut recording_hud.borrow_mut(), cx);
                                 show_main_window();
                                 return;
@@ -262,11 +254,19 @@ fn main() -> anyhow::Result<()> {
                         let result = task.await.and_then(|path| {
                             path.ok_or_else(|| unreachable!("started recording cannot be cancelled"))
                         });
+                        // A finished recording belongs on the clipboard for the
+                        // same reason a screenshot does: the next thing you do
+                        // with it is paste it somewhere.
+                        if let Ok(path) = &result
+                            && let Err(error) = write_clipboard_file(path)
+                        {
+                            tracing::warn!(%error, path = %path.display(), "clipboard write failed after recording save");
+                        }
                         recording_stop.lock().unwrap().take();
                         controller.update(cx, |controller, cx| {
                             controller.finish_recording(result, cx)
                         });
-                        close_recording_border(&mut recording_border.borrow_mut(), cx);
+                        hide_recording_frame();
                         close_recording_hud(&mut recording_hud.borrow_mut(), cx);
                         show_main_window();
                         let _ = recording_window.update(cx, |_view, window, _cx| {
@@ -290,6 +290,14 @@ fn main() -> anyhow::Result<()> {
         };
         let events = runtime.receiver();
         cx.set_global(runtime);
+        // The tray is the only RapidCap surface on screen while the panel is
+        // minimised and the HUD sits over some other part of the display, so it
+        // has to carry the capture state rather than stay a static badge.
+        cx.observe(&controller, |controller, cx| {
+            let state = controller.read(cx).state().clone();
+            cx.global::<PlatformRuntime>().show_capture_state(&state);
+        })
+        .detach();
         cx.spawn(async move |cx| {
             while let Ok(event) = events.recv().await {
                 match event {
@@ -299,6 +307,11 @@ fn main() -> anyhow::Result<()> {
                         });
                     }
                     PlatformEvent::Show => {
+                        // The panel is hidden with `ShowWindow(SW_HIDE)`, and
+                        // `activate_window` cannot bring back a window that is
+                        // not visible - that is why "Show" in the tray menu did
+                        // nothing at all.
+                        show_main_window();
                         let _ = main_window.update(cx, |_view, window, _cx| {
                             window.activate_window();
                         });

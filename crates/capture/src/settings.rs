@@ -48,6 +48,7 @@ impl Default for Settings {
                 tune: "hq".into(),
             },
             audio: AudioSettings {
+                enabled: true,
                 bitrate: 128_000,
                 channels: 2,
             },
@@ -78,7 +79,6 @@ impl Settings {
         if !(1..=100).contains(&self.screenshot.jpeg_quality)
             || self.video.fps == 0
             || self.gif.fps == 0
-            || self.countdown_seconds == 0
         {
             return Err(SettingsError::Invalid(
                 "settings contain zero or out-of-range values".into(),
@@ -162,8 +162,21 @@ pub struct VideoSettings {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AudioSettings {
+    /// Whether a video recording carries a soundtrack.
+    ///
+    /// Added after schema version 1 shipped, so it has to tolerate its own
+    /// absence: a settings file written before this field existed is still a
+    /// valid file, and back then the recorder always captured audio. The
+    /// default therefore reproduces the old behaviour rather than inventing a
+    /// new one.
+    #[serde(default = "audio_enabled_default")]
+    pub enabled: bool,
     pub bitrate: u32,
     pub channels: u16,
+}
+
+fn audio_enabled_default() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
