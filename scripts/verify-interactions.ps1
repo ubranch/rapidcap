@@ -21,6 +21,8 @@ using System.Text;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public class RcUi {
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
+  [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
   delegate bool Cb(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumWindows(Cb cb, IntPtr l);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
@@ -43,7 +45,7 @@ public class RcUi {
   /// is not good enough - while the panel is hidden it returns whichever other
   /// window the app has up, and a recording frame edge silently becomes "the
   /// panel" for every click that follows.
-  public static IntPtr Panel(uint want) {
+  public static IntPtr Panel(uint want, int minW, int maxW, int minH, int maxH) {
     IntPtr found = IntPtr.Zero;
     EnumWindows((h, l) => {
       uint p; GetWindowThreadProcessId(h, out p);
@@ -51,7 +53,7 @@ public class RcUi {
       var c = new StringBuilder(64); GetClassNameW(h, c, 64);
       if (c.ToString() != "Zed::Window") return true;
       RECT r; GetWindowRect(h, out r);
-      if (r.R - r.L > 380 && r.R - r.L < 460 && r.B - r.T > 280 && r.B - r.T < 360) {
+      if (r.R - r.L > minW && r.R - r.L < maxW && r.B - r.T > minH && r.B - r.T < maxH) {
         found = h; return false;
       }
       return true;
@@ -90,9 +92,29 @@ public class RcUi {
 }
 "@ -ErrorAction SilentlyContinue
 
+# Pinned DPI-aware, and it has to be: `Graphics.CopyFromScreen` always reads
+# the physical desktop, whatever the calling thread claims to be. Run unaware,
+# the window rects come back virtualised onto the logical grid while the grab
+# still reads physical, so every capture below lands about 20% short of the
+# window it was aimed at and comes back as an empty bitmap - which the checks
+# then report as "no recording dot" against an app that is drawing one.
+#
+# Pinned rather than inherited, because loading System.Drawing flips the process
+# into per-monitor mode on its own: un-pinned, the panel measures 400 wide on
+# one run and 500 on another and the finder stops finding it.
+#
+# Everything below therefore works in physical pixels. Constants that come from
+# the design are written logically and converted with `Px` at the point of use.
+$PER_MONITOR_V2 = [IntPtr](-4)
+[void][RcUi]::SetThreadDpiAwarenessContext($PER_MONITOR_V2)
+$scale = [RcUi]::GetDpiForSystem() / 96.0
+
+# Logical -> physical, for a coordinate the design gives us.
+function Px([double]$logical) { [int][Math]::Round($logical * $scale) }
+
 $proc = Get-Process -Name RapidCap -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $proc) { Write-Host "FAIL  RapidCap is not running"; exit 1 }
-$panel = [RcUi]::Panel([uint32]$proc.Id)
+$panel = [RcUi]::Panel([uint32]$proc.Id, (Px 380), (Px 460), (Px 280), (Px 360))
 if ($panel -eq [IntPtr]::Zero) { Write-Host "FAIL  the panel is not on screen"; exit 1 }
 
 $settingsFile = Join-Path $env:APPDATA "RapidCap\settings.json"
@@ -142,7 +164,7 @@ function Shot([string]$label) {
   # A minimised window still reports IsWindowVisible, and its bounds are the
   # -32000 placeholder. Capturing that yields a 146x28 white smear that quietly
   # passes for a panel screenshot.
-  if (($r.R - $r.L) -lt 300 -or ($r.B - $r.T) -lt 200) { return $null }
+  if (($r.R - $r.L) -lt (Px 300) -or ($r.B - $r.T) -lt (Px 200)) { return $null }
   return Grab $r.L $r.T ($r.R - $r.L) ($r.B - $r.T) $label
 }
 
@@ -212,11 +234,14 @@ function HasDot($bmp) {
   # The pill is not vertically centred in its window - it carries a drop shadow -
   # so the dot straddles rows above the midline. Sweep a band rather than trust
   # one row.
+  # One dot-width out on either side: far enough to clear the 8px disc, close
+  # enough to stay inside the 28px stop button, which is what this has to reject.
+  $reach = Px 8
   for ($y = [int]($bmp.Height * 0.35); $y -le [int]($bmp.Height * 0.55); $y++) {
-    for ($x = 8; $x -lt $bmp.Width - 8; $x++) {
+    for ($x = $reach; $x -lt $bmp.Width - $reach; $x++) {
       $c = $bmp.GetPixel($x, $y)
       if ($c.R -gt 180 -and $c.G -lt 90 -and $c.B -lt 90 -and
-          (IsPill $bmp.GetPixel($x - 8, $y)) -and (IsPill $bmp.GetPixel($x + 8, $y))) {
+          (IsPill $bmp.GetPixel($x - $reach, $y)) -and (IsPill $bmp.GetPixel($x + $reach, $y))) {
         return $true
       }
     }
@@ -268,10 +293,10 @@ $WS_EX_TOPMOST = 0x8
 # Drop the harness' own pin first, or the toggle has nothing to prove.
 [void][RcUi]::SetWindowPos($panel, $NOTOPMOST, 0, 0, 0, 0, $ZORDER_ONLY)
 Start-Sleep -Milliseconds 300
-Click ($o.X + 281) ($o.Y + 22)
+Click ($o.X + (Px 281)) ($o.Y + (Px 22))
 Snap "keep-on-top-on"
 Check "keep on top pins the panel" ((([int64][RcUi]::GetWindowLongPtrW($panel, $EXSTYLE)) -band $WS_EX_TOPMOST) -ne 0) "WS_EX_TOPMOST is clear"
-Click ($o.X + 281) ($o.Y + 22)
+Click ($o.X + (Px 281)) ($o.Y + (Px 22))
 Snap "keep-on-top-off"
 Check "keep on top releases the pin" ((([int64][RcUi]::GetWindowLongPtrW($panel, $EXSTYLE)) -band $WS_EX_TOPMOST) -eq 0) "WS_EX_TOPMOST is still set"
 $o = Park
@@ -280,7 +305,7 @@ $o = Park
 Write-Host ""
 Write-Host "Countdown"
 foreach ($slot in @(@(334, 3, 'countdown-3'), @(368, 5, 'countdown-5'), @(300, 0, 'countdown-off'))) {
-  Click ($o.X + $slot[0]) ($o.Y + 76)
+  Click ($o.X + (Px $slot[0])) ($o.Y + (Px 76))
   Snap $slot[2]
   $got = (Settings).countdown_seconds
   Check ("{0} writes countdown_seconds = {1}" -f $slot[2], $slot[1]) ($got -eq $slot[1]) "settings.json says $got"
@@ -299,8 +324,8 @@ Write-Host "Frame rate"
 $fps = Settings
 Check "video records at 30 fps" ($fps.video.fps -eq 30) "settings.json says $($fps.video.fps)"
 Check "GIF records at 15 fps" ($fps.gif.fps -eq 15) "settings.json says $($fps.gif.fps)"
-$edgeX = $o.X + 371
-$edgeY = $o.Y + 213
+$edgeX = $o.X + (Px 371)
+$edgeY = $o.Y + (Px 213)
 [void][RcUi]::SetCursorPos(900, 500); Start-Sleep -Milliseconds 500
 $rest = Grab $edgeX $edgeY 1 1 "gif-card-edge-rest"
 [void][RcUi]::SetCursorPos($edgeX, $edgeY); Start-Sleep -Milliseconds 500
@@ -314,7 +339,7 @@ Check "the strip the stepper used to own is part of the GIF card" ($litPixel.ToA
 # --- footer ----------------------------------------------------------------
 Write-Host ""
 Write-Host "Footer"
-Click ($o.X + 60) ($o.Y + 272) 800
+Click ($o.X + (Px 60)) ($o.Y + (Px 272)) 800
 Snap "output-chip"
 $explorer = [IntPtr]::Zero
 foreach ($tick in 1..15) {
@@ -327,7 +352,7 @@ if ($explorer -ne [IntPtr]::Zero) { [void][RcUi]::PostMessageW($explorer, 0x0010
 $o = Park
 
 $snapshot = (Settings) | ConvertTo-Json -Depth 5
-Click ($o.X + 330) ($o.Y + 272)
+Click ($o.X + (Px 330)) ($o.Y + (Px 272))
 Snap "status-well"
 Check "the status well is not a button" (((Settings) | ConvertTo-Json -Depth 5) -eq $snapshot) "clicking the status well changed a setting"
 
@@ -349,8 +374,8 @@ function DropRegion {
 }
 # The overlay is the full-screen window; the HUD is the short wide pill. The
 # recording frame is also short and wide, so the HUD is the narrower of the two.
-function Overlay { @(Extra) | Where-Object { $_.H0 -gt 400 } | Select-Object -First 1 }
-function Hud { @(Extra) | Where-Object { $_.H0 -lt 120 -and $_.W -gt 200 -and $_.W -lt 900 } | Select-Object -First 1 }
+function Overlay { @(Extra) | Where-Object { $_.H0 -gt (Px 400) } | Select-Object -First 1 }
+function Hud { @(Extra) | Where-Object { $_.H0 -lt (Px 120) -and $_.W -gt (Px 200) -and $_.W -lt (Px 900) } | Select-Object -First 1 }
 function WaitFor([scriptblock]$probe, [int]$seconds) {
   foreach ($tick in 1..($seconds * 4)) {
     $found = & $probe
@@ -373,7 +398,7 @@ $g.Dispose()
 $under = $bare.GetPixel(0, 0)
 $bare.Dispose()
 
-Click ($o.X + 103) ($o.Y + 140) 1000
+Click ($o.X + (Px 103)) ($o.Y + (Px 140)) 1000
 $overlay = WaitFor { Overlay } 6
 Check "the Region card opens the overlay" ($null -ne $overlay) "no full-screen window appeared"
 if ($overlay) {
@@ -393,10 +418,13 @@ if ($overlay) {
   # of the corner - which side of it depends on rounding, so scan a small box.
   $corners = @(@(600, 400), @(840, 400), @(600, 560), @(840, 560))
   $grips = 0
+  # The grip is 7 logical px straddling the border, so the box has to widen with
+  # the display scale or a 125% run misses it by rounding alone.
+  $slack = Px 5
   foreach ($corner in $corners) {
     $found = $false
-    foreach ($dx in -5..5) {
-      foreach ($dy in -5..5) {
+    foreach ($dx in -$slack..$slack) {
+      foreach ($dy in -$slack..$slack) {
         $c = $shot.GetPixel($corner[0] - $overlay.L + $dx, $corner[1] - $overlay.T + $dy)
         if ($c.R -gt 220 -and $c.G -gt 220 -and $c.B -gt 220) { $found = $true; break }
       }
@@ -427,7 +455,7 @@ $o = Park
 Write-Host ""
 Write-Host "Window capture"
 $countBefore = Captures
-Click ($o.X + 296) ($o.Y + 140) 1000
+Click ($o.X + (Px 296)) ($o.Y + (Px 140)) 1000
 $overlay = WaitFor { Overlay } 6
 Check "the Window card opens the overlay" ($null -ne $overlay) "no full-screen window appeared"
 if ($overlay) {
@@ -464,9 +492,9 @@ foreach ($rec in @(@(86, 'video', 'Video'), @(279, 'gif', 'GIF'))) {
   Write-Host ("{0} recording" -f $rec[2])
   # Video runs with a 3s countdown so the countdown bar can be checked; GIF runs
   # with none, so the rest of the pass is not waiting on it.
-  Click ($o.X + $(if ($rec[1] -eq 'video') { 334 } else { 300 })) ($o.Y + 76)
+  Click ($o.X + (Px $(if ($rec[1] -eq 'video') { 334 } else { 300 }))) ($o.Y + (Px 76))
   $countBefore = Captures
-  Click ($o.X + $rec[0]) ($o.Y + 213) 1000
+  Click ($o.X + (Px $rec[0])) ($o.Y + (Px 213)) 1000
   $overlay = WaitFor { Overlay } 6
   Check ("the {0} card opens the target overlay" -f $rec[2]) ($null -ne $overlay) "no overlay appeared"
   if (-not $overlay) { $o = Park; continue }
@@ -481,7 +509,7 @@ foreach ($rec in @(@(86, 'video', 'Video'), @(279, 'gif', 'GIF'))) {
     # names the target while there is still time to cancel.
     $shot = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-countdown"
     $counting = PillSpan $shot ([int]($hud.H0 / 2))
-    Check "the countdown HUD is wider than the running bar" ($counting -gt 200) "pill is only ${counting}px wide"
+    Check "the countdown HUD is wider than the running bar" ($counting -gt (Px 200)) "pill is only ${counting}px wide"
     Check "the countdown HUD shows no recording dot" (-not (HasDot $shot)) "the red dot is up before recording starts"
     $shot.Dispose()
   }
@@ -516,12 +544,12 @@ foreach ($rec in @(@(86, 'video', 'Video'), @(279, 'gif', 'GIF'))) {
   if ($first -ge 0 -and $rec[1] -eq 'video') {
     # Pause sits one 28px button plus a 4px gap to the left of stop.
     $stopX = $hud.L + [int](($first + $last) / 2)
-    Click ($stopX - 32) ($hud.T + $y) 900
+    Click ($stopX - (Px 32)) ($hud.T + $y) 900
     WakeHud $hud
     $shot = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-paused"
     Check "pause greys the recording dot" (-not (HasDot $shot)) "the dot is still recording red while paused"
     $shot.Dispose()
-    Click ($stopX - 32) ($hud.T + $y) 900
+    Click ($stopX - (Px 32)) ($hud.T + $y) 900
     WakeHud $hud
     $shot = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-resumed"
     Check "resume brings the recording dot back" (HasDot $shot) "the dot stayed grey after resume"
