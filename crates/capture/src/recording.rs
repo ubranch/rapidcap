@@ -9,7 +9,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use windows::Win32::{Foundation::HANDLE, System::SystemInformation::GetLocalTime};
+use windows::Win32::{
+    Foundation::HANDLE,
+    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
+    System::SystemInformation::GetLocalTime,
+};
 
 use crate::{AppPaths, CaptureKind, CaptureTarget, OutputNamer, PhysicalRegion, Settings};
 
@@ -53,9 +57,10 @@ impl RecordingSession {
         let stem = OutputNamer::random().file_stem("Screen");
         let final_path = directory.join(format!("{stem}.{extension}"));
         let temp_path = paths.temp_dir.join(format!("{stem}.part.{extension}"));
+        let source = DdaSource::resolve(region)?;
         let ffmpeg = ffmpeg_path()?;
         let child = Command::new(ffmpeg)
-            .args(ffmpeg_args(kind, region, settings, &temp_path))
+            .args(ffmpeg_args(kind, &source, settings, &temp_path))
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -191,9 +196,73 @@ fn resolve_scoop_shim(executable: &Path) -> PathBuf {
     }
 }
 
+/// Where Desktop Duplication has to be pointed: which DXGI output, and the
+/// crop within it.
+///
+/// `ddagrab` reads one adapter output at a time and its offsets are local to
+/// that output, where gdigrab took virtual-desktop coordinates. A region is
+/// therefore resolved against the output it overlaps most, which is also how
+/// `capture_screenshot` picks a monitor for stills.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DdaSource {
+    output_idx: u32,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+impl DdaSource {
+    fn resolve(region: &PhysicalRegion) -> Result<Self, RecordingError> {
+        // Adapter 0 is the one `-init_hw_device d3d11va` opens by default, so
+        // enumerating its outputs here yields the same indices FFmpeg's
+        // `output_idx` counts through.
+        let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1() }.map_err(recording_error)?;
+        let adapter = unsafe { factory.EnumAdapters1(0) }.map_err(recording_error)?;
+        let mut best: Option<(u32, PhysicalRegion, PhysicalRegion)> = None;
+        for index in 0.. {
+            let Ok(output) = (unsafe { adapter.EnumOutputs(index) }) else {
+                break;
+            };
+            let rect = unsafe { output.GetDesc() }
+                .map_err(recording_error)?
+                .DesktopCoordinates;
+            let bounds = PhysicalRegion {
+                x: rect.left,
+                y: rect.top,
+                width: (rect.right - rect.left) as u32,
+                height: (rect.bottom - rect.top) as u32,
+            };
+            let Some(crop) = region.intersection(bounds.clone()) else {
+                continue;
+            };
+            let area = u64::from(crop.width) * u64::from(crop.height);
+            if best
+                .as_ref()
+                .is_none_or(|(_, _, best)| u64::from(best.width) * u64::from(best.height) < area)
+            {
+                best = Some((index, bounds, crop));
+            }
+        }
+        let (output_idx, bounds, crop) = best.ok_or_else(|| {
+            RecordingError("recording region does not intersect a display".into())
+        })?;
+        Ok(Self {
+            output_idx,
+            x: crop.x - bounds.x,
+            y: crop.y - bounds.y,
+            // H.264 has no odd dimensions, and the `pad` filter that used to
+            // round them up cannot run on D3D11 frames. Rounding down loses at
+            // most one pixel per axis and never reaches past the output edge.
+            width: crop.width & !1,
+            height: crop.height & !1,
+        })
+    }
+}
+
 fn ffmpeg_args(
     kind: CaptureKind,
-    region: &PhysicalRegion,
+    source: &DdaSource,
     settings: &Settings,
     output: &Path,
 ) -> Vec<String> {
@@ -201,40 +270,58 @@ fn ffmpeg_args(
         "-hide_banner".into(),
         "-loglevel".into(),
         "warning".into(),
-        "-f".into(),
-        "gdigrab".into(),
-        "-thread_queue_size".into(),
-        "1024".into(),
-        "-framerate".into(),
-        settings.video.fps.to_string(),
-        "-offset_x".into(),
-        region.x.to_string(),
-        "-offset_y".into(),
-        region.y.to_string(),
-        "-video_size".into(),
-        format!("{}x{}", region.width, region.height),
-        "-i".into(),
-        "desktop".into(),
+        // Desktop Duplication hands NVENC frames that never leave the GPU.
+        // gdigrab used to BitBlt every frame into system memory on the CPU and
+        // could not keep up: a 1080p30 recording arrived at roughly 20 fps with
+        // the rest duplicated, for ~4.6s of CPU per 8s of wall clock. The same
+        // capture through DDA costs ~0.17s and drops nothing.
+        "-init_hw_device".into(),
+        "d3d11va=dx".into(),
     ];
+    // The soundtrack is a real input, so it has to be declared before the
+    // filtergraph and its codec after the output options. Both halves are
+    // skipped together: half an audio pipeline makes FFmpeg map a stream that
+    // does not exist. Skipping it is also the only recourse when
+    // `virtual-audio-capturer` is not installed, which otherwise fails the
+    // whole recording on an input the user never asked for.
+    let with_audio = kind == CaptureKind::Video && settings.audio.enabled;
+    if with_audio {
+        args.extend([
+            "-f".into(),
+            "dshow".into(),
+            "-thread_queue_size".into(),
+            "1024".into(),
+            "-audio_buffer_size".into(),
+            "80".into(),
+            "-i".into(),
+            "audio=virtual-audio-capturer".into(),
+        ]);
+    }
+    // DDA decimates at the source, so a GIF never captures the 15 frames per
+    // second it is about to throw away.
+    let framerate = if kind == CaptureKind::Gif {
+        settings.gif.fps
+    } else {
+        settings.video.fps
+    };
+    let mut chain = format!(
+        "ddagrab=output_idx={}:framerate={framerate}:video_size={}x{}:offset_x={}:offset_y={}",
+        source.output_idx, source.width, source.height, source.x, source.y
+    );
+    if kind == CaptureKind::Gif {
+        // ponytail: direct GIF streams safely; full palette generation requires a second pass.
+        // GIF has no GPU encoder, so this is the one path that still pays for a
+        // readback into system memory.
+        chain.push_str(",hwdownload,format=bgra");
+    }
+    chain.push_str("[v]");
+    args.extend(["-filter_complex".into(), chain, "-map".into(), "[v]".into()]);
+    if with_audio {
+        // `-filter_complex` switches off automatic stream selection, so the
+        // audio input has to be mapped by hand or it is dropped in silence.
+        args.extend(["-map".into(), "0:a".into()]);
+    }
     if kind == CaptureKind::Video {
-        // The soundtrack is a second input, so it has to be declared before the
-        // output options and its codec after them. Both halves are skipped
-        // together: half an audio pipeline makes FFmpeg map a stream that does
-        // not exist. Skipping it is also the only recourse when
-        // `virtual-audio-capturer` is not installed, which otherwise fails the
-        // whole recording on an input the user never asked for.
-        if settings.audio.enabled {
-            args.extend([
-                "-f".into(),
-                "dshow".into(),
-                "-thread_queue_size".into(),
-                "1024".into(),
-                "-audio_buffer_size".into(),
-                "80".into(),
-                "-i".into(),
-                "audio=virtual-audio-capturer".into(),
-            ]);
-        }
         args.extend([
             "-c:v".into(),
             "h264_nvenc".into(),
@@ -246,14 +333,10 @@ fn ffmpeg_args(
             settings.video.tune.clone(),
             "-b:v".into(),
             format!("{}k", settings.video.bitrate / 1000),
-            "-vf".into(),
-            "pad=ceil(iw/2)*2:ceil(ih/2)*2".into(),
-            "-pix_fmt".into(),
-            "yuv420p".into(),
             "-movflags".into(),
             "+faststart".into(),
         ]);
-        if settings.audio.enabled {
+        if with_audio {
             args.extend([
                 "-c:a".into(),
                 "aac".into(),
@@ -263,9 +346,6 @@ fn ffmpeg_args(
                 format!("{}k", settings.audio.bitrate / 1000),
             ]);
         }
-    } else {
-        // ponytail: direct GIF streams safely; full palette generation requires a second pass.
-        args.extend(["-vf".into(), format!("fps={}", settings.gif.fps)]);
     }
     args.extend(["-y".into(), output.display().to_string()]);
     args
@@ -298,7 +378,8 @@ mod tests {
     fn video_command_matches_sharex_encoder_and_audio() {
         let args = ffmpeg_args(
             CaptureKind::Video,
-            &PhysicalRegion {
+            &DdaSource {
+                output_idx: 1,
                 x: 12,
                 y: 34,
                 width: 800,
@@ -308,7 +389,13 @@ mod tests {
             Path::new("out.part.mp4"),
         );
         let joined = args.join(" ");
-        assert!(joined.contains("-framerate 30"));
+        assert!(joined.contains("-init_hw_device d3d11va=dx"));
+        assert!(joined.contains(
+            "ddagrab=output_idx=1:framerate=30:video_size=800x601:offset_x=12:offset_y=34[v]"
+        ));
+        // `-filter_complex` disables automatic stream selection, so both halves
+        // of the pipeline have to be mapped explicitly.
+        assert!(joined.contains("-map [v] -map 0:a"));
         assert!(joined.contains("audio=virtual-audio-capturer"));
         assert!(joined.contains("-c:v h264_nvenc -r 30 -preset p7 -tune hq -b:v 3000k"));
         assert!(joined.contains("-c:a aac -ac 2 -b:a 128k"));
@@ -320,7 +407,8 @@ mod tests {
         settings.audio.enabled = false;
         let args = ffmpeg_args(
             CaptureKind::Video,
-            &PhysicalRegion {
+            &DdaSource {
+                output_idx: 0,
                 x: 0,
                 y: 0,
                 width: 800,
@@ -335,6 +423,7 @@ mod tests {
         // The codec half matters as much as the input half - an `-c:a` with no
         // audio input is what makes FFmpeg abort instead of recording silently.
         assert!(!joined.contains("-c:a"), "{joined}");
+        assert!(!joined.contains("0:a"), "nothing left to map: {joined}");
         assert!(joined.contains("-c:v h264_nvenc"), "video must survive: {joined}");
     }
 
@@ -342,7 +431,8 @@ mod tests {
     fn gif_command_streams_at_sharex_frame_rate() {
         let args = ffmpeg_args(
             CaptureKind::Gif,
-            &PhysicalRegion {
+            &DdaSource {
+                output_idx: 0,
                 x: 0,
                 y: 0,
                 width: 320,
@@ -352,7 +442,9 @@ mod tests {
             Path::new("out.part.gif"),
         );
         let joined = args.join(" ");
-        assert!(joined.contains("-vf fps=15"));
+        // Decimated at the source, not after a readback of frames nobody keeps.
+        assert!(joined.contains("framerate=15"), "{joined}");
+        assert!(joined.contains(",hwdownload,format=bgra[v]"), "{joined}");
         assert!(!joined.contains("palettegen"));
     }
 
