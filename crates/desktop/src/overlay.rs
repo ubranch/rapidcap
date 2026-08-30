@@ -469,9 +469,17 @@ impl Render for RecordingHud {
                             .overflow_hidden()
                             .flex()
                             .items_center()
+                            // Centred inside that leftover space. The pill is a
+                            // fixed width so the buttons cannot slide out from
+                            // under the pointer mid-recording, which left a
+                            // running clock - `00:27`, five glyphs - stranded
+                            // against the left edge with the rest of the bar
+                            // empty. A countdown line fills the space and
+                            // ellipsises, so centring is a no-op there.
+                            .justify_center()
                             .gap(px(7.0))
-                            .pl(px(8.0))
-                            .pr(px(4.0))
+                            // Symmetric, or the centre sits 2px left of it.
+                            .px(px(8.0))
                             .text_size(px(13.0))
                             .text_ellipsis()
                             .child(

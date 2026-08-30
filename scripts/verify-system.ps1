@@ -19,6 +19,7 @@ using System.Text;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public class RcSys {
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);
   delegate bool Cb(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumWindows(Cb cb, IntPtr l);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
@@ -72,6 +73,17 @@ public class RcSys {
   }
 }
 "@ -ErrorAction SilentlyContinue
+
+# Pinned to DPI-*unaware* on purpose, which is the opposite of what
+# verify-design.ps1 wants and for the opposite reason. That script measures
+# rendered pixels, so it needs the physical grid. This one drives input and
+# matches the panel on its size, and every constant below - the 380..460 gate,
+# the cursor positions - is written in logical pixels. Left un-pinned, the
+# thread's awareness depends on which assemblies happened to load, so the panel
+# measures 400 wide on one run and 500 on another and the finder stops finding
+# it. Windows virtualises both the rects and the cursor here, consistently.
+$UNAWARE = [IntPtr](-1)
+[void][RcSys]::SetThreadDpiAwarenessContext($UNAWARE)
 
 $proc = Get-Process -Name RapidCap -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $proc) { Write-Host "FAIL  RapidCap is not running"; exit 1 }
