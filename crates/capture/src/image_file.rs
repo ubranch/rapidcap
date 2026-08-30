@@ -30,10 +30,13 @@ pub fn save_screenshot(
 
     let final_path = if encoded.len() > png_to_jpeg_threshold_bytes {
         encoded.clear();
-        let rgb: Vec<u8> = rgba
-            .chunks_exact(4)
-            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
-            .collect();
+        // `collect()` here used to start from nothing: `flat_map` reports no
+        // upper size hint, so a full-screen capture grew this buffer by doubling
+        // and recopied tens of megabytes on the way. The size is known exactly.
+        let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
+        for pixel in rgba.chunks_exact(4) {
+            rgb.extend_from_slice(&pixel[..3]);
+        }
         JpegEncoder::new_with_quality(&mut encoded, jpeg_quality)
             .encode(&rgb, width, height, ExtendedColorType::Rgb8)
             .map_err(ImageFileError::encode)?;

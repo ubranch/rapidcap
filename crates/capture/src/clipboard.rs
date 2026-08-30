@@ -94,7 +94,11 @@ fn dibv5_bytes(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Clipboar
             "pixel buffer dimensions do not match".into(),
         ));
     }
-    let mut bytes = vec![0; 124];
+    // Header plus every pixel, reserved up front. `extend` below feeds this from
+    // a `flat_map`, which reports no upper size hint, so the buffer used to grow
+    // by doubling and recopy the whole image several times over.
+    let mut bytes = Vec::with_capacity(124 + expected);
+    bytes.resize(124, 0);
     bytes[0..4].copy_from_slice(&124_u32.to_le_bytes());
     bytes[4..8].copy_from_slice(&(width as i32).to_le_bytes());
     bytes[8..12].copy_from_slice(&(height as i32).to_le_bytes());
@@ -108,10 +112,9 @@ fn dibv5_bytes(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Clipboar
     bytes[52..56].copy_from_slice(&0xff00_0000_u32.to_le_bytes());
     bytes[56..60].copy_from_slice(&0x7352_4742_u32.to_le_bytes());
     for row in rgba.chunks_exact(width as usize * 4).rev() {
-        bytes.extend(
-            row.chunks_exact(4)
-                .flat_map(|pixel| [pixel[2], pixel[1], pixel[0], pixel[3]]),
-        );
+        for pixel in row.chunks_exact(4) {
+            bytes.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+        }
     }
     Ok(bytes)
 }
