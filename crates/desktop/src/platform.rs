@@ -180,6 +180,35 @@ impl HotkeySpec {
     fn hotkey(self) -> HotKey {
         HotKey::new(Some(self.modifiers), self.code)
     }
+
+    /// How the shortcut reads to a user: `Alt+E`, `Ctrl+Shift+G`.
+    ///
+    /// Derived from the spec rather than written out again, so the pill on a
+    /// card cannot promise a key the app never registered.
+    pub fn label(self) -> String {
+        let debug = format!("{:?}", self.code);
+        let key = debug.strip_prefix("Key").unwrap_or(&debug);
+        let mut parts = Vec::with_capacity(4);
+        if self.modifiers.contains(Modifiers::CONTROL) {
+            parts.push("Ctrl");
+        }
+        if self.modifiers.contains(Modifiers::SHIFT) {
+            parts.push("Shift");
+        }
+        if self.modifiers.contains(Modifiers::ALT) {
+            parts.push("Alt");
+        }
+        parts.push(key);
+        parts.join("+")
+    }
+}
+
+/// The shortcut a control should print, or `None` for a command nobody bound.
+pub fn shortcut_label(command: CaptureCommand) -> Option<String> {
+    hotkey_specs()
+        .into_iter()
+        .find(|spec| spec.command == command)
+        .map(HotkeySpec::label)
 }
 
 /// The five shortcuts, one per command.
@@ -208,7 +237,7 @@ pub fn probe_payload(output: impl AsRef<Path>) -> Value {
         "app_id": APP_ID,
         "version": env!("CARGO_PKG_VERSION"),
         "output": output.as_ref(),
-        "hotkeys": ["Alt+E", "Ctrl+Shift+W", "Alt+Q", "Ctrl+Shift+G", "Ctrl+Shift+P"]
+        "hotkeys": hotkey_specs().map(HotkeySpec::label)
     })
 }
 

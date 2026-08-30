@@ -11,7 +11,7 @@ use crate::controller::AppController;
 use crate::icons::Icon;
 use crate::platform::{
     drag_main_window, hide_main_window, lock_window_size, open_folder, place_main_window,
-    remember_main_window, set_keep_on_top, window_drag_grab,
+    remember_main_window, set_keep_on_top, shortcut_label, window_drag_grab,
 };
 use crate::theme;
 
@@ -172,6 +172,8 @@ impl Render for MainWindow {
                                     "RapidCapRegion",
                                     Icon::Region,
                                     region_label(target.as_ref()),
+                                    shortcut_label(CaptureCommand::CaptureRegion)
+                                        .unwrap_or_default(),
                                     matches!(target, Some(CaptureTarget::Region(_))),
                                     false,
                                 )
@@ -188,6 +190,8 @@ impl Render for MainWindow {
                                     "RapidCapWindow",
                                     Icon::Window,
                                     window_label(target.as_ref()),
+                                    shortcut_label(CaptureCommand::CaptureActiveWindow)
+                                        .unwrap_or_default(),
                                     matches!(target, Some(CaptureTarget::Window { .. })),
                                     false,
                                 )
@@ -213,6 +217,7 @@ impl Render for MainWindow {
                                         Icon::Video
                                     },
                                     video_label.to_string(),
+                                    shortcut_label(CaptureCommand::ToggleVideo).unwrap_or_default(),
                                     false,
                                     recording_video,
                                 )
@@ -227,6 +232,7 @@ impl Render for MainWindow {
                                     "RapidCapGif",
                                     if recording_gif { Icon::Stop } else { Icon::Gif },
                                     gif_label.to_string(),
+                                    shortcut_label(CaptureCommand::ToggleGif).unwrap_or_default(),
                                     false,
                                     recording_gif,
                                 )
@@ -607,6 +613,7 @@ fn mode_card(
     context: &'static str,
     icon: Icon,
     label: String,
+    shortcut: String,
     armed: bool,
     recording: bool,
 ) -> gpui::Stateful<gpui::Div> {
@@ -623,16 +630,20 @@ fn mode_card(
         .tab_stop(true)
         .role(Role::Button)
         .aria_label(label.clone())
-        .aria_keyshortcuts("Enter Space")
+        .aria_keyshortcuts(format!("Enter Space {shortcut}"))
         .flex_1()
         .relative()
         .overflow_hidden()
         .h(px(theme::CARD_H))
+        // Icon on the left, name over shortcut on the right. Stacking all three
+        // down the middle of a 64px card left every row cramped and the card
+        // bottom-heavy; a row has width to spare and gives the name and its
+        // shortcut a shared left edge to read down.
         .flex()
-        .flex_col()
         .items_center()
-        .justify_center()
-        .gap(px(4.0))
+        .gap(px(11.0))
+        .pl(px(14.0))
+        .pr(px(10.0))
         .rounded(px(theme::RADIUS))
         .border_2()
         .border_color(if armed {
@@ -649,13 +660,45 @@ fn mode_card(
         .cursor_pointer()
         .hover(move |style| style.bg(theme::bg_hover()))
         .focus_visible(move |style| style.border_color(theme::accent()))
-        .child(icon.element(px(19.0), content))
+        .child(icon.element(px(22.0), content))
         .child(
             div()
-                .text_size(theme::TEXT_BODY)
-                .font_weight(FontWeight::MEDIUM)
-                .child(label),
+                .flex()
+                .flex_col()
+                .items_start()
+                .gap(px(3.0))
+                .child(
+                    div()
+                        .text_size(theme::TEXT_BODY)
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(label),
+                )
+                .child(shortcut_pill(shortcut)),
         )
+}
+
+/// The global shortcut, printed under the card's name.
+///
+/// Left-aligned under the name rather than floating in the card's top right
+/// corner: `Ctrl+Shift+W` came within two pixels of the icon up there, and a
+/// longer binding would have run straight through it.
+fn shortcut_pill(shortcut: String) -> gpui::Div {
+    div()
+        .flex_none()
+        // Pulled left by its own padding so the shortcut text lines up with the
+        // name above it. Aligning the chip's box instead left the text inside it
+        // visibly indented.
+        .ml(px(-5.0))
+        .px(px(5.0))
+        .h(px(15.0))
+        .flex()
+        .items_center()
+        .rounded(px(theme::pill_radius(15.0)))
+        .bg(theme::bg_pill_off())
+        .text_size(theme::TEXT_MICRO)
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(theme::text_muted())
+        .child(shortcut)
 }
 
 /// A raised pill. Raised because it is pressable — see `status_well` for the
