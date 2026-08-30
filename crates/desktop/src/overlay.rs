@@ -246,7 +246,8 @@ pub fn open_region_overlay(
         .or_else(|| cx.primary_display())
         .ok_or_else(|| anyhow::anyhow!("no display available"))?;
     let bounds: Bounds<Pixels> = display.bounds();
-    cx.open_window(
+    let placement = monitor.clone();
+    let handle = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: None,
@@ -262,7 +263,23 @@ pub fn open_region_overlay(
             ..Default::default()
         },
         |window, cx| cx.new(|cx| RegionOverlay::new(window, cx, controller, kind, monitor)),
-    )
+    )?;
+    // Measured: GPUI treats `window_bounds` as the outer frame, so a window
+    // asked to cover a 2560x1440 monitor came out 2576x1448 with its client
+    // origin at (0, -4) - the top two pixels of every highlight border were
+    // drawn above the screen and clipped. `place_window` strips the frame, which
+    // makes client and window rects identical, then positions it in the device
+    // pixels the monitor is actually measured in.
+    if let Some(hwnd) = handle.update(cx, |_view, window, _cx| panel_hwnd(window))? {
+        place_window(
+            hwnd,
+            placement.x,
+            placement.y,
+            placement.width as i32,
+            placement.height as i32,
+        );
+    }
+    Ok(handle)
 }
 
 pub struct RecordingHud {
