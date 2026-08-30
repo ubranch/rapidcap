@@ -12,7 +12,6 @@ pub struct AppController {
     settings: Settings,
     paths: AppPaths,
     target: Option<CaptureTarget>,
-    generation: u64,
     recorded: Duration,
     recording_since: Option<Instant>,
     /// The last failure, kept separately from `state`.
@@ -30,7 +29,6 @@ impl AppController {
             settings,
             paths,
             target: None,
-            generation: 0,
             recorded: Duration::ZERO,
             recording_since: None,
             error: None,
@@ -203,10 +201,12 @@ impl AppController {
             }
             _ => {}
         }
-        if matches!(command, CaptureCommand::Cancel) {
+        // Keyed on the state rather than on the command: Escape is not the only
+        // way back to `Idle`, and a region left over from an abandoned capture
+        // would be inherited by the next one, which the user never drew it for.
+        if self.state == CaptureState::Idle {
             self.target = None;
         }
-        self.generation = self.generation.wrapping_add(1);
         cx.emit(command);
         cx.notify();
         Ok(())
@@ -219,7 +219,13 @@ impl AppController {
     fn toggle_recording(&self, kind: CaptureKind) -> Result<CaptureState, CommandError> {
         match self.state {
             CaptureState::Idle => self.start(kind),
-            CaptureState::Countdown(active, _) if active == kind => {
+            // Backing out covers the whole run-up, not just the countdown. The
+            // panel stays on screen while the region is picked, so the button
+            // that started the selection is visible and clickable throughout;
+            // answering `Busy` to it left Escape as the only way out.
+            CaptureState::Selecting(active) | CaptureState::Countdown(active, _)
+                if active == kind =>
+            {
                 self.state.clone().cancel().map_err(CommandError::from)
             }
             CaptureState::Recording(active) | CaptureState::Paused(active) if active == kind => {
@@ -416,6 +422,80 @@ mod tests {
         assert!(
             controller.read_with(cx, |controller, _| controller.error().is_none()),
             "a capture that worked answers the question the error asked"
+        );
+    }
+
+    #[gpui::test]
+    fn the_same_recording_button_backs_out_of_its_own_selection(cx: &mut TestAppContext) {
+        // The panel stays on screen while the region is being picked, so the
+        // Video button is right there and clickable. It used to answer `Busy`:
+        // the only way out of a selection you had just started was Escape.
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.state().clone()),
+            CaptureState::Selecting(CaptureKind::Video)
+        );
+
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+        });
+
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.state().clone()),
+            CaptureState::Idle
+        );
+    }
+
+    #[gpui::test]
+    fn the_other_recording_button_still_refuses_a_live_selection(cx: &mut TestAppContext) {
+        // Backing out is only for the button that started it. GIF must not
+        // cancel a video selection out from under the user.
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+        });
+        let result = controller.update(cx, |controller, cx| {
+            controller.dispatch(CaptureCommand::ToggleGif, cx)
+        });
+        assert_eq!(result, Err(CommandError::Busy));
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.state().clone()),
+            CaptureState::Selecting(CaptureKind::Video)
+        );
+    }
+
+    #[gpui::test]
+    fn backing_out_of_a_selection_drops_the_target(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, cx| {
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+            controller.set_target(
+                rapidcap_capture::CaptureTarget::Region(rapidcap_capture::PhysicalRegion {
+                    x: 0,
+                    y: 0,
+                    width: 640,
+                    height: 480,
+                }),
+                cx,
+            );
+            controller
+                .dispatch(CaptureCommand::ToggleVideo, cx)
+                .unwrap();
+        });
+        assert!(
+            controller.read_with(cx, |controller, _| controller.target().is_none()),
+            "a cancelled selection must not leave its region behind for the next capture"
         );
     }
 

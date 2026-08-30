@@ -40,14 +40,29 @@ pub fn save_screenshot(
         JpegEncoder::new_with_quality(&mut encoded, jpeg_quality)
             .encode(&rgb, width, height, ExtendedColorType::Rgb8)
             .map_err(ImageFileError::encode)?;
-        base_path.with_extension("jpg")
+        with_suffix(base_path, "jpg")
     } else {
-        base_path.with_extension("png")
+        with_suffix(base_path, "png")
     };
 
-    write_atomic(&base_path.with_extension("part"), &final_path, &encoded)
+    write_atomic(&with_suffix(base_path, "part"), &final_path, &encoded)
         .map_err(ImageFileError::io)?;
     Ok(final_path)
+}
+
+/// Appends `.extension`, where `Path::with_extension` would replace one.
+///
+/// The stem carries the process name, and shipped Windows executables are not
+/// all one bare word: `Microsoft.Photos.exe`, `Microsoft.CmdPal.UI.exe`,
+/// `python3.13.exe`. `with_extension` cuts at the *last* dot, so
+/// `Microsoft.Photos_ab12cd34ef` came out as `Microsoft.png` - the random
+/// suffix gone, and every capture of that app silently overwriting the one
+/// before it.
+fn with_suffix(base: &Path, extension: &str) -> PathBuf {
+    let mut name = base.file_name().unwrap_or_default().to_os_string();
+    name.push(".");
+    name.push(extension);
+    base.with_file_name(name)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

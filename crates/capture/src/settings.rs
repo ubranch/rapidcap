@@ -84,6 +84,27 @@ impl Settings {
                 "settings contain zero or out-of-range values".into(),
             ));
         }
+        // FFmpeg is handed `-b:v {bitrate / 1000}k`, so anything under 1000
+        // truncates to `0k` and the encoder picks its own rate - the setting
+        // reads as if it applied and did not. Zero channels produces `-ac 0`,
+        // and an empty preset produces `-preset` followed by the next flag,
+        // which FFmpeg then reads as the preset name. All three fail at spawn,
+        // which is the moment the take is lost, so they fail at load instead.
+        if self.video.bitrate < 1000 || self.audio.bitrate < 1000 {
+            return Err(SettingsError::Invalid(
+                "bitrates are given in bits per second and must be at least 1000".into(),
+            ));
+        }
+        if self.audio.channels == 0 {
+            return Err(SettingsError::Invalid(
+                "a recording needs at least one audio channel".into(),
+            ));
+        }
+        if self.video.preset.trim().is_empty() || self.video.tune.trim().is_empty() {
+            return Err(SettingsError::Invalid(
+                "encoder preset and tune must be named".into(),
+            ));
+        }
         Ok(())
     }
 }
