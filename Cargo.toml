@@ -24,7 +24,10 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tracing = "0.1.44"
 tracing-appender = "0.2.4"
-tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = [
+  "fmt",
+  "smallvec",
+] }
 tray-icon = "0.24.1"
 windows-capture = "1.5.0"
 windows = { version = "0.61.3", features = [
@@ -51,3 +54,31 @@ windows = { version = "0.61.3", features = [
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+# The shipped binary. Cargo's stock release profile splits the crate graph into
+# 16 codegen units and skips LTO, so nothing inlines across `rapidcap-capture`,
+# `gpui`, or the `windows` bindings, and the linker keeps every debug symbol.
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+# Deliberately NOT `panic = "abort"`. A panic on the capture worker thread has
+# to stay recoverable - it surfaces as a failed channel send and then a toast.
+# Aborting would take the tray app down with it over one bad frame.
+
+# `opt-level = "s"` above is worth 2.07 MB (20%) on a binary that is 97% cold UI
+# code, but it also turns off the vectorising and unrolling that the pixel and
+# compression inner loops live on. Those crates carry the screenshot save - a
+# 2048x1152 capture spends ~48 ms in crop, deflate and JPEG - so they opt back
+# into full speed. Everything else stays small.
+[profile.release.package.rapidcap-capture]
+opt-level = 3
+[profile.release.package.image]
+opt-level = 3
+[profile.release.package.png]
+opt-level = 3
+[profile.release.package.miniz_oxide]
+opt-level = 3
+[profile.release.package.fdeflate]
+opt-level = 3
