@@ -1,5 +1,10 @@
-use std::{fmt, os::windows::ffi::OsStrExt, path::Path, thread, time::Duration};
+//! Clipboard on Windows: CF_DIBV5 for the pixels, CF_HDROP and CF_UNICODETEXT
+//! for the file, all published in one open/close of the clipboard.
 
+use std::{os::windows::ffi::OsStrExt, path::Path, thread, time::Duration};
+
+use super::ClipboardError;
+use crate::SavedCapture;
 use windows::{
     Win32::{
         Foundation::{GlobalFree, HANDLE, HGLOBAL},
@@ -14,19 +19,6 @@ use windows::{
     },
     core::w,
 };
-
-use crate::SavedCapture;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ClipboardError(String);
-
-impl fmt::Display for ClipboardError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for ClipboardError {}
 
 /// A screenshot: the pixels *and* the file, so a paste lands as an image in
 /// chat and as a file in a folder.

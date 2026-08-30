@@ -1,22 +1,34 @@
 mod clipboard;
+mod geometry;
 mod image_file;
 mod naming;
 mod recording;
 mod screenshot;
 mod settings;
 mod state;
+
+// One screenshot backend per platform, each exporting the same
+// `capture_screenshot`. There is no trait: with exactly one implementation
+// compiled in per target, the call sites already pin the shared signature and a
+// trait would only add a name to indirect through.
+#[cfg(target_os = "macos")]
+mod sck;
+#[cfg(windows)]
 mod wgc;
 
+#[cfg(target_os = "macos")]
+pub use sck::capture_screenshot;
+#[cfg(windows)]
+pub use wgc::capture_screenshot;
+
 pub use clipboard::{ClipboardError, write_clipboard, write_clipboard_file};
+pub use geometry::{CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, RawFrame};
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::{NamingError, OutputNamer};
 pub use recording::{RecordingError, RecordingSession};
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
 pub use state::{CaptureCommand, CaptureEvent, CaptureKind, CaptureState, StateError};
-pub use wgc::{
-    CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, RawFrame, capture_screenshot,
-};
 
 #[cfg(test)]
 mod tests {

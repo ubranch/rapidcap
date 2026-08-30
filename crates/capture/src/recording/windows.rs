@@ -1,28 +1,22 @@
+//! Recording on Windows: Desktop Duplication into NVENC.
+
 use std::{
-    fmt, fs,
-    io::Write,
+    fs,
     os::windows::io::AsRawHandle,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-    thread,
-    time::{Duration, Instant},
+    process::{Child, Command},
 };
 
 use windows::Win32::{
     Foundation::HANDLE,
     Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
-    System::SystemInformation::GetLocalTime,
 };
 
-use crate::{AppPaths, CaptureKind, CaptureTarget, OutputNamer, PhysicalRegion, Settings};
+use super::{RecordingError, recording_error};
+use crate::{CaptureKind, PhysicalRegion, Settings};
 
-pub struct RecordingSession {
-    child: Child,
-    temp_path: PathBuf,
-    final_path: PathBuf,
-    paused: bool,
-}
+pub(super) const FFMPEG_EXE: &str = "ffmpeg.exe";
 
 #[link(name = "ntdll")]
 unsafe extern "system" {
@@ -30,154 +24,33 @@ unsafe extern "system" {
     fn NtResumeProcess(process: HANDLE) -> i32;
 }
 
-impl RecordingSession {
-    pub fn start(
-        kind: CaptureKind,
-        target: &CaptureTarget,
-        settings: &Settings,
-        paths: &AppPaths,
-    ) -> Result<Self, RecordingError> {
-        let region = match target {
-            CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
-        };
-        if !matches!(kind, CaptureKind::Video | CaptureKind::Gif) {
-            return Err(RecordingError("unsupported recording kind".into()));
-        }
-        fs::create_dir_all(&paths.temp_dir).map_err(recording_error)?;
-        let now = unsafe { GetLocalTime() };
-        let directory = paths
-            .capture_root
-            .join(format!("{:04}-{:02}", now.wYear, now.wMonth));
-        fs::create_dir_all(&directory).map_err(recording_error)?;
-        let extension = if kind == CaptureKind::Video {
-            "mp4"
-        } else {
-            "gif"
-        };
-        let stem = OutputNamer::random().file_stem("Screen");
-        let final_path = directory.join(format!("{stem}.{extension}"));
-        let temp_path = paths.temp_dir.join(format!("{stem}.part.{extension}"));
-        let source = DdaSource::resolve(region)?;
-        let ffmpeg = ffmpeg_path()?;
-        let child = Command::new(ffmpeg)
-            .args(ffmpeg_args(kind, &source, settings, &temp_path))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(0x0800_0000)
-            .spawn()
-            .map_err(recording_error)?;
-        Ok(Self {
-            child,
-            temp_path,
-            final_path,
-            paused: false,
-        })
-    }
-
-    pub fn pause(&mut self) -> Result<(), RecordingError> {
-        if self.paused {
-            return Ok(());
-        }
-        let status = unsafe { NtSuspendProcess(HANDLE(self.child.as_raw_handle())) };
-        if status < 0 {
-            return Err(RecordingError(format!(
-                "pause FFmpeg failed: NTSTATUS {status:#x}"
-            )));
-        }
-        self.paused = true;
-        Ok(())
-    }
-
-    pub fn resume(&mut self) -> Result<(), RecordingError> {
-        if !self.paused {
-            return Ok(());
-        }
-        let status = unsafe { NtResumeProcess(HANDLE(self.child.as_raw_handle())) };
-        if status < 0 {
-            return Err(RecordingError(format!(
-                "resume FFmpeg failed: NTSTATUS {status:#x}"
-            )));
-        }
-        self.paused = false;
-        Ok(())
-    }
-
-    pub fn cancel(mut self) -> Result<(), RecordingError> {
-        self.resume()?;
-        if self.child.try_wait().map_err(recording_error)?.is_none() {
-            self.child.kill().map_err(recording_error)?;
-        }
-        self.child.wait().map_err(recording_error)?;
-        match fs::remove_file(&self.temp_path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(recording_error(error)),
-        }
-    }
-
-    pub fn stop(mut self) -> Result<PathBuf, RecordingError> {
-        self.resume()?;
-        if self.child.try_wait().map_err(recording_error)?.is_none()
-            && let Some(mut stdin) = self.child.stdin.take()
-        {
-            let _ = stdin.write_all(b"q\n");
-        }
-        let deadline = Instant::now() + Duration::from_secs(10);
-        let status = loop {
-            if let Some(status) = self.child.try_wait().map_err(recording_error)? {
-                break status;
-            }
-            if Instant::now() >= deadline {
-                let _ = self.child.kill();
-                let _ = self.child.wait();
-                return Err(RecordingError(format!(
-                    "FFmpeg stop timed out; temporary output preserved at {}",
-                    self.temp_path.display()
-                )));
-            }
-            thread::sleep(Duration::from_millis(25));
-        };
-        let size = fs::metadata(&self.temp_path)
-            .map(|metadata| metadata.len())
-            .unwrap_or_default();
-        if !status.success() || size == 0 {
-            return Err(RecordingError(format!(
-                "FFmpeg exited {status}; temporary output at {}",
-                self.temp_path.display()
-            )));
-        }
-        fs::rename(&self.temp_path, &self.final_path).map_err(|error| {
-            RecordingError(format!(
-                "finalize {} to {} failed: {error}",
-                self.temp_path.display(),
-                self.final_path.display()
-            ))
-        })?;
-        Ok(self.final_path)
-    }
+/// FFmpeg is a console subsystem program, so without this a black window blinks
+/// up over whatever is being recorded, in the first frames of the recording.
+pub(super) fn hide_console(command: &mut Command) {
+    command.creation_flags(0x0800_0000);
 }
 
-fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
-    let bundled = std::env::current_exe()
-        .map_err(recording_error)?
-        .parent()
-        .expect("RapidCap executable has a parent")
-        .join("ffmpeg.exe");
-    if bundled.is_file() {
-        return Ok(bundled);
+pub(super) fn suspend(child: &Child) -> Result<(), RecordingError> {
+    let status = unsafe { NtSuspendProcess(HANDLE(child.as_raw_handle())) };
+    if status < 0 {
+        return Err(RecordingError(format!(
+            "pause FFmpeg failed: NTSTATUS {status:#x}"
+        )));
     }
-    // ponytail: PATH fallback is development-only; portable bundle supplies adjacent ffmpeg.exe.
-    std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
-        .map(|directory| directory.join("ffmpeg.exe"))
-        .find(|candidate| candidate.is_file())
-        .map(|candidate| resolve_scoop_shim(&candidate))
-        .ok_or_else(|| RecordingError("ffmpeg.exe not found".into()))
+    Ok(())
 }
 
-fn resolve_scoop_shim(executable: &Path) -> PathBuf {
+pub(super) fn resume(child: &Child) -> Result<(), RecordingError> {
+    let status = unsafe { NtResumeProcess(HANDLE(child.as_raw_handle())) };
+    if status < 0 {
+        return Err(RecordingError(format!(
+            "resume FFmpeg failed: NTSTATUS {status:#x}"
+        )));
+    }
+    Ok(())
+}
+
+pub(super) fn resolve_shim(executable: &Path) -> PathBuf {
     let Some(target) = fs::read_to_string(executable.with_extension("shim"))
         .ok()
         .and_then(|line| {
@@ -204,7 +77,7 @@ fn resolve_scoop_shim(executable: &Path) -> PathBuf {
 /// therefore resolved against the output it overlaps most, which is also how
 /// `capture_screenshot` picks a monitor for stills.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct DdaSource {
+pub(super) struct CaptureSource {
     output_idx: u32,
     x: i32,
     y: i32,
@@ -212,8 +85,8 @@ struct DdaSource {
     height: u32,
 }
 
-impl DdaSource {
-    fn resolve(region: &PhysicalRegion) -> Result<Self, RecordingError> {
+impl CaptureSource {
+    pub(super) fn resolve(region: &PhysicalRegion) -> Result<Self, RecordingError> {
         // Adapter 0 is the one `-init_hw_device d3d11va` opens by default, so
         // enumerating its outputs here yields the same indices FFmpeg's
         // `output_idx` counts through.
@@ -260,9 +133,9 @@ impl DdaSource {
     }
 }
 
-fn ffmpeg_args(
+pub(super) fn ffmpeg_args(
     kind: CaptureKind,
-    source: &DdaSource,
+    source: &CaptureSource,
     settings: &Settings,
     output: &Path,
 ) -> Vec<String> {
@@ -351,26 +224,11 @@ fn ffmpeg_args(
     args
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RecordingError(String);
-
-impl fmt::Display for RecordingError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for RecordingError {}
-
-fn recording_error(error: impl fmt::Display) -> RecordingError {
-    RecordingError(error.to_string())
-}
-
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{path::Path, time::Duration};
 
-    use crate::{CaptureKind, PhysicalRegion, Settings};
+    use crate::{CaptureKind, PhysicalRegion, RecordingSession, Settings};
 
     use super::*;
 
@@ -378,7 +236,7 @@ mod tests {
     fn video_command_matches_sharex_encoder_and_audio() {
         let args = ffmpeg_args(
             CaptureKind::Video,
-            &DdaSource {
+            &CaptureSource {
                 output_idx: 1,
                 x: 12,
                 y: 34,
@@ -407,7 +265,7 @@ mod tests {
         settings.audio.enabled = false;
         let args = ffmpeg_args(
             CaptureKind::Video,
-            &DdaSource {
+            &CaptureSource {
                 output_idx: 0,
                 x: 0,
                 y: 0,
@@ -424,14 +282,17 @@ mod tests {
         // audio input is what makes FFmpeg abort instead of recording silently.
         assert!(!joined.contains("-c:a"), "{joined}");
         assert!(!joined.contains("0:a"), "nothing left to map: {joined}");
-        assert!(joined.contains("-c:v h264_nvenc"), "video must survive: {joined}");
+        assert!(
+            joined.contains("-c:v h264_nvenc"),
+            "video must survive: {joined}"
+        );
     }
 
     #[test]
     fn gif_command_streams_at_sharex_frame_rate() {
         let args = ffmpeg_args(
             CaptureKind::Gif,
-            &DdaSource {
+            &CaptureSource {
                 output_idx: 0,
                 x: 0,
                 y: 0,
@@ -461,7 +322,7 @@ mod tests {
             format!("path = \"{}\"", real_exe.display()),
         )
         .unwrap();
-        assert_eq!(resolve_scoop_shim(&shim_exe), real_exe);
+        assert_eq!(resolve_shim(&shim_exe), real_exe);
     }
 
     #[test]

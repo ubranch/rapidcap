@@ -2,11 +2,14 @@ use std::{
     fmt,
     fs::{self, File},
     io::Write,
-    os::windows::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
 use windows::{
     Win32::{
         Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW},
@@ -226,11 +229,32 @@ pub struct AppPaths {
 }
 
 impl AppPaths {
+    #[cfg(windows)]
     pub fn discover() -> Result<Self, PathDiscoveryError> {
         Ok(Self::from_roots(
             known_folder(&FOLDERID_Documents)?,
             known_folder(&FOLDERID_RoamingAppData)?,
             known_folder(&FOLDERID_LocalAppData)?,
+        ))
+    }
+
+    /// macOS has no registry of relocatable known folders - all three of these
+    /// are fixed by the filesystem layout - so `$HOME` and three literals cover
+    /// what `SHGetKnownFolderPath` is needed for on Windows.
+    ///
+    /// `Caches` stands in for LocalAppData, which puts the logs under
+    /// `~/Library/Caches/RapidCap/Logs` rather than the `~/Library/Logs` a mac
+    /// user would look in first. Worth revisiting once `from_roots` stops
+    /// naming its arguments after Windows folders.
+    #[cfg(target_os = "macos")]
+    pub fn discover() -> Result<Self, PathDiscoveryError> {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or_else(|| PathDiscoveryError("HOME is not set".into()))?;
+        Ok(Self::from_roots(
+            home.join("Documents"),
+            home.join("Library/Application Support"),
+            home.join("Library/Caches"),
         ))
     }
 
@@ -272,6 +296,7 @@ pub(crate) fn write_atomic(temp: &Path, final_path: &Path, bytes: &[u8]) -> std:
     result
 }
 
+#[cfg(windows)]
 fn move_replace(source: &Path, destination: &Path) -> std::io::Result<()> {
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let destination: Vec<u16> = destination
@@ -290,6 +315,20 @@ fn move_replace(source: &Path, destination: &Path) -> std::io::Result<()> {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn move_replace(source: &Path, destination: &Path) -> std::io::Result<()> {
+    // `rename` is atomic and replaces on APFS, but on its own it only orders the
+    // metadata write - the new directory entry can still be lost to a power cut.
+    // Syncing the parent afterwards is what buys back the durability that
+    // MOVEFILE_WRITE_THROUGH gives the Windows path.
+    fs::rename(source, destination)?;
+    match destination.parent() {
+        Some(parent) => File::open(parent)?.sync_all(),
+        None => Ok(()),
+    }
+}
+
+#[cfg(windows)]
 fn known_folder(id: &GUID) -> Result<PathBuf, PathDiscoveryError> {
     // SAFETY: SHGetKnownFolderPath owns returned NUL-terminated allocation. We copy it,
     // then release exactly once with CoTaskMemFree on every decode path.
@@ -310,11 +349,7 @@ pub struct PathDiscoveryError(String);
 
 impl fmt::Display for PathDiscoveryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "failed to resolve Windows known folder: {}",
-            self.0
-        )
+        write!(formatter, "failed to resolve a platform folder: {}", self.0)
     }
 }
 

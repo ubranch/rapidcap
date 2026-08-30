@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use windows::Win32::System::SystemInformation::GetLocalTime;
+use chrono::{Datelike, Local};
 
 use crate::{AppPaths, CaptureTarget, OutputNamer, Settings, capture_screenshot, save_screenshot};
 
@@ -36,11 +36,11 @@ pub fn capture_and_save(
         CaptureTarget::Window { process_name, .. } => process_name.as_str(),
         CaptureTarget::Region(_) => "Screen",
     };
-    let now = unsafe { GetLocalTime() };
+    let now = Local::now();
     let base = output_base(
         &paths.capture_root,
-        now.wYear,
-        now.wMonth,
+        now.year(),
+        now.month(),
         process_name,
         &OutputNamer::random(),
     );
@@ -63,8 +63,8 @@ pub fn capture_and_save(
 
 fn output_base(
     root: &Path,
-    year: u16,
-    month: u16,
+    year: i32,
+    month: u32,
     process_name: &str,
     namer: &OutputNamer,
 ) -> PathBuf {
