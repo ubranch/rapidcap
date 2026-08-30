@@ -184,22 +184,20 @@ impl HotkeySpec {
 
 /// The five shortcuts, one per command.
 ///
-/// These used to be ShareX's own defaults - Alt+Q, Alt+PrintScreen, Alt+E and
-/// friends - on the theory that muscle memory should carry over. Measured on a
-/// machine with ShareX installed, four of the five failed to register: ShareX
-/// holds them, `RegisterHotKey` is first-come-first-served, and RapidCap lost
-/// every race it entered. Copying a running competitor's bindings guarantees a
-/// collision with exactly the users most likely to try this app.
+/// Alt+Q and Alt+E are the two the user asked for by name, so they are the two
+/// that ship, even though ShareX uses them too. `RegisterHotKey` is
+/// first-come-first-served, so on a machine already running ShareX one of them
+/// will lose the race and fail to register - `PlatformRuntime` logs that rather
+/// than failing to start, and the panel's buttons still work.
 ///
-/// Ctrl+Shift+letter, mnemonic per command, none of them claimed by Windows.
+/// The remaining three have no requested binding, so they stay on
+/// Ctrl+Shift+letter, mnemonic per command and unclaimed by Windows.
 pub fn hotkey_specs() -> [HotkeySpec; 5] {
     const CTRL_SHIFT: Modifiers = Modifiers::CONTROL.union(Modifiers::SHIFT);
     [
-        // A for area.
-        HotkeySpec::new(CTRL_SHIFT, Code::KeyA, CaptureCommand::CaptureRegion),
+        HotkeySpec::new(Modifiers::ALT, Code::KeyE, CaptureCommand::CaptureRegion),
         HotkeySpec::new(CTRL_SHIFT, Code::KeyW, CaptureCommand::CaptureActiveWindow),
-        // R for record.
-        HotkeySpec::new(CTRL_SHIFT, Code::KeyR, CaptureCommand::ToggleVideo),
+        HotkeySpec::new(Modifiers::ALT, Code::KeyQ, CaptureCommand::ToggleVideo),
         HotkeySpec::new(CTRL_SHIFT, Code::KeyG, CaptureCommand::ToggleGif),
         HotkeySpec::new(CTRL_SHIFT, Code::KeyP, CaptureCommand::TogglePause),
     ]
@@ -210,7 +208,7 @@ pub fn probe_payload(output: impl AsRef<Path>) -> Value {
         "app_id": APP_ID,
         "version": env!("CARGO_PKG_VERSION"),
         "output": output.as_ref(),
-        "hotkeys": ["Ctrl+Shift+A", "Ctrl+Shift+W", "Ctrl+Shift+R", "Ctrl+Shift+G", "Ctrl+Shift+P"]
+        "hotkeys": ["Alt+E", "Ctrl+Shift+W", "Alt+Q", "Ctrl+Shift+G", "Ctrl+Shift+P"]
     })
 }
 
@@ -772,25 +770,27 @@ mod tests {
     }
 
     #[test]
-    fn no_shortcut_reuses_a_sharex_default() {
-        // The whole point of the change: RapidCap's target user has ShareX
-        // installed, ShareX registers first, and a duplicate binding is a
-        // shortcut that silently never fires.
-        let sharex = [
-            (Modifiers::ALT, Code::KeyQ),
-            (Modifiers::ALT, Code::PrintScreen),
-            (Modifiers::ALT, Code::KeyE),
-            (Modifiers::SHIFT | Modifiers::ALT, Code::PrintScreen),
-            (Modifiers::CONTROL | Modifiers::SHIFT, Code::PrintScreen),
-        ];
-        for spec in hotkey_specs() {
-            assert!(
-                !sharex.contains(&(spec.modifiers, spec.code)),
-                "{:?}+{:?} collides with ShareX",
-                spec.modifiers,
-                spec.code
-            );
-        }
+    fn the_two_requested_shortcuts_are_bound() {
+        // Alt+Q and Alt+E were asked for by name. They collide with ShareX,
+        // which is accepted; what is not accepted is quietly drifting back to
+        // some other binding the next time this table is edited.
+        let specs = hotkey_specs();
+        let bound = |modifiers, code| {
+            specs
+                .iter()
+                .find(|spec| spec.modifiers == modifiers && spec.code == code)
+                .map(|spec| spec.command)
+        };
+        assert_eq!(
+            bound(Modifiers::ALT, Code::KeyQ),
+            Some(CaptureCommand::ToggleVideo),
+            "Alt+Q must record"
+        );
+        assert_eq!(
+            bound(Modifiers::ALT, Code::KeyE),
+            Some(CaptureCommand::CaptureRegion),
+            "Alt+E must capture"
+        );
     }
 
     #[test]

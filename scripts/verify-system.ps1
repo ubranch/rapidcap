@@ -133,16 +133,14 @@ if (-not $keysWork) {
 } elseif ($taken.Count -ge 5) {
   Skip "a registered hotkey fires" "no hotkey registered, nothing to fire"
 } else {
-  # Shift+Alt+PrintScreen is the video hotkey and the one least often taken.
-  [RcSys]::keybd_event(0xA0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 40
+  # Alt+E is the region hotkey - the one that opens a window you can see.
   [RcSys]::keybd_event(0xA4, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 40
-  [RcSys]::keybd_event(0x2C, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 80
-  [RcSys]::keybd_event(0x2C, 0, 2, [IntPtr]::Zero); Start-Sleep -Milliseconds 40
-  [RcSys]::keybd_event(0xA4, 0, 2, [IntPtr]::Zero); Start-Sleep -Milliseconds 40
-  [RcSys]::keybd_event(0xA0, 0, 2, [IntPtr]::Zero)
+  [RcSys]::keybd_event(0x45, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 80
+  [RcSys]::keybd_event(0x45, 0, 2, [IntPtr]::Zero); Start-Sleep -Milliseconds 40
+  [RcSys]::keybd_event(0xA4, 0, 2, [IntPtr]::Zero)
   Start-Sleep -Seconds 2
   $opened = (Extra) -gt 0
-  Check "a registered hotkey fires" $opened "Shift+Alt+PrintScreen opened nothing"
+  Check "a registered hotkey fires" $opened "Alt+E opened nothing"
   if ($opened) {
     [RcSys]::keybd_event(0x1B, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60
     [RcSys]::keybd_event(0x1B, 0, 2, [IntPtr]::Zero); Start-Sleep -Seconds 2
