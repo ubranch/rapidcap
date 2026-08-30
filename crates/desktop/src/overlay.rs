@@ -122,7 +122,19 @@ impl Render for RegionOverlay {
             .on_mouse_move(cx.listener(Self::mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up));
 
-        if let (Some(start), Some(current)) = (self.start, self.current) {
+        // A press with no travel is a window pick, not a region. Ask the same
+        // question the mouse-up will ask, so pressing on a window keeps its
+        // outline instead of swapping it for a 0 x 0 rect that would never
+        // become the selection anyway.
+        let drag = self.start.zip(self.current).filter(|(start, current)| {
+            is_region_drag(
+                self.kind,
+                physical_point(*start, &self.monitor, self.scale_factor),
+                physical_point(*current, &self.monitor, self.scale_factor),
+            )
+        });
+
+        if let Some((start, current)) = drag {
             let left = start.x.min(current.x);
             let top = start.y.min(current.y);
             let width = (start.x - current.x).abs();
@@ -629,12 +641,21 @@ fn selected_target(
     end: (i32, i32),
     hovered: Option<&CaptureTarget>,
 ) -> Option<CaptureTarget> {
-    let dragged = start.0.abs_diff(end.0) >= 6 || start.1.abs_diff(end.1) >= 6;
-    if kind != CaptureKind::ActiveWindowScreenshot && dragged {
+    if is_region_drag(kind, start, end) {
         PhysicalRegion::from_drag(start, end).map(CaptureTarget::Region)
     } else {
         hovered.cloned()
     }
+}
+
+/// Has the pointer travelled far enough for this press to mean a region?
+///
+/// Six physical pixels of slack, so the hand shake in a click does not turn a
+/// window pick into a one-pixel region. A window screenshot never reads a drag
+/// at all - its target is always the window under the pointer.
+fn is_region_drag(kind: CaptureKind, start: (i32, i32), end: (i32, i32)) -> bool {
+    kind != CaptureKind::ActiveWindowScreenshot
+        && (start.0.abs_diff(end.0) >= 6 || start.1.abs_diff(end.1) >= 6)
 }
 
 fn physical_point(point: Point<Pixels>, monitor: &PhysicalRegion, scale_factor: f32) -> (i32, i32) {
@@ -732,6 +753,22 @@ mod tests {
                 height: 100
             }))
         );
+    }
+
+    #[test]
+    fn a_press_with_no_travel_is_not_a_region_drag() {
+        // The bug this guards: mouse-down set start and current to the same
+        // point, the render read that as a drag, and the window outline the
+        // user was aiming at became a 0 x 0 rect. Mouse-up then picked the
+        // window anyway, so the overlay showed one thing and did another.
+        assert!(!is_region_drag(CaptureKind::Video, (400, 300), (400, 300)));
+        assert!(!is_region_drag(CaptureKind::Video, (400, 300), (405, 304)));
+        assert!(is_region_drag(CaptureKind::Video, (400, 300), (406, 300)));
+        assert!(!is_region_drag(
+            CaptureKind::ActiveWindowScreenshot,
+            (400, 300),
+            (900, 800)
+        ));
     }
 
     #[test]
