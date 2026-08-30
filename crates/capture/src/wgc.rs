@@ -7,7 +7,7 @@ use std::{
 
 use windows::Win32::{
     Foundation::RECT,
-    Graphics::Gdi::{GetMonitorInfoW, HMONITOR, MONITORINFO},
+    Graphics::Gdi::{GetMonitorInfoW, HMONITOR, InvalidateRect, MONITORINFO},
 };
 use windows_capture::{
     capture::{Context, GraphicsCaptureApiHandler},
@@ -94,17 +94,16 @@ impl RawFrame {
         {
             return None;
         }
-        let mut rgba = Vec::with_capacity(crop.width as usize * crop.height as usize * 4);
+        // A row at a time rather than a pixel at a time. Measured at 4K this is
+        // no faster than indexing `self.bytes` four times per pixel - the loop
+        // is bound by memory bandwidth and LLVM already elided those bounds
+        // checks - but the slice makes the in-range access provable at a glance.
+        let row_bytes = crop.width as usize * 4;
+        let mut rgba = Vec::with_capacity(row_bytes * crop.height as usize);
         for y in crop.y as u32..crop.y as u32 + crop.height {
-            let row = y as usize * self.stride as usize;
-            for x in crop.x as u32..crop.x as u32 + crop.width {
-                let pixel = row + x as usize * 4;
-                rgba.extend_from_slice(&[
-                    self.bytes[pixel + 2],
-                    self.bytes[pixel + 1],
-                    self.bytes[pixel],
-                    self.bytes[pixel + 3],
-                ]);
+            let start = y as usize * self.stride as usize + crop.x as usize * 4;
+            for pixel in self.bytes[start..start + row_bytes].chunks_exact(4) {
+                rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
             }
         }
         Some(CapturedFrame {
@@ -193,6 +192,12 @@ pub fn capture_screenshot(target: &CaptureTarget) -> Result<CapturedFrame, Captu
         sender,
     );
     let control = OneFrameCapture::start_free_threaded(settings).map_err(capture_error)?;
+    // Windows Graphics Capture hands over a frame only when the monitor's
+    // content changes, and we ask for no cursor, so an idle desktop produces
+    // nothing at all and the wait below expires on a screen that is perfectly
+    // fine. A null window invalidates every window on the desktop, which makes
+    // DWM present once and gives the session the frame it is waiting for.
+    let _ = unsafe { InvalidateRect(None, None, false) };
     let frame = match receiver.recv_timeout(Duration::from_secs(2)) {
         Ok(frame) => frame,
         Err(error) => {
@@ -296,6 +301,26 @@ mod tests {
             .unwrap();
         assert_eq!(cropped.rgba, [7, 6, 5, 8, 15, 14, 13, 16]);
         assert_eq!((cropped.width, cropped.height), (1, 2));
+    }
+
+    #[test]
+    #[ignore = "requires an idle interactive Windows desktop"]
+    fn idle_desktop_still_gives_up_a_frame() {
+        // The bug this guards: WGC only pushes a frame when the monitor changes,
+        // so on a desktop nobody is touching the capture waited two seconds and
+        // reported a timeout on a screen that was working perfectly. Let the
+        // desktop go quiet between attempts, which is exactly the state that
+        // used to fail.
+        for _ in 0..5 {
+            std::thread::sleep(Duration::from_secs(3));
+            capture_screenshot(&CaptureTarget::Region(PhysicalRegion {
+                x: 0,
+                y: 0,
+                width: 16,
+                height: 16,
+            }))
+            .unwrap();
+        }
     }
 
     #[test]
