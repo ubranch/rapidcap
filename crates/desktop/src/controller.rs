@@ -96,6 +96,7 @@ impl AppController {
                 cx.emit(CaptureEvent::OutputSaved(path));
             }
             Err(error) => {
+                tracing::error!(%error, "recording failed");
                 let message = error.to_string();
                 self.state = CaptureState::Error(message.clone());
                 self.error = Some(message.clone());
@@ -118,6 +119,7 @@ impl AppController {
                 cx.emit(CaptureEvent::OutputSaved(saved.path));
             }
             Err(error) => {
+                tracing::error!(%error, "screenshot failed");
                 let message = error.to_string();
                 self.state = CaptureState::Error(message.clone());
                 self.error = Some(message.clone());
