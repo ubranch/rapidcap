@@ -836,8 +836,13 @@ fn action_button(
 }
 
 /// Full bar height so the top screen edge — and, for close, the corner — is a
-/// valid click. `close` owns the window's top-right radius: a square hover fill
-/// would cut a notch out of the rounded corner.
+/// valid click.
+///
+/// The close fill is deliberately square. Windows 11 already clips the panel to
+/// its own corner radius, so rounding the button too only subtracts: our 12px
+/// arc sat inside DWM's 8px one, and the lune between them painted neither the
+/// hover red nor the desktop - it showed the bare titlebar. Square, the red runs
+/// out to DWM's clip and the corner is red all the way into it.
 ///
 /// Borderless, like the app actions beside it: the titlebar already has an
 /// edge, and a second one around each glyph reads as a nested frame. Hover fill
@@ -860,7 +865,6 @@ fn window_button(
         .aria_label(label)
         .w(px(theme::WIN_BTN_W))
         .h(px(theme::TITLEBAR_H))
-        .when(close, |this| this.rounded_tr(px(theme::RADIUS_WINDOW)))
         .flex()
         .flex_none()
         .items_center()

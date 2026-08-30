@@ -210,8 +210,6 @@ pub const GAP: f32 = 9.0;
 pub const PAD: f32 = 12.0;
 /// The one rectangular radius.
 pub const RADIUS: f32 = 8.0;
-/// Window corners and the logo mark.
-pub const RADIUS_WINDOW: f32 = 12.0;
 /// Pills, chips, tracks.
 pub const RADIUS_PILL: f32 = 999.0;
 
