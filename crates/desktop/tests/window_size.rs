@@ -44,7 +44,13 @@ fn silent_window_keeps_compact_bounds_before_first_show() {
                 let width = rect.right - rect.left;
                 let height = rect.bottom - rect.top;
                 last_size = Some((width, height));
-                if width <= 500 && height <= 400 {
+                // The bug this catches is the panel never being resized at all,
+                // which leaves GPUI's own 1024x768 default on screen. Stated
+                // against that rather than against the panel's own size: the
+                // panel is drawn in design pixels scaled by the system text
+                // size, so a fixed number here fails on a machine whose slider
+                // has been moved rather than on a window that is wrong.
+                if width < 1024 && height < 768 {
                     return;
                 }
             }

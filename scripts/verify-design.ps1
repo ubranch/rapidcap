@@ -121,7 +121,7 @@ $bodyTop = $y
 # x=196 lands in the 9px gap between the two cards; x=30 is 18px into the card.
 # Stated in design pixels and converted, so the probe lands in the same place
 # whatever the display scale and text size are set to.
-$col = Px 30
+$col = Du 30
 # Card and chip bands are the runs of card tone bounded by body tone.
 $bands = @()
 $inBand = $false

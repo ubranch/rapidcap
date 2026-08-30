@@ -20,6 +20,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "std",
   "NSApplication",
   "NSButton",
+  "NSColor",
   "NSControl",
   "NSEvent",
   "NSGraphics",
@@ -28,6 +29,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "NSScreen",
   "NSView",
   "NSWindow",
+  "objc2-quartz-core",
 ] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
@@ -44,6 +46,8 @@ objc2-core-graphics = { version = "0.3.2", default-features = false, features = 
   "CGDirectDisplay",
   "CGError",
   "CGEvent",
+  "CGEventTypes",
+  "CGGeometry",
   "CGWindow",
 ] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = [
@@ -57,6 +61,10 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
 objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
   "std",
   "CALayer",
+  # The recording frame's border: setBorderWidth takes a CGFloat and
+  # setBorderColor a CGColor, and each is gated on its own crate.
+  "objc2-core-foundation",
+  "objc2-core-graphics",
 ] }
 crossbeam-channel = "0.5.15"
 cpal = "0.16.0"
