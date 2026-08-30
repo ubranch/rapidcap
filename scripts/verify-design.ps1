@@ -130,7 +130,7 @@ Check "card border #202020" ((Hex $col $cardTop) -eq '#202020') ("got " + (Hex $
 Check "card top highlight #414141" ((Hex 60 ($cardTop + 1)) -eq '#414141') ("got " + (Hex 60 ($cardTop + 1)))
 Check "card fill #1C1C1C" ((Hex $col ($cardTop + 20)) -eq '#1C1C1C') ("got " + (Hex $col ($cardTop + 20)))
 
-# Chevron pane: scan the Video card row right-to-left for the divider.
+# Frame rate stepper: scan the Video card row right-to-left for the divider.
 $cardRight = 0
 if ($bands.Count -ge 2) {
   $mid = $bands[1].Top + 32
@@ -142,11 +142,13 @@ if ($bands.Count -ge 2) {
     if ((Hex $x $mid) -eq '#444444') { $divider = $x; break }
   }
   if ($divider -gt 0) {
-    Expect "chevron pane width 34" ($cardRight - $divider) 34
-    Check "chevron fill #323232" ((Hex ($divider + 12) $mid) -eq '#323232') ("got " + (Hex ($divider + 12) $mid))
+    Expect "stepper width 34" ($cardRight - $divider) 34
+    # +4, not the middle of the 34px pane: the cycle glyph is 14px wide and
+    # centred, so a mid-pane sample reads the stroke instead of the fill.
+    Check "stepper fill #323232" ((Hex ($divider + 4) $mid) -eq '#323232') ("got " + (Hex ($divider + 4) $mid))
     Check "card fill left of divider" ((Hex ($divider - 8) $mid) -eq '#1C1C1C') ("got " + (Hex ($divider - 8) $mid))
   } else {
-    Check "chevron divider #444444 present" $false "no divider found on the Video card"
+    Check "stepper divider #444444 present" $false "no divider found on the Video card"
   }
 }
 
@@ -190,7 +192,7 @@ if ($cardRight -gt 0 -and $bands.Count -ge 2) {
   # Two rows below the card's top border the rounded corner has not opened out
   # to full width yet, so the pane's fill must not reach the edge there.
   $corner = Hex $cardRight ($bands[1].Top + 2)
-  Check "chevron corner follows the card radius" ($corner -ne '#323232') ("pane fill reaches the card top-right corner (got " + $corner + ") - square corner on a rounded card")
+  Check "stepper corner follows the card radius" ($corner -ne '#323232') ("stepper fill reaches the card top-right corner (got " + $corner + ") - square corner on a rounded card")
 }
 
 Write-Host ""

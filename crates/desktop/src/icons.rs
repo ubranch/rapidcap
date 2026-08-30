@@ -42,7 +42,7 @@ pub enum Icon {
     Settings,
     Minimize,
     Close,
-    Chevron,
+    Cycle,
     Back,
     Check,
     // files
@@ -103,7 +103,9 @@ impl Icon {
             }
             Self::Minimize => r#"<path d="M5 12h14"/>"#,
             Self::Close => r#"<path d="M6 6l12 12M18 6 6 18"/>"#,
-            Self::Chevron => r#"<path d="m6 9 6 6 6-6"/>"#,
+            Self::Cycle => {
+                r#"<path d="M20 12a8 8 0 1 1-2.6-5.9L20 8"/><path d="M20 3v5h-5"/>"#
+            }
             Self::Back => r#"<path d="M15 5l-7 7 7 7"/>"#,
             Self::Check => r#"<path d="m5 12 5 5 9-10"/>"#,
             Self::Copy => {
@@ -158,7 +160,7 @@ impl Icon {
             Self::Settings => "settings",
             Self::Minimize => "minimize",
             Self::Close => "close",
-            Self::Chevron => "chevron",
+            Self::Cycle => "cycle",
             Self::Back => "back",
             Self::Check => "check",
             Self::Copy => "copy",
@@ -258,7 +260,7 @@ pub const ALL_ICONS: [Icon; 30] = [
     Icon::Settings,
     Icon::Minimize,
     Icon::Close,
-    Icon::Chevron,
+    Icon::Cycle,
     Icon::Back,
     Icon::Check,
     Icon::Copy,

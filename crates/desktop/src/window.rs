@@ -220,12 +220,13 @@ impl Render for MainWindow {
                                     this.dispatch(CaptureCommand::ToggleVideo, cx)
                                 }))
                                 .child(
-                                    chevron_pane("video-options", "Video frame rate").on_click(
+                                    fps_stepper("video-options", "Video frame rate").on_click(
                                         cx.listener(|this, _, _, cx| {
-                                            // The pane sits inside the card, and
-                                            // both hitboxes contain the click, so
-                                            // without this the frame rate change
-                                            // also starts a recording.
+                                            // The stepper sits inside the card,
+                                            // and both hitboxes contain the
+                                            // click, so without this the frame
+                                            // rate change also starts a
+                                            // recording.
                                             cx.stop_propagation();
                                             this.controller.update(cx, |controller, cx| {
                                                 controller.cycle_video_fps(cx)
@@ -248,12 +249,13 @@ impl Render for MainWindow {
                                     this.dispatch(CaptureCommand::ToggleGif, cx)
                                 }))
                                 .child(
-                                    chevron_pane("gif-options", "GIF frame rate").on_click(
+                                    fps_stepper("gif-options", "GIF frame rate").on_click(
                                         cx.listener(|this, _, _, cx| {
-                                            // The pane sits inside the card, and
-                                            // both hitboxes contain the click, so
-                                            // without this the frame rate change
-                                            // also starts a recording.
+                                            // The stepper sits inside the card,
+                                            // and both hitboxes contain the
+                                            // click, so without this the frame
+                                            // rate change also starts a
+                                            // recording.
                                             cx.stop_propagation();
                                             this.controller.update(cx, |controller, cx| {
                                                 controller.cycle_gif_fps(cx)
@@ -495,7 +497,7 @@ impl MainWindow {
 /// segmented control on the right, its info dot overhanging the track.
 ///
 /// One badge, both rates, video first — the order the cards sit in below it.
-/// The GIF chevron used to write a setting nothing on screen reflected, so
+/// The GIF stepper used to write a setting nothing on screen reflected, so
 /// clicking it looked like a dead button. Two separate badges do not fit: the
 /// gap between the badge and the countdown track measures 60px, and a second
 /// `15 FPS` badge needs 66px with its gap.
@@ -686,11 +688,14 @@ fn mode_card(
         )
 }
 
-/// The split-button pane on Video and GIF.
+/// The frame rate stepper on Video and GIF.
+///
+/// Not a chevron: a chevron promises a list, and this opens nothing - it steps
+/// to the next preset and wraps. The glyph says cycle for the same reason.
 ///
 /// Absolutely positioned: in flow it would take 34px out of the centring box
 /// and the label would sit visibly left of the unsplit cards above it.
-fn chevron_pane(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
+fn fps_stepper(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .accessibility_id(id)
@@ -700,7 +705,7 @@ fn chevron_pane(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::D
         .right_0()
         .top_0()
         .bottom_0()
-        .w(px(theme::CHEVRON_W))
+        .w(px(theme::STEPPER_W))
         // The card's radius, less its border. `overflow_hidden` is a
         // rectangular mask in GPUI, so a square-cornered pane pinned to the
         // card's right edge pokes out past the curve.
@@ -711,10 +716,10 @@ fn chevron_pane(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::D
         .justify_center()
         .border_l_2()
         .border_color(theme::border_divider())
-        .bg(theme::bg_chevron())
+        .bg(theme::bg_stepper())
         .cursor_pointer()
-        .hover(|style| style.bg(theme::bg_chevron_open()))
-        .child(Icon::Chevron.element(px(14.0), theme::text_label()))
+        .hover(|style| style.bg(theme::bg_stepper_hover()))
+        .child(Icon::Cycle.element(px(14.0), theme::text_label()))
 }
 
 /// A raised pill. Raised because it is pressable — see `status_well` for the

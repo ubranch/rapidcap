@@ -129,9 +129,9 @@ impl AppController {
 
     /// Countdown slots offered by the segmented control, in order.
     pub const COUNTDOWN_CHOICES: [u8; 3] = [0, 3, 5];
-    /// Frame rates the Video chevron cycles through.
+    /// Frame rates the Video stepper cycles through.
     pub const VIDEO_FPS_CHOICES: [u32; 3] = [30, 60, 120];
-    /// Frame rates the GIF chevron cycles through.
+    /// Frame rates the GIF stepper cycles through.
     pub const GIF_FPS_CHOICES: [u32; 3] = [10, 15, 24];
 
     pub fn set_countdown(&mut self, seconds: u8, cx: &mut Context<Self>) {
@@ -142,9 +142,10 @@ impl AppController {
         }
     }
 
-    /// ponytail: the chevron cycles the preset list. The design has it open a
-    /// menu — that lands with the menu primitive, and the setting it writes is
-    /// the same either way.
+    /// One click advances to the next preset and wraps. Three choices is short
+    /// enough that stepping beats a menu, and a stepper needs no popup layer -
+    /// which is why the control wears a cycle glyph rather than the chevron it
+    /// used to. A chevron promises a list; this control opens nothing.
     pub fn cycle_video_fps(&mut self, cx: &mut Context<Self>) {
         self.settings.video.fps = next_choice(&Self::VIDEO_FPS_CHOICES, self.settings.video.fps);
         self.persist_settings();

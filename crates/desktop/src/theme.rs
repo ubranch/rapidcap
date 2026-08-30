@@ -45,13 +45,14 @@ pub fn bg_titlebar_hover() -> Hsla {
     rgb(0x2a2a2a).into()
 }
 
-/// Split-button dropdown pane. Lighter than the card it sits in.
-pub fn bg_chevron() -> Hsla {
+/// Frame rate stepper, the strip on the right of the Video and GIF cards.
+/// Lighter than the card it sits in.
+pub fn bg_stepper() -> Hsla {
     rgb(0x323232).into()
 }
 
-/// Open state of a chevron pane.
-pub fn bg_chevron_open() -> Hsla {
+/// Hovered stepper.
+pub fn bg_stepper_hover() -> Hsla {
     rgb(0x3c3c3c).into()
 }
 
@@ -241,7 +242,7 @@ pub const WIN_BTN_W: f32 = 46.0;
 pub const TITLEBAR_GAP: f32 = 4.0;
 
 pub const CARD_H: f32 = 64.0;
-pub const CHEVRON_W: f32 = 34.0;
+pub const STEPPER_W: f32 = 34.0;
 pub const CHIP_H: f32 = 36.0;
 pub const CHIP_MAX_W: f32 = 152.0;
 pub const STATUS_H: f32 = 28.0;
@@ -324,7 +325,7 @@ mod tests {
             ("bg_card", bg_card()),
             ("bg_hover", bg_hover()),
             ("bg_titlebar_hover", bg_titlebar_hover()),
-            ("bg_chevron", bg_chevron()),
+            ("bg_stepper", bg_stepper()),
             ("bg_track", bg_track()),
             ("bg_pill_off", bg_pill_off()),
             ("border_card", border_card()),

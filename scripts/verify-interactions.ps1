@@ -287,7 +287,7 @@ foreach ($slot in @(@(334, 3, 'countdown-3'), @(368, 5, 'countdown-5'), @(300, 0
 }
 
 # --- frame rate ------------------------------------------------------------
-# The chevron sits inside the card. Both hitboxes hold the click, so a chevron
+# The stepper sits inside the card. Both hitboxes hold the click, so a stepper
 # that does not stop propagation cycles the frame rate *and* starts a recording.
 Write-Host ""
 Write-Host "Frame rate"
@@ -297,11 +297,11 @@ foreach ($pane in @(@(178, 'video', @(30, 60, 120)), @(371, 'gif', @(10, 15, 24)
   Click ($o.X + $pane[0]) ($o.Y + 213) 700
   Snap ("{0}-fps" -f $pane[1])
   $got = if ($pane[1] -eq 'video') { (Settings).video.fps } else { (Settings).gif.fps }
-  Check ("the {0} chevron cycles fps ({1} -> {2})" -f $pane[1], $before, $want) ($got -eq $want) "settings.json says $got"
-  Check ("the {0} chevron does not start a recording" -f $pane[1]) ([RcUi]::IsWindowVisible($panel) -and @(Extra).Count -eq 0) "the panel went away, so the click reached the card behind the pane"
+  Check ("the {0} stepper cycles fps ({1} -> {2})" -f $pane[1], $before, $want) ($got -eq $want) "settings.json says $got"
+  Check ("the {0} stepper does not start a recording" -f $pane[1]) ([RcUi]::IsWindowVisible($panel) -and @(Extra).Count -eq 0) "the panel went away, so the click reached the card behind the pane"
 }
 
-# The header badge carries both frame rates, so either chevron has to repaint
+# The header badge carries both frame rates, so either stepper has to repaint
 # it. The GIF one is the reason the badge grew a second number: before that it
 # wrote a setting nothing on screen reflected.
 foreach ($pane in @(@(178, 'video'), @(371, 'gif'))) {
@@ -316,7 +316,7 @@ foreach ($pane in @(@(178, 'video'), @(371, 'gif'))) {
       }
     }
   }
-  Check ("the FPS badge repaints when the {0} chevron writes" -f $pane[1]) $differs "the badge is identical after the frame rate changed"
+  Check ("the FPS badge repaints when the {0} stepper writes" -f $pane[1]) $differs "the badge is identical after the frame rate changed"
   if ($before) { $before.Dispose() }
   if ($after) { $after.Dispose() }
 }
