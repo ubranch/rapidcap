@@ -52,9 +52,10 @@ use windows::{
                 IsWindowVisible, LWA_ALPHA, RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW,
                 SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
                 SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow, SetLayeredWindowAttributes,
-                SetWindowLongPtrW, SetWindowPos, ShowWindow, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED,
-                WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-                WS_MAXIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+                SetWindowDisplayAffinity, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+                WDA_EXCLUDEFROMCAPTURE, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+                WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_POPUP,
+                WS_SYSMENU, WS_THICKFRAME,
             },
         },
     },
@@ -417,6 +418,7 @@ fn frame_window() -> Option<HWND> {
             size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
         );
     }
+    exclude_from_capture(window);
     let _ = FRAME_WINDOW.set(window.0 as isize);
     Some(window)
 }
@@ -469,6 +471,24 @@ pub fn hide_recording_frame() {
     }
 }
 
+/// Keep a window on screen but out of anything recording that screen.
+///
+/// `ddagrab` reads the composited desktop, so every piece of chrome the app
+/// puts over the capture - the region overlay, the recording bar, the frame
+/// tracing the region - was landing in the file the user came for.
+/// `WDA_EXCLUDEFROMCAPTURE` cuts the window out of what the duplication API
+/// hands over while leaving it visible to the person using it.
+///
+/// Windows 10 2004 is where this affinity arrived; on anything older the call
+/// fails and the chrome keeps showing up, which is the behaviour that was there
+/// before. Nothing else in the recording depends on it, so a failure is not
+/// worth aborting a take over.
+fn exclude_from_capture(window: HWND) {
+    // SAFETY: the window belongs to this process, which is what the call
+    // requires.
+    let _ = unsafe { SetWindowDisplayAffinity(window, WDA_EXCLUDEFROMCAPTURE) };
+}
+
 /// Put a GPUI window exactly where it was asked to go, in device pixels.
 ///
 /// GPUI's `window_bounds` are logical, so on any display above 100% scaling a
@@ -476,6 +496,7 @@ pub fn hide_recording_frame() {
 /// `HWND` afterwards sidesteps the conversion.
 pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
     let window = HWND(handle as *mut _);
+    exclude_from_capture(window);
     unsafe {
         // A transparent GPUI popup still gets the Windows 11 border and corner
         // radius drawn around it - measured, that is the ghost rounded

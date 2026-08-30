@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg-body:#111111; --bg-card:#1C1C1C; --bg-hover:#242424;
-    --border-card:#202020; --border-top:#414141; --border-divider:#444444;
+    --border-card:#333333; --border-divider:#444444;
     --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A; --text-pill:#A9A9A9;
     --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A; --warn:#E8A33D;
     --gap:9px; --radius:8px;
@@ -27,7 +27,7 @@
   .footer { width:376px; height:36px; display:flex; align-items:center; gap:6px; }
   .chip { height:36px; padding:0 12px; display:inline-flex; align-items:center; gap:7px;
           border-radius:999px; background:var(--bg-card); border:1px solid var(--border-card);
-          box-shadow:inset 0 1px 0 var(--border-top); color:var(--text-label);
+          color:var(--text-label);
           font-family:var(--font); font-size:12px; font-weight:500; line-height:1;
           cursor:pointer; max-width:152px; }
   .chip:hover { background:var(--bg-hover); }
@@ -63,7 +63,7 @@
   /* dimmed panel body during selection */
   .cards { width:376px; display:grid; grid-template-columns:1fr 1fr; gap:var(--gap); }
   .card { position:relative; height:64px; border-radius:var(--radius); background:var(--bg-card);
-          border:1px solid var(--border-card); box-shadow:inset 0 1px 0 var(--border-top);
+          border:1px solid var(--border-card); 
           display:flex; overflow:hidden; color:var(--text-label); }
   .card .main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
   .card .lbl { font-size:13px; font-weight:500; line-height:1; }
