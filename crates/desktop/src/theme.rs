@@ -250,6 +250,10 @@ pub const TARGET_MIN: f32 = 36.0;
 
 /// Recording HUD pill.
 pub const HUD_H: f32 = 36.0;
+/// Fixed, because the status text changes length on every state change and a
+/// pill that sizes to its content drags the buttons sideways underneath the
+/// pointer. The status column absorbs the difference instead.
+pub const HUD_W: f32 = 248.0;
 /// The HUD dims to this once the pointer has been away for a few seconds.
 pub const HUD_IDLE_OPACITY: f32 = 0.55;
 /// Overlay size badge and hint pill. One height, so they share a baseline.

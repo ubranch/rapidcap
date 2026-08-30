@@ -201,6 +201,11 @@ impl Render for RegionOverlay {
 /// How long the recording bar waits, pointer away, before it fades.
 const HUD_FADE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// One glyph size for every HUD button, whatever the button does.
+const HUD_ICON: f32 = 14.0;
+/// A HUD button that is present but cannot be pressed yet.
+const HUD_DISABLED_OPACITY: f32 = 0.35;
+
 /// Half the grip hangs outside the rect, so it straddles the 2px border rather
 /// than sitting inside the selection and covering the pixels being chosen.
 const HANDLE_INSET: f32 = -4.0;
@@ -310,11 +315,18 @@ impl RecordingHud {
         target: CaptureTarget,
     ) -> Self {
         let subscription = cx.observe(&controller, |_this, _, cx| cx.notify());
+        let opened = std::time::Instant::now();
         cx.spawn(async move |this, cx| {
+            // One repaint per second, landing *on* the second boundary instead of
+            // five per second hoping to catch it. Everything this drives - the
+            // elapsed clock, the countdown, the idle fade - is read with
+            // `as_secs()`, so the other four repaints were pure CPU wakeups for
+            // a bar whose pixels had not changed.
             loop {
-                cx.background_executor()
-                    .timer(std::time::Duration::from_millis(200))
-                    .await;
+                let elapsed = opened.elapsed();
+                let until_next_second =
+                    std::time::Duration::from_secs(elapsed.as_secs() + 1) - elapsed;
+                cx.background_executor().timer(until_next_second).await;
                 if this.update(cx, |_this, cx| cx.notify()).is_err() {
                     break;
                 }
@@ -324,8 +336,8 @@ impl RecordingHud {
         Self {
             controller,
             target,
-            countdown_since: std::time::Instant::now(),
-            pointer_seen: std::time::Instant::now(),
+            countdown_since: opened,
+            pointer_seen: opened,
             _subscription: subscription,
         }
     }
@@ -362,7 +374,7 @@ impl Render for RecordingHud {
         let (status, pause_label, pause_icon, can_pause, dot) = match state {
             CaptureState::Countdown(kind, seconds) => (
                 format!(
-                    "{} starts in {} · {target}",
+                    "{} in {} · {target}",
                     kind_noun(kind),
                     seconds.saturating_sub(self.countdown_since.elapsed().as_secs() as u8)
                 ),
@@ -426,6 +438,7 @@ impl Render for RecordingHud {
                     .aria_label("RapidCap recording controls")
                     .when(faded, |pill| pill.opacity(theme::HUD_IDLE_OPACITY))
                     .h(px(theme::HUD_H))
+                    .w(px(theme::HUD_W))
                     .flex()
                     .items_center()
                     .gap(px(4.0))
@@ -442,12 +455,19 @@ impl Render for RecordingHud {
                             .accessibility_id("rapidcap.hud-status")
                             .role(Role::Status)
                             .aria_label(status.clone())
+                            // Takes whatever the fixed-width pill has left over,
+                            // and clips rather than pushes: a long window title
+                            // must not be able to move the buttons.
+                            .flex_1()
+                            .min_w(px(0.0))
+                            .overflow_hidden()
                             .flex()
                             .items_center()
                             .gap(px(7.0))
                             .pl(px(8.0))
                             .pr(px(4.0))
                             .text_size(px(13.0))
+                            .text_ellipsis()
                             .child(
                                 div()
                                     .size(px(8.0))
@@ -464,17 +484,23 @@ impl Render for RecordingHud {
                             .flex_none()
                             .bg(theme::border_divider()),
                     )
-                    .when(can_pause, |root| {
-                        root.child(
-                            hud_button("rapidcap.hud-pause", pause_label, pause_icon, false)
-                                .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx))),
-                        )
-                    })
+                    // Both buttons exist in every state. Dropping the pause
+                    // button during the countdown used to slide the stop button
+                    // sideways at the exact moment the pointer was heading for
+                    // it; it greys out instead.
+                    .child(
+                        hud_button("rapidcap.hud-pause", pause_label, pause_icon, false, can_pause)
+                            .when(can_pause, |button| {
+                                button
+                                    .on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx)))
+                            }),
+                    )
                     .child(
                         hud_button(
                             "rapidcap.hud-stop",
                             if can_pause { "Stop" } else { "Cancel" },
-                            if can_pause { Icon::Stop } else { Icon::Close },
+                            Icon::Stop,
+                            true,
                             true,
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
@@ -504,6 +530,7 @@ fn hud_button(
     label: &'static str,
     icon: Icon,
     danger: bool,
+    enabled: bool,
 ) -> gpui::Stateful<gpui::Div> {
     let (rest_bg, hover_bg, colour) = if danger {
         (
@@ -537,9 +564,16 @@ fn hud_button(
         })
         .bg(rest_bg)
         .text_color(colour)
-        .cursor_pointer()
-        .hover(move |style| style.bg(hover_bg).text_color(theme::text_primary()))
-        .child(icon.element(px(if danger { 13.0 } else { 15.0 }), colour))
+        .when(enabled, |button| {
+            button
+                .cursor_pointer()
+                .hover(move |style| style.bg(hover_bg).text_color(theme::text_primary()))
+        })
+        .when(!enabled, |button| button.opacity(HUD_DISABLED_OPACITY))
+        // One size for every HUD button. The stop icon used to render two pixels
+        // smaller than the pause icon, which read as the row resizing whenever
+        // the state changed.
+        .child(icon.element(px(HUD_ICON), colour))
 }
 
 pub fn open_recording_hud(
