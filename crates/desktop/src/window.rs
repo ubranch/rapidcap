@@ -847,9 +847,9 @@ fn action_button(
 /// valid click. `close` owns the window's top-right radius: a square hover fill
 /// would cut a notch out of the rounded corner.
 ///
-/// The shared border runs down the left edge only. On all four it would double
-/// up against the neighbour and against the window edge, drawing a 4px grid
-/// across the titlebar.
+/// Borderless, like the app actions beside it: the titlebar already has an
+/// edge, and a second one around each glyph reads as a nested frame. Hover fill
+/// is what separates the buttons.
 fn window_button(
     id: &'static str,
     label: &'static str,
@@ -873,8 +873,6 @@ fn window_button(
         .flex_none()
         .items_center()
         .justify_center()
-        .border_l_2()
-        .border_color(theme::border_card())
         .text_color(theme::text_muted())
         .cursor_pointer()
         // One `hover` call per element: GPUI panics on a second.
