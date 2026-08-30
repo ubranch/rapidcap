@@ -1,7 +1,7 @@
 use gpui::{
-    App, Bounds, Context, Entity, FocusHandle, FontWeight, KeyBinding, MouseButton, MouseMoveEvent,
-    Render, Role, Subscription, Toggled, Window, WindowBounds, WindowHandle, WindowOptions, actions,
-    div, prelude::*, px, size,
+    App, Bounds, Context, DispatchPhase, Entity, FocusHandle, FontWeight, KeyBinding, MouseButton,
+    MouseMoveEvent, MouseUpEvent, Render, Role, Subscription, Toggled, Window, WindowBounds,
+    WindowHandle, WindowOptions, actions, canvas, div, prelude::*, px, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -380,6 +380,49 @@ impl MainWindow {
             )
     }
 
+    /// Feeds the live drag, from the window rather than from the titlebar.
+    ///
+    /// An element's `on_mouse_move` only fires while the cursor is inside that
+    /// element's own hitbox. The window trails the cursor by a frame, so any
+    /// quick flick lands the pointer off the 44px strip, the handler stops
+    /// firing, and the window sticks where it was until the pointer wanders
+    /// back - then it jumps. That is the drag "catching" partway through a
+    /// move. Windows has already handed us the pointer through `SetCapture` for
+    /// as long as the button is down, so a window-level listener sees every
+    /// move, inside the strip or far outside it.
+    ///
+    /// `canvas` earns its place by being the one element whose paint callback
+    /// runs where [`Window::on_mouse_event`] is legal to call. It draws
+    /// nothing and takes no space.
+    fn drag_listener(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let moved = cx.entity().downgrade();
+        let released = moved.clone();
+        canvas(
+            |_, _, _| {},
+            move |_, (), window, _| {
+                window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                    if phase != DispatchPhase::Bubble {
+                        return;
+                    }
+                    let _ = moved.update(cx, |this, _| match this.drag_grab {
+                        // A move with the button already up means the release
+                        // happened somewhere we never heard about.
+                        Some(_) if !event.dragging() => this.drag_grab = None,
+                        Some(grab) => drag_main_window(grab),
+                        None => {}
+                    });
+                });
+                window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                    if phase == DispatchPhase::Bubble {
+                        let _ = released.update(cx, |this, _| this.drag_grab = None);
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_0()
+    }
+
     /// Custom titlebar. The strip is the drag surface; the buttons sit above it
     /// so their clicks are not swallowed by the move.
     ///
@@ -387,7 +430,8 @@ impl MainWindow {
     /// of the two routes GPUI offers works here: `start_window_move` is a no-op
     /// on Windows, and a `WindowControlArea::Drag` hands the job to
     /// `DefWindowProc`'s modal move loop, which gets cancelled - see
-    /// [`drag_main_window`].
+    /// [`drag_main_window`]. The strip only records the grab; the moving is
+    /// driven from [`Self::drag_listener`], which hears the whole gesture.
     fn titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .h(px(theme::TITLEBAR_H))
@@ -408,17 +452,7 @@ impl MainWindow {
                         MouseButton::Left,
                         cx.listener(|this, _, _, _| this.drag_grab = window_drag_grab()),
                     )
-                    .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, _| {
-                        if !event.dragging() {
-                            this.drag_grab = None;
-                        } else if let Some(grab) = this.drag_grab {
-                            drag_main_window(grab);
-                        }
-                    }))
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(|this, _, _, _| this.drag_grab = None),
-                    )
+                    .child(self.drag_listener(cx))
                     .child(Icon::Mark.element(px(16.0), theme::text_muted()))
                     .child(
                         div()
