@@ -33,7 +33,38 @@ pub struct Settings {
     pub audio: AudioSettings,
     pub gif: GifSettings,
     pub countdown_seconds: u8,
-    pub hotkeys: HotkeySettings,
+    /// Hotkeys were stored here and never registered from here.
+    ///
+    /// The chords the app actually binds live in `hotkey_specs`, and the copy
+    /// kept in this file had drifted far enough to name a different key for
+    /// every command - it advertised Alt+Q for a region capture the app runs
+    /// on Alt+E, and two Print Screen chords that were never bound at all.
+    /// Settings that cannot be edited and are not obeyed are worse than no
+    /// settings, so they are gone.
+    ///
+    /// The key is still accepted, because `deny_unknown_fields` would
+    /// otherwise reject every settings file written before this and leave the
+    /// app unable to start. Whatever it holds is read and dropped, and it is
+    /// not written back, so the next save retires it for good.
+    #[serde(default, skip_serializing)]
+    pub hotkeys: Retired,
+}
+
+/// A settings key that is parsed and thrown away.
+///
+/// Deserializes from any shape at all, which is what a retired key needs:
+/// the value on disk was written by a version that is no longer here to
+/// agree about it.
+///
+/// Public only so `Settings { .., ..Default::default() }` keeps compiling
+/// outside this crate; there is nothing here to read or set.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct Retired;
+
+impl<'de> Deserialize<'de> for Retired {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        serde::de::IgnoredAny::deserialize(deserializer).map(|_| Self)
+    }
 }
 
 impl Default for Settings {
@@ -61,12 +92,7 @@ impl Default for Settings {
                 dither: "sierra2_4a".into(),
             },
             countdown_seconds: 5,
-            hotkeys: HotkeySettings {
-                region: "Alt+Q".into(),
-                window: "Alt+Print Screen".into(),
-                video: ["Alt+E".into(), "Shift+Print Screen".into()],
-                gif: "Ctrl+Shift+Print Screen".into(),
-            },
+            hotkeys: Retired,
         }
     }
 }
@@ -211,15 +237,6 @@ pub struct GifSettings {
     pub dither: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HotkeySettings {
-    pub region: String,
-    pub window: String,
-    pub video: [String; 2],
-    pub gif: String,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppPaths {
     pub capture_root: PathBuf,
@@ -354,3 +371,46 @@ impl fmt::Display for PathDiscoveryError {
 }
 
 impl std::error::Error for PathDiscoveryError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The settings file already on every machine that ran an earlier build
+    /// still opens the app.
+    ///
+    /// `deny_unknown_fields` turns a dropped key into a hard load failure, and
+    /// `load` has no fallback - a rejected file stops startup. This is the
+    /// exact JSON such a machine has on disk, hotkeys and all.
+    #[test]
+    fn a_file_holding_the_retired_hotkeys_still_loads() {
+        let stored = r#"{
+            "schema_version": 1,
+            "screenshot": { "png_to_jpeg_threshold_bytes": 2097152, "jpeg_quality": 90 },
+            "video": { "fps": 30, "bitrate": 3000000, "preset": "p7", "tune": "hq" },
+            "audio": { "enabled": true, "bitrate": 128000, "channels": 2 },
+            "gif": { "fps": 15, "palette_stats_mode": "full", "dither": "sierra2_4a" },
+            "countdown_seconds": 5,
+            "hotkeys": {
+                "region": "Alt+Q",
+                "window": "Alt+Print Screen",
+                "video": ["Alt+E", "Shift+Print Screen"],
+                "gif": "Ctrl+Shift+Print Screen"
+            }
+        }"#;
+
+        let settings: Settings =
+            serde_json::from_str(stored).expect("a settings file from an earlier build");
+        assert_eq!(settings, Settings::default());
+    }
+
+    /// And the next save leaves the key behind rather than rewriting it.
+    #[test]
+    fn saved_settings_no_longer_carry_hotkeys() {
+        let written = serde_json::to_string(&Settings::default()).unwrap();
+        assert!(
+            !written.contains("hotkeys"),
+            "hotkeys were written back: {written}"
+        );
+    }
+}

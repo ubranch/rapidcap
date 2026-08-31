@@ -73,7 +73,6 @@ mod tests {
         assert_eq!(settings.audio.bitrate, 128_000);
         assert_eq!(settings.gif.fps, 15);
         assert_eq!(settings.countdown_seconds, 5);
-        assert_eq!(settings.hotkeys.video, ["Alt+E", "Shift+Print Screen"]);
     }
 
     #[test]
