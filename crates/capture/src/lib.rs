@@ -25,7 +25,7 @@ pub use clipboard::{ClipboardError, write_clipboard, write_clipboard_file, write
 pub use geometry::{CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, RawFrame};
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::OutputNamer;
-pub use recording::{RecordingError, RecordingSession};
+pub use recording::{RecordingError, RecordingSession, ffmpeg_path};
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
 pub use state::{
@@ -97,6 +97,10 @@ mod tests {
             paths.temp_dir,
             std::path::PathBuf::from("C:/Local/RapidCap/Temp")
         );
+        assert_eq!(
+            paths.thumb_dir,
+            std::path::PathBuf::from("C:/Local/RapidCap/Thumbnails")
+        );
     }
 
     #[test]
@@ -106,6 +110,7 @@ mod tests {
         assert!(paths.settings_file.is_absolute());
         assert!(paths.log_dir.is_absolute());
         assert!(paths.temp_dir.is_absolute());
+        assert!(paths.thumb_dir.is_absolute());
     }
 
     #[test]

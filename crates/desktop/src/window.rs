@@ -2104,10 +2104,14 @@ mod tests {
 
     #[gpui::test]
     fn the_gallery_is_a_screen_of_this_window_and_escape_backs_out_of_it(cx: &mut TestAppContext) {
+        // A tempdir rather than the invented paths the other tests use: opening
+        // the gallery reads a folder and creates its thumbnail cache, and those
+        // are real directories on whatever machine runs this.
+        let roots = tempfile::tempdir().unwrap();
         let controller = cx.new(|_| {
             AppController::new(
                 Settings::default(),
-                AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+                AppPaths::from_roots(roots.path(), roots.path(), roots.path()),
             )
         });
         let window = cx.update(|cx| {

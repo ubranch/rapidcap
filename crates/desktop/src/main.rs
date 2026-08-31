@@ -10,6 +10,7 @@ mod overlay;
 mod platform;
 mod settings_view;
 mod theme;
+mod thumbs;
 mod tray;
 mod window;
 

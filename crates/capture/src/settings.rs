@@ -243,6 +243,12 @@ pub struct AppPaths {
     pub settings_file: PathBuf,
     pub log_dir: PathBuf,
     pub temp_dir: PathBuf,
+    /// Where the gallery keeps its scaled-down copies of the captures.
+    ///
+    /// Beside the temp directory rather than inside it: [`Self::temp_dir`] is
+    /// swept of in-flight recording segments, and a cache that is deleted on
+    /// every launch is a cache that has to be rebuilt on every launch.
+    pub thumb_dir: PathBuf,
 }
 
 impl AppPaths {
@@ -288,6 +294,7 @@ impl AppPaths {
                 .join("settings.json"),
             log_dir: local_app_data.as_ref().join("RapidCap").join("Logs"),
             temp_dir: local_app_data.as_ref().join("RapidCap").join("Temp"),
+            thumb_dir: local_app_data.as_ref().join("RapidCap").join("Thumbnails"),
         }
     }
 }

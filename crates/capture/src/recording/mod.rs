@@ -283,7 +283,12 @@ impl RecordingSession {
 /// How long a segment gets to write its trailer before it is killed.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
-fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
+/// Where the bundled `ffmpeg` is, or the one on `PATH` in a dev checkout.
+///
+/// Public because the gallery needs it too: an MP4's first frame and its length
+/// both come out of one `ffmpeg` call, and there is no second copy of this
+/// search worth keeping in sync with this one.
+pub fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
     let bundled = std::env::current_exe()
         .map_err(recording_error)?
         .parent()

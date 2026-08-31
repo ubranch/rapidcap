@@ -6,12 +6,11 @@
 //! file dropped into that folder by hand shows up like any other - which is
 //! what a capture tool should do.
 //!
-//! Two things the design draws are not here yet. There is no thumbnail: every
-//! tile paints the placeholder tone, because decoding a folder of 4K PNGs into
-//! GPU textures for a 118px tile is the one real cost on this screen and it
-//! needs its own cache. The duration badge on a video tile is missing for the
-//! same reason - the only way to the length of an MP4 is a pass over the file.
-//! Both arrive together with the thumbnail cache.
+//! Thumbnails arrive after the listing does, not with it: a first look at a
+//! folder of sixty captures has to decode sixty images and run `ffmpeg` over
+//! every clip, and the grid is drawn and scrollable throughout. Until each one
+//! lands its tile paints the placeholder tone the design specifies, which is
+//! also what a tile whose file cannot be read keeps forever - see [`crate::thumbs`].
 //!
 //! Delete goes to the Recycle Bin, and that is what makes a single click with
 //! no confirmation the right shape: the undo is the shell's, it is one keypress
@@ -29,9 +28,9 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Datelike as _, Local};
 use gpui::{
-    AnyElement, ClickEvent, Context, Entity, FocusHandle, FontWeight, IntoElement,
-    ParentElement as _, Render, Role, ScrollHandle, SharedString, Styled as _, Window, div,
-    linear_color_stop, linear_gradient, prelude::*,
+    AnyElement, ClickEvent, Context, Entity, FocusHandle, FontWeight, IntoElement, ObjectFit,
+    ParentElement as _, Render, Role, ScrollHandle, SharedString, StyledImage as _, Window, div,
+    img, linear_color_stop, linear_gradient, prelude::*,
 };
 use rapidcap_capture::{CaptureCommand, CaptureEvent, write_clipboard_file};
 
@@ -39,6 +38,7 @@ use crate::controller::AppController;
 use crate::icons::Icon;
 use crate::platform::{hotkey_specs, move_to_trash, open_path, reveal_path, shortcut_label};
 use crate::theme;
+use crate::thumbs::{self, Thumb};
 use crate::window::middle_trim;
 
 /// How many tiles the grid will draw.
@@ -179,6 +179,9 @@ struct Capture {
     name: SharedString,
     kind: Kind,
     modified: SystemTime,
+    /// `None` while the cache is still working through the folder, and forever
+    /// for a file that could not be read.
+    thumb: Option<Thumb>,
 }
 
 pub struct GalleryView {
@@ -199,6 +202,9 @@ pub struct GalleryView {
     /// the folder, and claiming it before anything has been read would flash
     /// "No captures yet" over a folder with two hundred files in it.
     loaded: bool,
+    /// Bumped by every [`Self::reload`], so the thumbnails of a listing that
+    /// has already been replaced land on nothing instead of on the new one.
+    generation: u64,
     _controller: gpui::Subscription,
     _saved: gpui::Subscription,
 }
@@ -212,6 +218,7 @@ impl GalleryView {
             captures: Vec::new(),
             hovered: None,
             loaded: false,
+            generation: 0,
             _controller: cx.observe(&controller, |_, _, cx| cx.notify()),
             // A capture that lands while the grid is up belongs at the front of
             // it. Guarded on `loaded`, so a folder nobody has opened the
@@ -229,25 +236,81 @@ impl GalleryView {
         &self.focus_handle
     }
 
-    /// Re-read the folder.
+    /// Re-read the folder, then fill in its thumbnails.
     ///
     /// Off the main thread, every time. A `read_dir` over a capture folder is
     /// microseconds on a local disk and a stall on a mapped drive, and the
     /// difference is not something this screen gets to find out on the frame it
     /// is drawing.
+    ///
+    /// The listing is published on its own, before a single thumbnail has been
+    /// read, and each thumbnail is published as it arrives. A first look at a
+    /// folder of sixty clips is a minute of `ffmpeg`; the grid is drawn,
+    /// scrollable, and clickable for all of it.
     pub fn reload(&mut self, cx: &mut Context<Self>) {
-        let root = self.controller.read(cx).paths().capture_root.clone();
+        let paths = self.controller.read(cx).paths().clone();
+        let root = paths.capture_root.clone();
+        self.generation = self.generation.wrapping_add(1);
+        let generation = self.generation;
         cx.spawn(async move |this, cx| {
             let captures = cx
                 .background_spawn(async move { read_folder(&root, RECENT) })
                 .await;
+            let wanted: Vec<(PathBuf, SystemTime, Kind)> = captures
+                .iter()
+                .map(|capture| (capture.path.clone(), capture.modified, capture.kind))
+                .collect();
+            let live: Vec<u64> = wanted
+                .iter()
+                .map(|(path, modified, _)| thumbs::key(path, *modified))
+                .collect();
             this.update(cx, |this, cx| {
                 this.captures = captures;
                 this.loaded = true;
                 cx.notify();
-            })
+            })?;
+
+            // The cache is handed to the background and handed back, one
+            // capture at a time, so that the main thread gets a turn between
+            // any two of them.
+            let dir = paths.thumb_dir.clone();
+            let mut cache = cx
+                .background_spawn(async move { thumbs::Cache::open(&dir) })
+                .await;
+            for (path, modified, kind) in wanted {
+                let (thumb, path, returned) = cx
+                    .background_spawn(async move {
+                        let thumb = cache.thumb(&path, modified, kind);
+                        (thumb, path, cache)
+                    })
+                    .await;
+                cache = returned;
+                let Some(thumb) = thumb else { continue };
+                this.update(cx, |this, cx| this.fill(generation, &path, thumb, cx))?;
+            }
+
+            // Whatever is left over belongs to a capture that has been deleted,
+            // renamed, or written over since the last time the gallery ran.
+            cx.background_spawn(async move { cache.sweep(&live) }).await;
+            anyhow::Ok(())
         })
         .detach();
+    }
+
+    /// Hang a finished thumbnail on its tile.
+    ///
+    /// By path rather than by index: a delete during the pass shifts every
+    /// index behind it, and hanging a thumbnail on the wrong tile is worse
+    /// than hanging it on none.
+    fn fill(&mut self, generation: u64, path: &Path, thumb: Thumb, cx: &mut Context<Self>) {
+        if generation != self.generation {
+            return;
+        }
+        let Some(capture) = self.captures.iter_mut().find(|c| c.path == path) else {
+            return;
+        };
+        capture.thumb = Some(thumb);
+        cx.notify();
     }
 
     fn choose(&mut self, filter: Filter, cx: &mut Context<Self>) {
@@ -341,6 +404,7 @@ fn read_folder(root: &Path, limit: usize) -> Vec<Capture> {
             Some(Capture {
                 name: SharedString::from(path.file_name()?.to_string_lossy().into_owned()),
                 modified: metadata.modified().ok()?,
+                thumb: None,
                 kind,
                 path,
             })
@@ -480,10 +544,37 @@ impl GalleryView {
                 div()
                     .relative()
                     .h(theme::u(THUMB_H))
+                    // The gradient is the background, not a fallback: it is
+                    // what a tile shows while its thumbnail is still being
+                    // made, and what it keeps if the file cannot be read.
                     .bg(linear_gradient(
                         THUMB_ANGLE,
                         linear_color_stop(theme::thumb_from(), 0.0),
                         linear_color_stop(theme::thumb_to(), 1.0),
+                    ))
+                    .children(capture.thumb.as_ref().map(|thumb| {
+                        img(thumb.image.clone())
+                            .absolute()
+                            .inset_0()
+                            .size_full()
+                            .object_fit(ObjectFit::Cover)
+                    }))
+                    .children(capture.thumb.as_ref().and_then(|thumb| thumb.duration).map(
+                        |duration| {
+                            div()
+                                .absolute()
+                                .right(theme::u(BADGE_INSET))
+                                .bottom(theme::u(BADGE_INSET))
+                                .h(theme::u(BADGE_H))
+                                .px(theme::u(BADGE_PX))
+                                .flex()
+                                .items_center()
+                                .rounded(theme::u(theme::RADIUS_PILL))
+                                .bg(theme::thumb_badge())
+                                .text_size(theme::u(10.0))
+                                .text_color(theme::text_primary())
+                                .child(thumbs::duration_label(duration))
+                        },
                     ))
                     .child(
                         div()
@@ -815,7 +906,10 @@ mod tests {
         cx: &mut gpui::TestAppContext,
         documents: &Path,
     ) -> (gpui::VisualTestContext, Entity<GalleryView>, PathBuf) {
-        let paths = rapidcap_capture::AppPaths::from_roots(documents, "C:/Roaming", "C:/Local");
+        // Every root is the tempdir, including the one the thumbnail cache
+        // hangs off: a test that writes outside the directory it cleans up is
+        // a test that litters the machine it runs on.
+        let paths = rapidcap_capture::AppPaths::from_roots(documents, documents, documents);
         let root = paths.capture_root.clone();
         std::fs::create_dir_all(&root).unwrap();
         let controller =
@@ -893,6 +987,51 @@ mod tests {
             });
             assert_eq!(shown, expected, "{filter:?}");
         }
+    }
+
+    #[gpui::test]
+    async fn a_readable_capture_gets_a_thumbnail_and_a_stale_one_is_dropped(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let documents = tempfile::tempdir().unwrap();
+        let (mut cx, view, root) = open(cx, documents.path());
+        // A real image beside a file that only has the extension of one: the
+        // first ends up with a thumbnail, the second keeps the gradient.
+        let shot = root.join("shot.png");
+        image::RgbImage::new(320, 240)
+            .save_with_format(&shot, image::ImageFormat::Png)
+            .unwrap();
+        write(&root, "broken.png");
+
+        view.update(&mut cx, |view, cx| view.reload(cx));
+        cx.run_until_parked();
+
+        let thumbs: Vec<Option<PathBuf>> = view.read_with(&cx, |view, _| {
+            view.captures
+                .iter()
+                .map(|capture| capture.thumb.as_ref().map(|thumb| thumb.image.clone()))
+                .collect()
+        });
+        let made: Vec<&PathBuf> = thumbs.iter().flatten().collect();
+        assert_eq!(made.len(), 1, "only the readable one, {thumbs:?}");
+        assert!(made[0].is_file(), "the tile points at a file that exists");
+
+        // A thumbnail from a listing that has already been replaced belongs to
+        // nothing. It has to be dropped, not hung on whichever tile now sits
+        // where its own used to.
+        let stale = Thumb {
+            image: made[0].clone(),
+            duration: None,
+        };
+        view.update(&mut cx, |view, cx| {
+            let generation = view.generation;
+            view.captures[0].thumb = None;
+            view.fill(generation.wrapping_sub(1), &shot, stale, cx);
+        });
+        assert!(
+            view.read_with(&cx, |view, _| view.captures[0].thumb.is_none()),
+            "a thumbnail from the previous listing"
+        );
     }
 
     #[gpui::test]
