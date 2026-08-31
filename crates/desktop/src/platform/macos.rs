@@ -27,7 +27,7 @@ use std::{
 use anyhow::Context as _;
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained};
 use objc2_app_kit::{
-    NSApplication, NSBackingStoreType, NSEvent, NSScreen, NSView, NSWindow, NSWindowButton,
+    NSApplication, NSBackingStoreType, NSScreen, NSView, NSWindow, NSWindowButton,
     NSWindowCollectionBehavior, NSWindowLevel, NSWindowSharingType, NSWindowStyleMask,
 };
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CGRect};
@@ -140,30 +140,33 @@ pub fn lock_window_size() {
     }
 }
 
-/// Where the cursor is, in AppKit screen points, if the panel is up to drag.
+/// Hands the whole drag to AppKit, and reports no grab to follow up on.
 ///
-/// The Windows sibling returns the cursor's offset inside the window; here the
-/// raw location is enough, because `drag_main_window` re-reads it and moves the
-/// frame by the delta.
+/// The Windows sibling has to move the window itself, frame by frame, because
+/// neither route Win32 offers survives a custom titlebar. AppKit has the
+/// documented one: `performWindowDragWithEvent:` is meant to be called from the
+/// mouse-down of a view that stands in for a titlebar, and it runs the drag to
+/// mouse-up on its own - with the screen edges, Spaces and Stage Manager that a
+/// hand-rolled loop does not get.
+///
+/// Driving it by hand here was worse than redundant. Every `setFrameOrigin`
+/// made AppKit call the window delegate back synchronously, inside the mouse
+/// handler GPUI was already borrowing its window from, and each move logged
+/// `RefCell already borrowed` and lost the rest of that frame's dispatch.
+///
+/// `None` is the point: the caller stores it as the grab, so the move handler
+/// in `window.rs` has nothing to act on and [`drag_main_window`] never runs.
 pub fn window_drag_grab() -> Option<(i32, i32)> {
     let mtm = MainThreadMarker::new()?;
-    panel(mtm)?;
-    let point = NSEvent::mouseLocation();
-    Some((point.x as i32, point.y as i32))
+    let window = panel(mtm)?;
+    let event = NSApplication::sharedApplication(mtm).currentEvent()?;
+    window.performWindowDragWithEvent(&event);
+    None
 }
 
-pub fn drag_main_window(grab: (i32, i32)) {
-    let Some(mtm) = MainThreadMarker::new() else {
-        return;
-    };
-    let Some(window) = panel(mtm) else { return };
-    let now = NSEvent::mouseLocation();
-    let frame = window.frame();
-    window.setFrameOrigin(NSPoint::new(
-        frame.origin.x + (now.x - f64::from(grab.0)),
-        frame.origin.y + (now.y - f64::from(grab.1)),
-    ));
-}
+/// Unreachable on macOS: [`window_drag_grab`] has already done the whole drag
+/// and returned no grab, so `window.rs` never gets as far as calling this.
+pub fn drag_main_window(_grab: (i32, i32)) {}
 
 pub fn hide_main_window() {
     let Some(mtm) = MainThreadMarker::new() else {
@@ -469,7 +472,8 @@ impl SingleInstance {
     }
 }
 
-pub fn open_folder(path: &Path) -> anyhow::Result<()> {
+/// Hand a folder or a file to the OS. `open(1)` decides which is which.
+pub fn open_path(path: &Path) -> anyhow::Result<()> {
     // `open` is the documented entry point and handles bundle activation and
     // Finder reuse itself, which is all `NSWorkspace` would do from here.
     let status = Command::new("/usr/bin/open")
