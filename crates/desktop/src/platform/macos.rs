@@ -29,14 +29,15 @@ use std::{
 use anyhow::Context as _;
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained};
 use objc2_app_kit::{
-    NSApplication, NSBackingStoreType, NSScreen, NSView, NSWindow, NSWindowButton,
+    NSApplication, NSBackingStoreType, NSColor, NSScreen, NSView, NSWindow, NSWindowButton,
     NSWindowCollectionBehavior, NSWindowLevel, NSWindowSharingType, NSWindowStyleMask,
 };
-use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CGRect};
+use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CGPoint, CGRect};
 use objc2_core_graphics::{
-    CGColor, CGDisplayBounds, CGEvent, CGGetDisplaysWithPoint, CGMainDisplayID,
-    CGRectMakeWithDictionaryRepresentation, CGWindowListCopyWindowInfo, CGWindowListOption,
-    kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerName, kCGWindowOwnerPID,
+    CGColor, CGDisplayBounds, CGEvent, CGGetActiveDisplayList, CGGetDisplaysWithPoint,
+    CGMainDisplayID, CGRectMakeWithDictionaryRepresentation, CGWindowListCopyWindowInfo,
+    CGWindowListOption, kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerName,
+    kCGWindowOwnerPID,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use rapidcap_capture::{CaptureTarget, PhysicalRegion, display_scale};
@@ -258,6 +259,11 @@ pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
     // frame at the origin, and GPUI overrides `canBecomeKeyWindow`, so a
     // borderless window still receives the Esc that closes the overlay.
     window.setStyleMask(window.styleMask() & !NSWindowStyleMask::Titled);
+    // Both windows placed here are transparent chrome, and AppKit draws a
+    // shadow around the *window* rather than what is painted inside it: the
+    // recording HUD's pill sat inside a rectangular halo the size of its
+    // window, and a full-screen overlay has nothing to cast one onto anyway.
+    window.setHasShadow(false);
     window.setFrame_display(frame, true);
 }
 
@@ -286,7 +292,11 @@ fn frame_window(mtm: MainThreadMarker) -> &'static NSWindow {
                 )
             };
             window.setOpaque(false);
-            window.setBackgroundColor(None);
+            // Clear, not `None`. A nil background colour is not "no fill": the
+            // window falls back to AppKit's default, and the frame painted a
+            // grey rectangle over the whole region it was supposed to outline.
+            let clear = NSColor::clearColor();
+            window.setBackgroundColor(Some(&clear));
             window.setHasShadow(false);
             // The frame is decoration, not a target: clicks belong to whatever
             // is being recorded underneath it.
@@ -442,30 +452,85 @@ fn bounds(entry: &CFDictionary) -> Option<CGRect> {
 }
 
 /// The display under the cursor, as a GPUI id and a capture rectangle.
-///
-/// The id needs no converting - GPUI's macOS `DisplayId` is a
-/// `CGDirectDisplayID` - and `CGDisplayBounds` is already the same global
-/// top-left space `PhysicalRegion` uses, just measured in points rather than
-/// pixels.
 pub fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
     // A synthesised event reports the cursor in that same top-left space.
     // `NSEvent::mouseLocation` would come back bottom-left and relative to the
     // primary screen, which needs a flip and gets it wrong on a display taller
     // than the primary one.
     let event = CGEvent::new(None).context("read cursor position")?;
-    let mut display = CGMainDisplayID();
+    display_at(CGEvent::location(Some(&event)))
+}
+
+/// The display a capture rectangle sits on, by its centre.
+///
+/// The cursor is the wrong question once a selection can cross displays: the
+/// pointer has moved on by the time the recording bar opens, and a region
+/// dragged across a seam belongs to whichever display holds most of it - which
+/// is what the centre point picks.
+pub fn monitor_containing(region: &PhysicalRegion) -> anyhow::Result<(DisplayId, PhysicalRegion)> {
+    let scale = f64::from(display_scale().context("read the display backing scale")?);
+    display_at(CGPoint {
+        x: f64::from(region.x + region.width as i32 / 2) / scale,
+        y: f64::from(region.y + region.height as i32 / 2) / scale,
+    })
+}
+
+/// The union of every active display, in the same space `display_at` reports.
+///
+/// The origin is not (0, 0). A display placed left of or above the main one puts
+/// it negative, which is why the selection overlay is positioned from this
+/// rectangle rather than sized from it.
+pub fn virtual_screen() -> PhysicalRegion {
+    // Sixteen is more displays than macOS has ever driven from one machine, so
+    // the list never truncates in practice; a machine that somehow beats it
+    // simply gets an overlay over the first sixteen.
+    let mut displays = [0; 16];
     let mut matched = 0;
-    // SAFETY: room for the one display asked for, and both out pointers live.
+    // SAFETY: the count matches the array, and both out pointers live.
     unsafe {
-        CGGetDisplaysWithPoint(
-            CGEvent::location(Some(&event)),
-            1,
-            &raw mut display,
+        CGGetActiveDisplayList(
+            displays.len() as u32,
+            displays.as_mut_ptr(),
             &raw mut matched,
         )
     };
+    let scale = f64::from(display_scale().unwrap_or(1.0));
+    // `CGRectUnion` has no binding in `objc2-core-foundation`, and four `min`
+    // and `max` calls are cheaper to read than an extern declaration would be.
+    let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for display in &displays[..matched as usize] {
+        let bounds = CGDisplayBounds(*display);
+        left = left.min(bounds.origin.x);
+        top = top.min(bounds.origin.y);
+        right = right.max(bounds.origin.x + bounds.size.width);
+        bottom = bottom.max(bounds.origin.y + bounds.size.height);
+    }
     if matched == 0 {
-        anyhow::bail!("the cursor is not on any display");
+        let bounds = CGDisplayBounds(CGMainDisplayID());
+        (left, top) = (bounds.origin.x, bounds.origin.y);
+        (right, bottom) = (left + bounds.size.width, top + bounds.size.height);
+    }
+    PhysicalRegion {
+        x: (left * scale) as i32,
+        y: (top * scale) as i32,
+        width: ((right - left) * scale) as u32,
+        height: ((bottom - top) * scale) as u32,
+    }
+}
+
+/// The display containing a point, as a GPUI id and a capture rectangle.
+///
+/// The id needs no converting - GPUI's macOS `DisplayId` is a
+/// `CGDirectDisplayID` - and `CGDisplayBounds` is already the same global
+/// top-left space `PhysicalRegion` uses, just measured in points rather than
+/// pixels, so the point comes in as points too.
+fn display_at(point: CGPoint) -> anyhow::Result<(DisplayId, PhysicalRegion)> {
+    let mut display = CGMainDisplayID();
+    let mut matched = 0;
+    // SAFETY: room for the one display asked for, and both out pointers live.
+    unsafe { CGGetDisplaysWithPoint(point, 1, &raw mut display, &raw mut matched) };
+    if matched == 0 {
+        anyhow::bail!("the point is not on any display");
     }
     let bounds = CGDisplayBounds(display);
     let scale = f64::from(display_scale().context("read the display backing scale")?);
