@@ -295,6 +295,7 @@ fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
     std::env::var_os("PATH")
         .into_iter()
         .flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .chain(platform::EXTRA_SEARCH_DIRS.iter().map(PathBuf::from))
         .map(|directory| directory.join(platform::FFMPEG_EXE))
         .find(|candidate| candidate.is_file())
         .map(|candidate| platform::resolve_shim(&candidate))

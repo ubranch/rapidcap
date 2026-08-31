@@ -12,6 +12,17 @@ use crate::{CaptureKind, PhysicalRegion, Settings, display_scale};
 
 pub(super) const FFMPEG_EXE: &str = "ffmpeg";
 
+/// Where to look for FFmpeg once `PATH` has come up empty.
+///
+/// A bundle launched from Finder inherits launchd's `PATH`, which is
+/// `/usr/bin:/bin:/usr/sbin:/sbin` and nothing else - the shell profile that
+/// puts Homebrew on `PATH` never runs. Without this the app finds FFmpeg when
+/// started from a terminal and reports "ffmpeg not found" when double-clicked,
+/// which is the only way anyone actually starts it. Both Homebrew prefixes are
+/// listed because Apple Silicon installs under `/opt/homebrew` and Intel under
+/// `/usr/local`.
+pub(super) const EXTRA_SEARCH_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin"];
+
 /// FFmpeg spawned from a bundle never gets a console to hide, so unlike the
 /// Windows backend there is nothing to suppress here.
 pub(super) fn hide_console(_command: &mut Command) {}

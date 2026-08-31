@@ -14,6 +14,10 @@ use crate::{CaptureKind, PhysicalRegion, Settings};
 
 pub(super) const FFMPEG_EXE: &str = "ffmpeg.exe";
 
+/// Nothing beyond `PATH`: a Windows process inherits the machine and user
+/// `PATH` however it was started, so there is no launcher-specific gap to fill.
+pub(super) const EXTRA_SEARCH_DIRS: &[&str] = &[];
+
 /// FFmpeg is a console subsystem program, so without this a black window blinks
 /// up over whatever is being recorded, in the first frames of the recording.
 pub(super) fn hide_console(command: &mut Command) {

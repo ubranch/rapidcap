@@ -11,7 +11,8 @@
 # to whoever holds the certificate.
 #
 # FFmpeg is not vendored. assets/ffmpeg holds audited *Windows* binaries, and
-# ffmpeg_path() already falls back to PATH, which is where Homebrew puts it.
+# ffmpeg_path() searches PATH and then the two Homebrew prefixes, because a
+# bundle launched from Finder never sees the PATH a shell profile sets up.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
