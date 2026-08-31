@@ -128,16 +128,20 @@
     written where the failure happens — <code>finish_recording</code> knows the operation is "Recording",
     <code>finish_screenshot</code> knows it is "Screenshot" — and the raw detail rides along untouched, into the
     hover text and the screen-reader label. Nothing is truncated: a summary that would not fit reads
-    <b>see details</b> instead of thirty-nine characters of an FFmpeg line.
+    <b>see details</b> instead of thirty-nine characters of an FFmpeg line. <b>Retry</b> re-runs the command the
+    failure came from, and <b>Copy log</b> puts the raw detail on the clipboard as plain text.
   </div>
 
   <div class="note">
     <b>Two departures.</b> The summary caps at 40 characters, because the same string also goes to the status well,
     which sizes to its content in a 400px row that already holds two chips. So the middle bar above really reads
     <b>Screenshot failed — see details</b>: its 60-character wording would need the code to classify error text by
-    substring, and a heuristic that mislabels a failure is worse than one that points at the detail. <b>Retry</b> and
-    <b>Copy log</b> are not built — Retry needs the controller to remember whether the last command was idempotent,
-    and Copy log needs a text-only clipboard path, which the clipboard module does not have.
+    substring, and a heuristic that mislabels a failure is worse than one that points at the detail. For the same
+    reason <b>Retry</b> appears whenever the failure came from a command that starts a capture, rather than only when
+    that command is idempotent: idempotence is a property of the error, so deciding it would mean the same guessing
+    from message text. Pressing Retry on something that fails again costs a click; guessing wrong costs a wrong
+    button. <b>Copy log</b> does follow the spec — it appears only when the bar is summarising, because a bar
+    already showing the whole error has nothing left to copy.
   </div>
 
   <h2>Saved — a chip that expires</h2>

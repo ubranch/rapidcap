@@ -166,6 +166,18 @@ pub fn warn_fill() -> Hsla {
     rgba(0xe8a33d1f).into()
 }
 
+/// Retry and Copy log, on the error bar. Filled rather than outlined: the bar
+/// is already inside an amber border, and a second border reads as a box in a
+/// box.
+pub fn warn_ghost() -> Hsla {
+    rgba(0xe8a33d29).into()
+}
+
+/// Hovered [`warn_ghost`].
+pub fn warn_ghost_hover() -> Hsla {
+    rgba(0xe8a33d42).into()
+}
+
 /// Error message text. 8.1:1 on [`warn_fill`].
 pub fn warn_text() -> Hsla {
     rgb(0xf0c07a).into()

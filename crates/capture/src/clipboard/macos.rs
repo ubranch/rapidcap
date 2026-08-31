@@ -10,7 +10,7 @@ use std::path::Path;
 
 use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
 use objc2::runtime::ProtocolObject;
-use objc2_app_kit::{NSPasteboard, NSPasteboardTypePNG};
+use objc2_app_kit::{NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeString};
 use objc2_foundation::{NSArray, NSData, NSString, NSURL};
 
 use super::ClipboardError;
@@ -43,6 +43,18 @@ pub fn write_clipboard(capture: &SavedCapture) -> Result<(), ClipboardError> {
     let data = NSData::with_bytes(&png);
     if !unsafe { pasteboard.setData_forType(Some(&data), NSPasteboardTypePNG) } {
         return Err(ClipboardError("clipboard rejected the image".into()));
+    }
+    Ok(())
+}
+
+/// Plain text, nothing else - no file URL, so a paste is the string itself.
+pub fn write_clipboard_text(text: &str) -> Result<(), ClipboardError> {
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.clearContents();
+    // SAFETY: both arguments are live for the call and the pasteboard copies
+    // what it keeps.
+    if !unsafe { pasteboard.setString_forType(&NSString::from_str(text), NSPasteboardTypeString) } {
+        return Err(ClipboardError("clipboard rejected the text".into()));
     }
     Ok(())
 }

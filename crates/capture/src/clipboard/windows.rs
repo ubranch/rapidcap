@@ -38,10 +38,32 @@ pub fn write_clipboard_file(path: &Path) -> Result<(), ClipboardError> {
     write_formats(path, None)
 }
 
+/// Plain text, nothing else.
+///
+/// No `CF_HDROP` and no Preferred DropEffect: there is no file here, and a drop
+/// effect on a text-only clipboard tells Explorer to expect one.
+pub fn write_clipboard_text(text: &str) -> Result<(), ClipboardError> {
+    let bytes: Vec<u8> = text
+        .encode_utf16()
+        .chain([0])
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    publish(vec![(CF_UNICODETEXT.0 as u32, GlobalBlock::new(&bytes)?)])
+}
+
 fn write_formats(path: &Path, dib: Option<Vec<u8>>) -> Result<(), ClipboardError> {
     let text = unicode_path_bytes(path);
     let drop = hdrop_bytes(path);
     let effect = 1_u32.to_le_bytes();
+    // Registered before the clipboard is opened, because it can be: holding the
+    // clipboard while asking the system for a format id keeps every other app
+    // waiting for no reason.
+    let drop_effect = unsafe { RegisterClipboardFormatW(w!("Preferred DropEffect")) };
+    if drop_effect == 0 {
+        return Err(ClipboardError(
+            "register Preferred DropEffect failed".into(),
+        ));
+    }
 
     let mut formats = Vec::with_capacity(4);
     if let Some(dib) = &dib {
@@ -49,7 +71,16 @@ fn write_formats(path: &Path, dib: Option<Vec<u8>>) -> Result<(), ClipboardError
     }
     formats.push((CF_UNICODETEXT.0 as u32, GlobalBlock::new(&text)?));
     formats.push((CF_HDROP.0 as u32, GlobalBlock::new(&drop)?));
+    formats.push((drop_effect, GlobalBlock::new(&effect)?));
+    publish(formats)
+}
 
+/// Takes the clipboard once and publishes every format on it.
+///
+/// The five attempts are not a retry policy for a flaky call: `OpenClipboard`
+/// fails while another app holds the clipboard open, which is a normal thing
+/// for an app to do for a few milliseconds after a copy.
+fn publish(mut formats: Vec<(u32, GlobalBlock)>) -> Result<(), ClipboardError> {
     let mut opened = false;
     for _ in 0..5 {
         if unsafe { OpenClipboard(None) }.is_ok() {
@@ -63,17 +94,10 @@ fn write_formats(path: &Path, dib: Option<Vec<u8>>) -> Result<(), ClipboardError
     }
     let _close = ClipboardGuard;
     unsafe { EmptyClipboard() }.map_err(win_error)?;
-    let drop_effect = unsafe { RegisterClipboardFormatW(w!("Preferred DropEffect")) };
-    if drop_effect == 0 {
-        return Err(ClipboardError(
-            "register Preferred DropEffect failed".into(),
-        ));
-    }
-    formats.push((drop_effect, GlobalBlock::new(&effect)?));
 
-    for (format, mut block) in formats {
+    for (format, block) in formats.iter_mut() {
         let handle = block.handle();
-        unsafe { SetClipboardData(format, Some(HANDLE(handle.0))) }.map_err(win_error)?;
+        unsafe { SetClipboardData(*format, Some(HANDLE(handle.0))) }.map_err(win_error)?;
         block.transfer();
     }
     Ok(())

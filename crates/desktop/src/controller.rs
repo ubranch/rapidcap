@@ -21,6 +21,12 @@ pub struct AppController {
     /// message has to outlive that: clearing it on the next command meant the
     /// user's click dismissed a notice they had not read yet.
     error: Option<CaptureFailure>,
+    /// The command Retry re-runs, when there is a failure to retry.
+    ///
+    /// Only the four that start a capture are recorded. Pause and Cancel cannot
+    /// be the command a `finish_*` failure came from, and re-running one from
+    /// the error bar would do something the user never asked for.
+    last_command: Option<CaptureCommand>,
 }
 
 impl AppController {
@@ -33,6 +39,7 @@ impl AppController {
             recorded: Duration::ZERO,
             recording_since: None,
             error: None,
+            last_command: None,
         }
     }
 
@@ -185,6 +192,29 @@ impl AppController {
         self.error.as_ref()
     }
 
+    /// The command the error bar offers as Retry, if there is one.
+    ///
+    /// A departure from the spec, which says Retry appears only when the failed
+    /// command is idempotent: that is a property of the error, and deciding it
+    /// would mean matching on message text. The command is what the code
+    /// actually knows, so Retry is offered whenever the failure came from one
+    /// that starts a capture. Pressing it on a failure that will fail again
+    /// costs a click; guessing wrong from a substring costs a wrong button.
+    pub fn retry_command(&self) -> Option<CaptureCommand> {
+        self.error.as_ref().and(self.last_command)
+    }
+
+    /// Runs Retry, clearing the notice the button was attached to.
+    pub fn retry(&mut self, cx: &mut Context<Self>) {
+        let Some(command) = self.retry_command() else {
+            return;
+        };
+        self.dismiss_error(cx);
+        if let Err(error) = self.dispatch(command, cx) {
+            tracing::warn!(?error, ?command, "retry rejected");
+        }
+    }
+
     pub fn dismiss_error(&mut self, cx: &mut Context<Self>) {
         if self.error.take().is_some() {
             cx.notify();
@@ -200,6 +230,15 @@ impl AppController {
         // `self.error` deliberately survives — see the field comment.
         if matches!(self.state, CaptureState::Error(_)) {
             self.state = CaptureState::Idle;
+        }
+        if matches!(
+            command,
+            CaptureCommand::CaptureRegion
+                | CaptureCommand::CaptureActiveWindow
+                | CaptureCommand::ToggleVideo
+                | CaptureCommand::ToggleGif
+        ) {
+            self.last_command = Some(command);
         }
         let previous = self.state.clone();
         let next = match command {
@@ -446,6 +485,37 @@ mod tests {
         assert!(
             controller.read_with(cx, |controller, _| controller.error().is_none()),
             "a capture that worked answers the question the error asked"
+        );
+    }
+
+    #[gpui::test]
+    fn retry_offers_the_capture_that_failed_and_never_cancel(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
+        controller.update(cx, |controller, _| {
+            controller.set_error_for_test("disk full");
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.retry_command()),
+            None,
+            "nothing has been asked for yet, so there is nothing to run again"
+        );
+
+        controller.update(cx, |controller, cx| {
+            controller.dispatch(CaptureCommand::ToggleGif, cx).unwrap();
+            // Backing out of the selection must not become the thing Retry runs.
+            controller.dispatch(CaptureCommand::Cancel, cx).unwrap();
+            controller.set_error_for_test("disk full");
+        });
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.retry_command()),
+            Some(CaptureCommand::ToggleGif)
+        );
+
+        controller.update(cx, |controller, cx| controller.dismiss_error(cx));
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.retry_command()),
+            None,
+            "the button goes with the bar it sits on"
         );
     }
 

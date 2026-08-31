@@ -21,7 +21,7 @@ pub use sck::{capture_screenshot, display_scale, ensure_screen_access};
 #[cfg(windows)]
 pub use wgc::capture_screenshot;
 
-pub use clipboard::{ClipboardError, write_clipboard, write_clipboard_file};
+pub use clipboard::{ClipboardError, write_clipboard, write_clipboard_file, write_clipboard_text};
 pub use geometry::{CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, RawFrame};
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::OutputNamer;

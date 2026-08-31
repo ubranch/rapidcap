@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use rapidcap_capture::{
     CaptureCommand, CaptureEvent, CaptureFailure, CaptureKind, CaptureState, CaptureTarget,
-    SavedOutput,
+    SavedOutput, write_clipboard_text,
 };
 
 use crate::controller::AppController;
@@ -457,16 +457,25 @@ impl MainWindow {
     /// Amber, not red: red already means a capture is running, and an error bar
     /// in the same colour reads as one more recording indicator.
     fn error_bar(&self, failure: CaptureFailure, cx: &mut Context<Self>) -> impl IntoElement {
+        let summarised = failure.is_summarised();
         let summary = failure.summary;
-        // The raw text, verbatim, on the label a screen reader reads and in the
-        // tooltip. The bar is 36px and the summary is written to fit it, so
-        // these are the only two surfaces the untruncated error has.
+        // The raw text, verbatim, in the tooltip and - when the bar is not
+        // already showing it - on the label a screen reader reads. The bar is
+        // 36px, so those are the only two surfaces the untruncated error has.
         let detail = SharedString::from(failure.detail);
+        let spoken = if summarised {
+            SharedString::from(format!("{summary}: {detail}"))
+        } else {
+            SharedString::from(summary.clone())
+        };
+        // Retry re-runs the command the failure came from, so it is offered
+        // whenever there was one, not per error kind: see `retry_command`.
+        let retry = self.controller.read(cx).retry_command();
         div()
             .id("capture-error")
             .accessibility_id("rapidcap.error")
             .role(Role::Alert)
-            .aria_label(detail.clone())
+            .aria_label(spoken)
             .tooltip({
                 let detail = detail.clone();
                 move |_, cx| cx.new(|_| ErrorDetail(detail.clone())).into()
@@ -497,6 +506,24 @@ impl MainWindow {
                     .text_color(theme::warn_text())
                     .child(summary),
             )
+            .children(retry.map(|_| {
+                ghost_button("error-retry", "Retry").on_click(cx.listener(|this, _, _, cx| {
+                    this.controller
+                        .update(cx, |controller, cx| controller.retry(cx));
+                }))
+            }))
+            // Only when the bar is not already showing the whole error: a
+            // button that copies what you can read is a button in the way.
+            .children(summarised.then(|| {
+                let detail = detail.clone();
+                ghost_button("error-copy-log", "Copy log").on_click(move |_, _, _| {
+                    // Best effort. A clipboard the user cannot write to is not
+                    // a reason to replace the error they were reading.
+                    if let Err(error) = write_clipboard_text(&detail) {
+                        tracing::warn!(%error, "copy log failed");
+                    }
+                })
+            }))
             .child(
                 div()
                     .id("dismiss-error")
@@ -698,6 +725,31 @@ fn countdown_control(track: impl IntoElement) -> impl IntoElement {
             .text_color(theme::text_badge())
             .child("i"),
     )
+}
+
+/// Retry and Copy log on the error bar.
+///
+/// Filled rather than outlined, and 11px rather than the 12px of the message
+/// beside it: the bar already carries an amber border and the loud text, and a
+/// second border around a second emphasis reads as two errors.
+fn ghost_button(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .accessibility_id(format!("rapidcap.{id}"))
+        .role(Role::Button)
+        .h(theme::u(26.0))
+        .px(theme::u(10.0))
+        .flex()
+        .flex_none()
+        .items_center()
+        .rounded(theme::u(theme::RADIUS_PILL))
+        .bg(theme::warn_ghost())
+        .text_size(theme::u(theme::TEXT_MICRO))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(theme::warn_text())
+        .cursor_pointer()
+        .hover(|style| style.bg(theme::warn_ghost_hover()))
+        .child(label)
 }
 
 fn countdown_slot(seconds: u8, active: bool) -> gpui::Stateful<gpui::Div> {

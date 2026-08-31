@@ -67,6 +67,14 @@ impl CaptureFailure {
         };
         Self { summary, detail }
     }
+
+    /// Whether the summary only points at the detail instead of carrying it.
+    ///
+    /// This is what decides that Copy log appears: a bar already showing the
+    /// whole error has nothing left to copy.
+    pub fn is_summarised(&self) -> bool {
+        !self.summary.ends_with(self.detail.trim())
+    }
 }
 
 impl fmt::Display for CaptureFailure {
@@ -204,6 +212,9 @@ mod tests {
         let long = CaptureFailure::new("Recording", raw);
         assert_eq!(long.summary, "Recording failed — see details");
         assert_eq!(long.detail, raw, "the tooltip still gets every character");
+
+        assert!(!short.is_summarised(), "the bar already shows all of it");
+        assert!(long.is_summarised(), "so Copy log has something to offer");
 
         for failure in [short, long, CaptureFailure::new("Screenshot", "")] {
             assert!(

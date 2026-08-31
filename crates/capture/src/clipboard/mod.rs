@@ -12,9 +12,9 @@ mod macos;
 mod windows;
 
 #[cfg(target_os = "macos")]
-pub use macos::{write_clipboard, write_clipboard_file};
+pub use macos::{write_clipboard, write_clipboard_file, write_clipboard_text};
 #[cfg(windows)]
-pub use windows::{write_clipboard, write_clipboard_file};
+pub use windows::{write_clipboard, write_clipboard_file, write_clipboard_text};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClipboardError(pub(crate) String);

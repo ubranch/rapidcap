@@ -76,8 +76,8 @@
   <div class="note" style="border-color:var(--warn)">
     <b>The raw error still matters</b> — it goes in the tooltip, never in the bar. <code>CaptureState::Error</code>
     carries <code>CaptureFailure { summary, detail }</code>, so the written sentence and the developer blob travel
-    together instead of one being cut down to stand in for the other. <b>Copy log</b> is the half that is still
-    missing; the clipboard module writes images and file drops, not text.
+    together instead of one being cut down to stand in for the other. <b>Copy log</b> hands over the detail verbatim,
+    through a text-only clipboard write — no file drop attached, because there is no file here.
   </div>
 
   <h2>Buttons and menus</h2>
