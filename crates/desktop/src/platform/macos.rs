@@ -249,6 +249,15 @@ pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
     ) else {
         return;
     };
+    // AppKit refuses to let a *titled* window cover the menu bar: ordering one
+    // on screen quietly slides it down by the menu bar's height, and every
+    // later `setFrame:` is constrained the same way. GPUI builds even a
+    // titlebar-less window as `Titled | FullSizeContentView`, so an overlay
+    // asked to cover the display landed 33 points low and took the highlight
+    // drawn inside it along. Measured: dropping the titled bit lands the same
+    // frame at the origin, and GPUI overrides `canBecomeKeyWindow`, so a
+    // borderless window still receives the Esc that closes the overlay.
+    window.setStyleMask(window.styleMask() & !NSWindowStyleMask::Titled);
     window.setFrame_display(frame, true);
 }
 
