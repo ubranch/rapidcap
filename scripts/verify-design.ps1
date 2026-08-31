@@ -154,7 +154,12 @@ if ($bands.Count -ge 3) {
   # pad 12 + header 40 + header margin-bottom 3 + the column gap 9 that the flex
   # container adds between every pair of children.
   ExpectDesign "body padding above card row 1" ($bands[0].Top - $bodyTop) (12 + 40 + 3 + 9)
-  ExpectDesign "body padding below footer 12" ($H - 1 - ($bands[2].Top + $bands[2].Height)) 12
+  # Counted inclusively: the last client row is $H - 1, and the first row
+  # after the chip is already padding, so the run is both ends included.
+  # Every other check here is a difference between two rows of the same
+  # capture, where the frame offset cancels; this one measures to the edge,
+  # and dropping the row on the end reported a 12px pad as 10.8.
+  ExpectDesign "body padding below footer 12" ($H - ($bands[2].Top + $bands[2].Height)) 12
 }
 
 Write-Host ""
