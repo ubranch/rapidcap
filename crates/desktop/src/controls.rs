@@ -114,12 +114,12 @@ pub fn toggle(id: &'static str, label: &'static str, on: bool) -> gpui::Stateful
         .h(theme::u(TOGGLE_H))
         .rounded(theme::u(theme::RADIUS_PILL))
         .cursor_pointer()
-        // Offset 3 rather than the usual 2: the toggle is the one control with
-        // no border of its own, so the ring needs the extra pixel of air to
-        // stop reading as one.
-        .focus_visible(|style| style.border_color(theme::accent()))
-        .border_2()
-        .border_color(gpui::transparent_black());
+        // A ring rather than a border, and offset 3 rather than the usual 2:
+        // when this is on it is an accent fill, and an accent border inside an
+        // accent fill is not a focus ring, it is nothing. The 2px transparent
+        // border this used to carry was also eating 2px off every edge of the
+        // track, which put the knob at 5px from the outside rather than 3.
+        .focus_visible(|style| style.shadow(theme::focus_ring(theme::bg_card(), 3.0)));
     track = if on {
         track.bg(theme::accent())
     } else {
@@ -418,6 +418,12 @@ mod tests {
         assert_eq!(KNOB_INSET, 3.0);
         assert_eq!(TOGGLE_W - KNOB - KNOB_INSET, 19.0);
         assert_eq!(knob_travel(), 16.0);
+
+        // And the same 3 above and below. This is measured against the outer
+        // box, so the track cannot carry a border: GPUI lays absolute children
+        // out from the padding box, and a 2px border would leave the knob
+        // sitting 5px from the edge the user actually sees.
+        assert_eq!(KNOB_INSET * 2.0 + KNOB, TOGGLE_H);
     }
 
     #[test]

@@ -426,6 +426,42 @@ pub fn recessed() -> Vec<BoxShadow> {
     }]
 }
 
+/// The focus ring, for a control that cannot show one in its border.
+///
+/// Most controls turn their own border accent, which is the cheapest ring
+/// there is and reads correctly on anything with a background darker than the
+/// accent. It fails on exactly the controls the design calls filled: an armed
+/// mode card already has an accent border, a switch that is on is an accent
+/// fill, and a 2px accent line inside either of those is not a ring, it is
+/// nothing. `spacer` is what sits behind the control - the ring is drawn 2px
+/// clear of it in that colour, so accent never touches accent or red.
+///
+/// `gap` is 2 everywhere except the switch, which the design gives 3: it is
+/// the one control with no border, and a ring 2px off a bare pill reads as
+/// part of the pill.
+///
+/// Two shadows rather than an outline because GPUI has none, which is also
+/// how the design draws it: `0 0 0 2px #0A0A0A, 0 0 0 4px accent`.
+///
+/// In the opposite order, though. CSS paints the first shadow of a list on
+/// top; GPUI paints them in the order they are given, so the accent goes down
+/// first and the spacer is painted over it to cut the gap back out.
+pub fn focus_ring(spacer: Hsla, gap: f32) -> Vec<BoxShadow> {
+    let ring = |color: Hsla, spread: f32| BoxShadow {
+        color,
+        // Hard-edged, which the shader has a branch for: at blur 0 it fills
+        // the rounded rect outright instead of integrating a gaussian.
+        offset: point(u(0.0), u(0.0)),
+        blur_radius: u(0.0),
+        spread_radius: u(spread),
+        inset: false,
+    };
+    vec![ring(accent(), gap + FOCUS_RING), ring(spacer, gap)]
+}
+
+/// How wide the ring itself is drawn.
+const FOCUS_RING: f32 = 2.0;
+
 /// Floating surfaces: menus, the HUD.
 pub fn floating() -> Vec<BoxShadow> {
     vec![BoxShadow {
@@ -506,6 +542,28 @@ mod tests {
     }
 
     #[test]
+    fn a_focus_ring_leaves_a_gap_and_paints_it_last() {
+        let ring = focus_ring(bg_body(), 2.0);
+        // Accent first so the spacer lands on top of it: reversed, the wider
+        // accent would cover the gap and the ring would sit on the control.
+        assert_eq!(ring[0].color, accent(), "accent is painted first");
+        assert_eq!(ring[0].spread_radius, u(4.0), "2 of gap, 2 of ring");
+        assert_eq!(ring[1].color, bg_body(), "the gap, painted over it");
+        assert_eq!(ring[1].spread_radius, u(2.0));
+        assert!(
+            ring.iter()
+                .all(|shadow| shadow.blur_radius == px(0.0) && !shadow.inset),
+            "a ring is a hard edge outside the control, not a glow under it"
+        );
+
+        // The switch takes the extra pixel of air the design gives it, and the
+        // ring stays 2px wide rather than growing with the gap.
+        let switch = focus_ring(bg_card(), 3.0);
+        assert_eq!(switch[1].spread_radius, u(3.0), "3 of gap");
+        assert_eq!(switch[0].spread_radius, u(5.0), "3 of gap, still 2 of ring");
+    }
+
+    #[test]
     fn recessed_is_an_inset_shadow_with_blur() {
         let recessed = recessed();
         assert!(
@@ -514,7 +572,7 @@ mod tests {
         );
         assert!(
             recessed[0].blur_radius > px(0.0),
-            "GPUI renders nothing at blur 0 - that is why the raised edge is an element"
+            "a recess with a hard edge is a border, not a recess"
         );
     }
 }

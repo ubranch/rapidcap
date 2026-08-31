@@ -1314,7 +1314,16 @@ fn mode_card(
         .text_color(content)
         .cursor_pointer()
         .hover(move |style| style.bg(theme::bg_hover()))
-        .focus_visible(move |style| style.border_color(theme::accent()))
+        // Armed, this card is an accent fill inside an accent border, so it has
+        // nothing left to recolour: the ring goes outside, clear of the panel
+        // by 2px of the body it sits on.
+        .focus_visible(move |style| {
+            if armed {
+                style.shadow(theme::focus_ring(theme::bg_body(), 2.0))
+            } else {
+                style.border_color(theme::accent())
+            }
+        })
         .child(icon.element(theme::u(22.0), content))
         .child(
             div()
