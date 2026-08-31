@@ -205,6 +205,23 @@ pub fn window_drag_grab() -> Option<(i32, i32)> {
 /// and returned no grab, so `window.rs` never gets as far as calling this.
 pub fn drag_main_window(_grab: (i32, i32)) {}
 
+/// Whether the panel is allowed to show up in a recording.
+///
+/// The other half of hiding it, and the direct counterpart of the Windows
+/// side's affinity flip. `ReadOnly` is AppKit's default sharing type, so
+/// putting it back is putting the panel back the way it was found.
+pub fn set_panel_recordable(recordable: bool) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let Some(window) = panel(mtm) else { return };
+    window.setSharingType(if recordable {
+        NSWindowSharingType::ReadOnly
+    } else {
+        NSWindowSharingType::None
+    });
+}
+
 pub fn hide_main_window() {
     let Some(mtm) = MainThreadMarker::new() else {
         return;

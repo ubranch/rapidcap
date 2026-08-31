@@ -126,6 +126,21 @@ fn a_settings_file_written_before_the_clipboard_toggle_still_loads() {
 }
 
 #[test]
+fn a_settings_file_written_before_the_hide_panel_toggle_still_loads() {
+    // The panel always got out of the way before this key existed.
+    let (temp, store) = store();
+    let mut value: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&Settings::default()).unwrap()).unwrap();
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("hide_panel_while_capturing");
+    write(&temp, &value.to_string());
+
+    assert!(store.load().unwrap().hide_panel_while_capturing);
+}
+
+#[test]
 fn an_out_of_range_jpeg_quality_is_refused_at_both_ends() {
     for quality in [0_u8, 101, 255] {
         let (temp, store) = store();

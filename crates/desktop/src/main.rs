@@ -38,7 +38,7 @@ use crate::{
     overlay::{close_recording_hud, open_recording_hud, open_region_overlay, overlay_key_bindings},
     platform::{
         PlatformEvent, PlatformRuntime, SingleInstance, hide_main_window, hide_recording_frame,
-        open_path, probe_payload, show_main_window, show_recording_frame,
+        open_path, probe_payload, set_panel_recordable, show_main_window, show_recording_frame,
     },
     window::{key_bindings, open_main_window},
 };
@@ -238,6 +238,9 @@ fn main() -> anyhow::Result<()> {
                     .detach();
                 }
                 CaptureState::Countdown(kind @ (CaptureKind::Video | CaptureKind::Gif), seconds) => {
+                    // Read now, not when the take ends: the pair has to be
+                    // symmetric even if the setting is flipped mid-recording.
+                    let hide_panel = settings.hide_panel_while_capturing;
                     hide_recording_frame();
                     close_recording_hud(&mut recording_hud.borrow_mut(), cx);
                     match &target {
@@ -256,7 +259,7 @@ fn main() -> anyhow::Result<()> {
                             return;
                         }
                     }
-                    hide_main_window();
+                    stow_panel(hide_panel);
                     cx.activate(true);
                     let (stop_sender, stop_receiver) = mpsc::channel();
                     *recording_stop.lock().unwrap() = Some(stop_sender);
@@ -297,13 +300,13 @@ fn main() -> anyhow::Result<()> {
                                 });
                                 hide_recording_frame();
                                 close_recording_hud(&mut recording_hud.borrow_mut(), cx);
-                                show_main_window();
+                                restore_panel(hide_panel);
                                 return;
                             }
                             Err(_) => {
                                 hide_recording_frame();
                                 close_recording_hud(&mut recording_hud.borrow_mut(), cx);
-                                show_main_window();
+                                restore_panel(hide_panel);
                                 return;
                             }
                         }
@@ -329,7 +332,7 @@ fn main() -> anyhow::Result<()> {
                         });
                         hide_recording_frame();
                         close_recording_hud(&mut recording_hud.borrow_mut(), cx);
-                        show_main_window();
+                        restore_panel(hide_panel);
                         let _ = recording_window.update(cx, |_view, window, _cx| {
                             window.activate_window();
                         });
@@ -414,6 +417,29 @@ fn main() -> anyhow::Result<()> {
         }
     });
     Ok(())
+}
+
+/// Put the panel out of the way for the length of a recording.
+///
+/// Two ways to be out of a recording, and the setting picks which: gone from
+/// the screen, or still there and cut out of what the recorder sees. Pair with
+/// [`restore_panel`] on the same flag.
+fn stow_panel(hide: bool) {
+    if hide {
+        hide_main_window();
+    } else {
+        set_panel_recordable(false);
+    }
+}
+
+/// Undo [`stow_panel`]. A panel that was never hidden is not raised, because
+/// raising it is the interruption the setting was turned off to avoid.
+fn restore_panel(hidden: bool) {
+    if hidden {
+        show_main_window();
+    } else {
+        set_panel_recordable(true);
+    }
 }
 
 fn prune_logs(directory: &Path, keep: usize) -> std::io::Result<()> {

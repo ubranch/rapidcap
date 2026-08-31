@@ -33,6 +33,18 @@ pub struct Settings {
     pub audio: AudioSettings,
     pub gif: GifSettings,
     pub countdown_seconds: u8,
+    /// Whether the panel gets out of the way for the length of a recording.
+    ///
+    /// Off does not mean the panel lands in the file: it stays on screen and is
+    /// marked unrecordable instead, the way the HUD and the region frame
+    /// already are. Nobody wants their own recorder in the take; what this
+    /// setting is really about is whether the window disappears from under
+    /// their cursor.
+    ///
+    /// Absent from a settings file it reads as on, which is what the app did
+    /// before the key existed.
+    #[serde(default = "hide_panel_default")]
+    pub hide_panel_while_capturing: bool,
     /// Hotkeys were stored here and never registered from here.
     ///
     /// The chords the app actually binds live in `hotkey_specs`, and the copy
@@ -94,6 +106,7 @@ impl Default for Settings {
                 dither: "sierra2_4a".into(),
             },
             countdown_seconds: 5,
+            hide_panel_while_capturing: true,
             hotkeys: Retired,
         }
     }
@@ -250,6 +263,10 @@ pub struct ScreenshotSettings {
 }
 
 fn copy_to_clipboard_default() -> bool {
+    true
+}
+
+fn hide_panel_default() -> bool {
     true
 }
 

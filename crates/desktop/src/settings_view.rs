@@ -4,9 +4,7 @@
 //! furniture. One column that scrolls puts every setting one gesture away and
 //! costs nothing to build.
 //!
-//! Every row here writes a key that something reads. One row the design system
-//! draws is not built: **hide panel while capturing** has no key on `Settings`
-//! and no behaviour to switch off.
+//! Every row here writes a key that something reads.
 //!
 //! The `Change` beside the capture folder is an `Open` instead: `capture_root`
 //! lives on `AppPaths`, which is discovered at startup rather than saved, so
@@ -738,6 +736,24 @@ impl Render for SettingsView {
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.controller.update(cx, |controller, cx| {
                                     controller.toggle_copy_to_clipboard(cx)
+                                });
+                            })),
+                        )
+                        .into_any_element(),
+                        controls::row(
+                            "settings-hide-panel",
+                            "Hide panel while capturing",
+                            None,
+                        )
+                        .child(
+                            controls::toggle(
+                                "settings-hide-panel-toggle",
+                                "Hide panel while capturing",
+                                settings.hide_panel_while_capturing,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.controller.update(cx, |controller, cx| {
+                                    controller.toggle_hide_panel(cx)
                                 });
                             })),
                         )

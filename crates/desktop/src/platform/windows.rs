@@ -57,7 +57,7 @@ use windows::{
                 SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE,
                 SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow,
                 SetLayeredWindowAttributes, SetWindowDisplayAffinity, SetWindowLongPtrW,
-                SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WNDCLASSW, WS_CAPTION,
+                SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WDA_NONE, WNDCLASSW, WS_CAPTION,
                 WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
                 WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
             },
@@ -372,6 +372,25 @@ pub fn drag_main_window(grab: (i32, i32)) {
             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
         );
     }
+}
+
+/// Whether the panel is allowed to show up in a recording.
+///
+/// The other half of hiding it. Someone who has turned the hide off wants the
+/// panel left where it is, not a picture of it in the file, and this is the
+/// same affinity the HUD and the frame already carry - only put back
+/// afterwards, because a window that keeps it prints black to every capture
+/// path there is, including a deliberate screenshot of the panel.
+pub fn set_panel_recordable(recordable: bool) {
+    let Some(window) = panel() else { return };
+    let affinity = if recordable {
+        WDA_NONE
+    } else {
+        WDA_EXCLUDEFROMCAPTURE
+    };
+    // SAFETY: the window belongs to this process, which is what the call
+    // requires.
+    let _ = unsafe { SetWindowDisplayAffinity(window, affinity) };
 }
 
 pub fn hide_main_window() {

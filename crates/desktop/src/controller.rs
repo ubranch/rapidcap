@@ -188,6 +188,17 @@ impl AppController {
         );
     }
 
+    /// Whether the panel gets out of the way while a recording runs.
+    ///
+    /// Off leaves it on screen and unrecordable rather than in the file; see
+    /// the key's own documentation.
+    pub fn toggle_hide_panel(&mut self, cx: &mut Context<Self>) {
+        self.edit_settings(
+            |settings| settings.hide_panel_while_capturing = !settings.hide_panel_while_capturing,
+            cx,
+        );
+    }
+
     /// Mute or unmute the soundtrack on video recordings.
     ///
     /// Takes effect on the next recording, not the running one: FFmpeg's inputs
