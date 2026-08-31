@@ -40,7 +40,45 @@ pub fn display_scale() -> Option<f32> {
     (points != 0).then(|| mode.pixel_width() as f32 / points as f32)
 }
 
+// Both are Core Graphics, macOS 10.15 and later, and neither is bound by the
+// `core-graphics` crate.
+unsafe extern "C" {
+    fn CGPreflightScreenCaptureAccess() -> bool;
+    fn CGRequestScreenCaptureAccess() -> bool;
+}
+
+/// Check the Screen Recording grant before anything tries to read the screen.
+///
+/// Neither of the two capture paths fails usefully without it. Core Graphics
+/// answers `CGDisplay::screenshot` with a picture of the desktop and no windows
+/// in it, and FFmpeg's AVFoundation input blocks inside `avformat_open_input`
+/// until the grant arrives - measured on macOS 26 as a recording that never
+/// wrote a single byte, sat out the ten second stop timeout, and reported
+/// "FFmpeg stop timed out" with nothing to show for it.
+///
+/// The request is not a dialog to wait on: `CGRequestScreenCaptureAccess` posts
+/// the system prompt and returns immediately, so this attempt is lost either
+/// way. Asking anyway is what puts the prompt on screen the first time, and the
+/// next attempt goes through once the box is ticked.
+///
+/// RapidCap is signed ad hoc, so its code hash changes with every build and
+/// macOS treats each new build as a different application that has to be
+/// granted again. Until the app ships with a stable signing identity this will
+/// fire after every update rather than only once.
+pub fn ensure_screen_access() -> Result<(), CaptureError> {
+    // SAFETY: neither call takes an argument or returns anything to free.
+    if unsafe { CGPreflightScreenCaptureAccess() } {
+        return Ok(());
+    }
+    unsafe { CGRequestScreenCaptureAccess() };
+    Err(CaptureError(
+        "RapidCap has no Screen Recording permission - allow it in System Settings > Privacy &          Security > Screen & System Audio Recording, then try again"
+            .into(),
+    ))
+}
+
 pub fn capture_screenshot(target: &CaptureTarget) -> Result<CapturedFrame, CaptureError> {
+    ensure_screen_access()?;
     let region = match target {
         CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
     };

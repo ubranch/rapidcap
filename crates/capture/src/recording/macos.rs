@@ -69,6 +69,9 @@ pub(super) struct CaptureSource {
 
 impl CaptureSource {
     pub(super) fn resolve(region: &PhysicalRegion) -> Result<Self, RecordingError> {
+        // Before the device list, because a denied grant hides screens from it
+        // and the "no screen device" error below would blame the wrong thing.
+        crate::ensure_screen_access().map_err(|error| RecordingError(error.to_string()))?;
         let displays = CGDisplay::active_displays()
             .map_err(|error| RecordingError(format!("enumerate displays failed: {error}")))?;
         // AVFoundation hands FFmpeg the display at its native resolution, so

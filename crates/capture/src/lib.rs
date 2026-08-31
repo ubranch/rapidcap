@@ -17,7 +17,7 @@ mod sck;
 mod wgc;
 
 #[cfg(target_os = "macos")]
-pub use sck::{capture_screenshot, display_scale};
+pub use sck::{capture_screenshot, display_scale, ensure_screen_access};
 #[cfg(windows)]
 pub use wgc::capture_screenshot;
 
