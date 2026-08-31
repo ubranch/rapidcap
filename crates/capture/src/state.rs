@@ -28,7 +28,51 @@ pub enum CaptureState {
     Recording(CaptureKind),
     Paused(CaptureKind),
     Finalizing(CaptureKind),
-    Error(String),
+    Error(CaptureFailure),
+}
+
+/// A failure, split the way it is read.
+///
+/// `summary` is a written sentence for the status well and the error bar;
+/// `detail` is whatever the failing call actually said. One blob could only
+/// ever be truncated to fit the well, and truncating an FFmpeg line yields
+/// thirty-nine characters of nothing useful.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CaptureFailure {
+    pub summary: String,
+    pub detail: String,
+}
+
+impl CaptureFailure {
+    /// What the status well fits, in characters.
+    ///
+    /// The well sizes to its content and shares a 400px row with two chips, so
+    /// a longer summary pushes that row wider than the panel. The error bar has
+    /// more room, but the same string lands in both.
+    pub const SUMMARY_MAX: usize = 40;
+
+    /// `operation` is the noun the user recognises — "Recording",
+    /// "Screenshot". It is passed in because only the caller knows it: reading
+    /// it back out of the message text would be a guess that fails silently.
+    pub fn new(operation: &str, detail: impl fmt::Display) -> Self {
+        let detail = detail.to_string();
+        let first = detail.lines().next().unwrap_or_default().trim();
+        let inline = format!("{operation} failed — {first}");
+        // Not truncated: thirty-nine characters of an FFmpeg line say nothing
+        // the user can act on, and the whole string is one hover away.
+        let summary = if first.is_empty() || inline.chars().count() > Self::SUMMARY_MAX {
+            format!("{operation} failed — see details")
+        } else {
+            inline
+        };
+        Self { summary, detail }
+    }
+}
+
+impl fmt::Display for CaptureFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.summary)
+    }
 }
 
 impl CaptureState {
@@ -123,7 +167,6 @@ pub struct SavedOutput {
 pub enum CaptureEvent {
     StateChanged(CaptureState),
     OutputSaved(SavedOutput),
-    Failed(String),
 }
 
 #[cfg(test)]
@@ -144,9 +187,30 @@ mod tests {
         for state in [
             CaptureState::Idle,
             CaptureState::Selecting(CaptureKind::RegionScreenshot),
-            CaptureState::Error("disk full".into()),
+            CaptureState::Error(CaptureFailure::new("Recording", "disk full")),
         ] {
             assert!(!state.blocks_exit(), "{state:?} should not block exit");
+        }
+    }
+
+    #[test]
+    fn a_long_detail_is_replaced_by_a_pointer_to_it_not_truncated() {
+        let short = CaptureFailure::new("Recording", "disk full");
+        assert_eq!(short.summary, "Recording failed — disk full");
+        assert_eq!(short.detail, "disk full");
+
+        let raw =
+            "ffmpeg: Error initializing output stream 0:0 -- opening encoder\nffmpeg exited 1";
+        let long = CaptureFailure::new("Recording", raw);
+        assert_eq!(long.summary, "Recording failed — see details");
+        assert_eq!(long.detail, raw, "the tooltip still gets every character");
+
+        for failure in [short, long, CaptureFailure::new("Screenshot", "")] {
+            assert!(
+                failure.summary.chars().count() <= CaptureFailure::SUMMARY_MAX,
+                "{} does not fit the status well",
+                failure.summary
+            );
         }
     }
 }

@@ -1,14 +1,15 @@
 use gpui::{
     App, Bounds, Context, DispatchPhase, Entity, FocusHandle, FontWeight, KeyBinding, MouseButton,
-    MouseMoveEvent, MouseUpEvent, Render, Role, Subscription, Toggled, Window, WindowBounds,
-    WindowHandle, WindowOptions, actions, canvas, div, prelude::*, size,
+    MouseMoveEvent, MouseUpEvent, Render, Role, SharedString, Subscription, Toggled, Window,
+    WindowBounds, WindowHandle, WindowOptions, actions, canvas, div, prelude::*, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rapidcap_capture::{
-    CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget, SavedOutput,
+    CaptureCommand, CaptureEvent, CaptureFailure, CaptureKind, CaptureState, CaptureTarget,
+    SavedOutput,
 };
 
 use crate::controller::AppController;
@@ -232,7 +233,7 @@ impl Render for MainWindow {
         let audio = controller.settings().audio.enabled;
         let output = controller.paths().capture_root.display().to_string();
         let folder_label = folder_label(&output);
-        let error = controller.error().map(str::to_owned);
+        let error = controller.error().cloned();
         let saved = self.saved.clone();
 
         // Idle is what the controller returns to the moment a capture lands, so
@@ -355,7 +356,7 @@ impl Render for MainWindow {
                     .child(match error {
                         // A failure takes the whole footer: nothing else there
                         // matters until the message has been read.
-                        Some(message) => self.error_bar(message, cx).into_any_element(),
+                        Some(failure) => self.error_bar(failure, cx).into_any_element(),
                         None => div()
                             .flex()
                             .items_center()
@@ -453,12 +454,21 @@ impl MainWindow {
 
     /// Amber, not red: red already means a capture is running, and an error bar
     /// in the same colour reads as one more recording indicator.
-    fn error_bar(&self, message: String, cx: &mut Context<Self>) -> impl IntoElement {
+    fn error_bar(&self, failure: CaptureFailure, cx: &mut Context<Self>) -> impl IntoElement {
+        let summary = failure.summary;
+        // The raw text, verbatim, on the label a screen reader reads and in the
+        // tooltip. The bar is 36px and the summary is written to fit it, so
+        // these are the only two surfaces the untruncated error has.
+        let detail = SharedString::from(failure.detail);
         div()
             .id("capture-error")
             .accessibility_id("rapidcap.error")
             .role(Role::Alert)
-            .aria_label(message.clone())
+            .aria_label(detail.clone())
+            .tooltip({
+                let detail = detail.clone();
+                move |_, cx| cx.new(|_| ErrorDetail(detail.clone())).into()
+            })
             .h(theme::u(theme::CHIP_H))
             .pl(theme::u(12.0))
             .pr(theme::u(6.0))
@@ -483,7 +493,7 @@ impl MainWindow {
                     .text_size(theme::u(theme::TEXT_SMALL))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(theme::warn_text())
-                    .child(error_summary(&message)),
+                    .child(summary),
             )
             .child(
                 div()
@@ -1037,6 +1047,31 @@ fn close_on_exit_request(controller: &Entity<AppController>, cx: &mut App) {
     }
 }
 
+/// The raw failure text, on hover over the error bar.
+///
+/// GPUI has the tooltip machinery but ships no tooltip view - Zed's lives in
+/// its own crate - so the panel brings its own. Deliberately unbounded in
+/// height: an FFmpeg failure is several lines and clipping it here would put
+/// the detail nowhere at all.
+struct ErrorDetail(SharedString);
+
+impl Render for ErrorDetail {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .max_w(theme::u(320.0))
+            .px(theme::u(10.0))
+            .py(theme::u(7.0))
+            .rounded(theme::u(theme::RADIUS))
+            .border_1()
+            .border_color(theme::border_card())
+            .bg(theme::bg_card())
+            .shadow(theme::floating())
+            .text_size(theme::u(theme::TEXT_SMALL))
+            .text_color(theme::text_primary())
+            .child(self.0.clone())
+    }
+}
+
 /// Written strings, one per state. Never `format!("{state:?}")` — a user should
 /// not be able to read a Rust type off the panel.
 fn status_text(state: &CaptureState, target: Option<&CaptureTarget>) -> String {
@@ -1057,7 +1092,7 @@ fn status_text(state: &CaptureState, target: Option<&CaptureTarget>) -> String {
         CaptureState::Recording(kind) => format!("Recording {}", kind_noun(*kind)),
         CaptureState::Paused(kind) => format!("Paused {}", kind_noun(*kind)),
         CaptureState::Finalizing(kind) => format!("Finalizing {}…", kind_noun(*kind)),
-        CaptureState::Error(message) => error_summary(message),
+        CaptureState::Error(failure) => failure.summary.clone(),
     }
 }
 
@@ -1070,18 +1105,6 @@ fn status_dot(state: &CaptureState, has_target: bool) -> gpui::Hsla {
         CaptureState::Selecting(_) => theme::accent(),
         CaptureState::Idle if has_target => theme::accent(),
         CaptureState::Idle => theme::text_muted(),
-    }
-}
-
-/// First line only, capped. The full text belongs in a detail surface, not in a
-/// 28px well — see the Errors card.
-fn error_summary(message: &str) -> String {
-    let first = message.lines().next().unwrap_or(message).trim();
-    if first.chars().count() <= 40 {
-        first.to_string()
-    } else {
-        let cut: String = first.chars().take(39).collect();
-        format!("{}…", cut.trim_end())
     }
 }
 
@@ -1362,7 +1385,7 @@ mod tests {
             CaptureState::Recording(CaptureKind::Video),
             CaptureState::Paused(CaptureKind::Gif),
             CaptureState::Finalizing(CaptureKind::Video),
-            CaptureState::Error("disk full".into()),
+            CaptureState::Error(CaptureFailure::new("Recording", "disk full")),
         ];
         for state in states {
             for target in [None, Some(CaptureTarget::Region(region.clone()))] {
@@ -1402,20 +1425,6 @@ mod tests {
         );
         assert_eq!(folder_label("C:/Users/me/Captures/"), "Captures");
         assert_eq!(folder_label("RapidCap"), "RapidCap");
-    }
-
-    #[test]
-    fn long_errors_are_summarised_to_fit_the_well() {
-        assert_eq!(error_summary("disk full"), "disk full");
-        let long = error_summary(
-            "Encoder error: nvenc session limit reached on device 0, cannot continue",
-        );
-        assert!(
-            long.chars().count() <= 40,
-            "{long} is too long for the well"
-        );
-        assert!(long.ends_with('…'));
-        assert_eq!(error_summary("first line\nsecond line"), "first line");
     }
 
     #[test]

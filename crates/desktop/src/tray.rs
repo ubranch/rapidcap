@@ -146,6 +146,8 @@ fn rgb(colour: gpui::Hsla) -> [f32; 3] {
 
 #[cfg(test)]
 mod tests {
+    use rapidcap_capture::CaptureFailure;
+
     use super::*;
 
     fn pixel(buffer: &[u8], x: u32, y: u32) -> [u8; 4] {
@@ -219,7 +221,10 @@ mod tests {
             "a countdown is already committed — the icon should not read as idle"
         );
         assert_eq!(
-            TrayState::from_capture(&CaptureState::Error("boom".into())),
+            TrayState::from_capture(&CaptureState::Error(CaptureFailure::new(
+                "Screenshot",
+                "boom",
+            ))),
             TrayState::Error
         );
         assert_eq!(
@@ -237,7 +242,7 @@ mod tests {
             CaptureState::Recording(CaptureKind::Gif),
             CaptureState::Paused(CaptureKind::Video),
             CaptureState::Finalizing(CaptureKind::Video),
-            CaptureState::Error("disk full".into()),
+            CaptureState::Error(CaptureFailure::new("Recording", "disk full")),
         ] {
             let text = TrayState::from_capture(&state).tooltip(&state);
             assert!(text.starts_with("RapidCap — "));

@@ -4,7 +4,7 @@
 //! transition from every state, so a future edit that quietly widens one of
 //! them has to say so here first.
 
-use rapidcap_capture::{CaptureKind, CaptureState, StateError};
+use rapidcap_capture::{CaptureFailure, CaptureKind, CaptureState, StateError};
 
 const KINDS: [CaptureKind; 4] = [
     CaptureKind::RegionScreenshot,
@@ -14,7 +14,10 @@ const KINDS: [CaptureKind; 4] = [
 ];
 
 fn every_state() -> Vec<CaptureState> {
-    let mut states = vec![CaptureState::Idle, CaptureState::Error("boom".into())];
+    let mut states = vec![
+        CaptureState::Idle,
+        CaptureState::Error(CaptureFailure::new("Screenshot", "boom")),
+    ];
     for kind in KINDS {
         states.push(CaptureState::Selecting(kind));
         states.push(CaptureState::Countdown(kind, 3));
@@ -126,7 +129,7 @@ fn finalizing_and_error_are_left_by_the_controller_not_by_a_transition() {
         assert!(finalizing.clone().stop(kind).is_err());
         assert!(finalizing.start(kind).is_err());
     }
-    let error = CaptureState::Error("disk full".into());
+    let error = CaptureState::Error(CaptureFailure::new("Recording", "disk full"));
     assert!(error.clone().cancel().is_err());
     assert!(error.start(CaptureKind::Video).is_err());
 }

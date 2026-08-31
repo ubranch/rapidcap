@@ -450,6 +450,8 @@ impl PlatformRuntime {
 
 #[cfg(test)]
 mod tests {
+    use rapidcap_capture::CaptureFailure;
+
     use super::*;
 
     #[test]
@@ -496,7 +498,10 @@ mod tests {
         assert!(!recording.contains(&CaptureCommand::CaptureActiveWindow));
         // A failed capture is cleared by `dispatch`, so it offers what idle does.
         assert_eq!(
-            commands(CaptureState::Error("disk full".to_string())),
+            commands(CaptureState::Error(CaptureFailure::new(
+                "Recording",
+                "disk full"
+            ))),
             commands(CaptureState::Idle)
         );
     }

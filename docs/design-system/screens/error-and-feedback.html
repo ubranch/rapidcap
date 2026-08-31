@@ -123,11 +123,21 @@
   </div>
 
   <div class="note">
-    <b>Code delta:</b> <code>controller.rs:124</code> silently drops the error on the next command
-    (<code>if matches!(self.state, CaptureState::Error(_)) { self.state = CaptureState::Idle; }</code>), so today the
-    message vanishes when the user clicks anything. This spec needs the error to survive until dismissed or until the
-    next capture <em>succeeds</em>, and <code>Error(String)</code> to carry a short summary plus the raw detail
-    rather than one blob.
+    <b>Built.</b> The error survives until dismissed or until the next capture <em>succeeds</em>, and
+    <code>CaptureState::Error</code> now carries a <code>CaptureFailure { summary, detail }</code>. The summary is
+    written where the failure happens — <code>finish_recording</code> knows the operation is "Recording",
+    <code>finish_screenshot</code> knows it is "Screenshot" — and the raw detail rides along untouched, into the
+    hover text and the screen-reader label. Nothing is truncated: a summary that would not fit reads
+    <b>see details</b> instead of thirty-nine characters of an FFmpeg line.
+  </div>
+
+  <div class="note">
+    <b>Two departures.</b> The summary caps at 40 characters, because the same string also goes to the status well,
+    which sizes to its content in a 400px row that already holds two chips. So the middle bar above really reads
+    <b>Screenshot failed — see details</b>: its 60-character wording would need the code to classify error text by
+    substring, and a heuristic that mislabels a failure is worse than one that points at the detail. <b>Retry</b> and
+    <b>Copy log</b> are not built — Retry needs the controller to remember whether the last command was idempotent,
+    and Copy log needs a text-only clipboard path, which the clipboard module does not have.
   </div>
 
   <h2>Saved — a chip that expires</h2>
@@ -207,7 +217,7 @@
     <tr><td><code>Recording(kind)</code></td><td>Card red, reads Stop</td><td>Dot + timer</td></tr>
     <tr><td><code>Paused(kind)</code></td><td>Card reads Stop</td><td>Gray dot, frozen timer</td></tr>
     <tr><td><code>Finalizing(kind)</code></td><td>Status well: Finalizing…</td><td>Cancel only</td></tr>
-    <tr><td><code>Error(String)</code></td><td>Amber bar replaces footer</td><td>Closes</td></tr>
+    <tr><td><code>Error(CaptureFailure)</code></td><td>Amber bar replaces footer, detail on hover</td><td>Closes</td></tr>
     <tr><td>saved (transient)</td><td>Saved chip, 6s</td><td>Closes</td></tr>
   </table>
 </body>

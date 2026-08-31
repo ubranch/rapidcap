@@ -3,9 +3,9 @@ use std::time::{Duration, Instant};
 
 use gpui::{Context, EventEmitter};
 use rapidcap_capture::{
-    AppPaths, CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget,
-    RecordingError, SavedCapture, SavedOutput, ScreenshotError, Settings, SettingsStore,
-    StateError,
+    AppPaths, CaptureCommand, CaptureEvent, CaptureFailure, CaptureKind, CaptureState,
+    CaptureTarget, RecordingError, SavedCapture, SavedOutput, ScreenshotError, Settings,
+    SettingsStore, StateError,
 };
 
 pub struct AppController {
@@ -20,7 +20,7 @@ pub struct AppController {
     /// `state` has to return to `Idle` so the next capture can start, but the
     /// message has to outlive that: clearing it on the next command meant the
     /// user's click dismissed a notice they had not read yet.
-    error: Option<String>,
+    error: Option<CaptureFailure>,
 }
 
 impl AppController {
@@ -107,10 +107,7 @@ impl AppController {
             }
             Err(error) => {
                 tracing::error!(%error, "recording failed");
-                let message = error.to_string();
-                self.state = CaptureState::Error(message.clone());
-                self.error = Some(message.clone());
-                cx.emit(CaptureEvent::Failed(message));
+                self.fail("Recording", error);
             }
         }
         cx.notify();
@@ -137,10 +134,7 @@ impl AppController {
             }
             Err(error) => {
                 tracing::error!(%error, "screenshot failed");
-                let message = error.to_string();
-                self.state = CaptureState::Error(message.clone());
-                self.error = Some(message.clone());
-                cx.emit(CaptureEvent::Failed(message));
+                self.fail("Screenshot", error);
             }
         }
         cx.notify();
@@ -178,9 +172,17 @@ impl AppController {
         }
     }
 
+    /// The summary is written here rather than sniffed out of the message
+    /// downstream: this is the only place that knows which operation failed.
+    fn fail(&mut self, operation: &str, error: impl std::fmt::Display) {
+        let failure = CaptureFailure::new(operation, error);
+        self.state = CaptureState::Error(failure.clone());
+        self.error = Some(failure);
+    }
+
     /// The last failure, until it is dismissed or a capture succeeds.
-    pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+    pub fn error(&self) -> Option<&CaptureFailure> {
+        self.error.as_ref()
     }
 
     pub fn dismiss_error(&mut self, cx: &mut Context<Self>) {
@@ -273,9 +275,8 @@ impl AppController {
 
     /// `RecordingError` wraps a private `String`, so a test cannot build one.
     #[cfg(test)]
-    fn set_error_for_test(&mut self, message: &str) {
-        self.state = CaptureState::Error(message.to_string());
-        self.error = Some(message.to_string());
+    fn set_error_for_test(&mut self, detail: &str) {
+        self.fail("Recording", detail);
     }
 }
 
@@ -301,7 +302,9 @@ impl From<StateError> for CommandError {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext};
-    use rapidcap_capture::{AppPaths, CaptureCommand, CaptureKind, CaptureState, Settings};
+    use rapidcap_capture::{
+        AppPaths, CaptureCommand, CaptureFailure, CaptureKind, CaptureState, Settings,
+    };
 
     use super::*;
 
@@ -411,8 +414,10 @@ mod tests {
             controller.set_error_for_test("disk full");
         });
         assert_eq!(
-            controller.read_with(cx, |controller, _| controller.error().map(str::to_owned)),
-            Some("disk full".to_string())
+            controller.read_with(cx, |controller, _| controller
+                .error()
+                .map(|failure| failure.summary.clone())),
+            Some("Recording failed — disk full".to_string())
         );
 
         controller.update(cx, |controller, cx| {
@@ -522,7 +527,10 @@ mod tests {
     fn next_command_recovers_from_previous_error(cx: &mut TestAppContext) {
         let controller = cx.new(|_| AppController::new(Settings::default(), paths()));
         controller.update(cx, |controller, _| {
-            controller.set_state_for_test(CaptureState::Error("previous failure".into()));
+            controller.set_state_for_test(CaptureState::Error(CaptureFailure::new(
+                "Recording",
+                "previous failure",
+            )));
         });
         controller.update(cx, |controller, cx| {
             controller

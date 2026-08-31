@@ -28,7 +28,10 @@ pub use naming::OutputNamer;
 pub use recording::{RecordingError, RecordingSession};
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
-pub use state::{CaptureCommand, CaptureEvent, CaptureKind, CaptureState, SavedOutput, StateError};
+pub use state::{
+    CaptureCommand, CaptureEvent, CaptureFailure, CaptureKind, CaptureState, SavedOutput,
+    StateError,
+};
 
 #[cfg(test)]
 mod tests {

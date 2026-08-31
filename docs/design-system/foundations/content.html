@@ -74,9 +74,10 @@
     <tr><td>Hotkey taken</td><td class="good">Alt + E is used by another app</td><td class="bad">RegisterHotKey failed with 1409</td></tr>
   </table>
   <div class="note" style="border-color:var(--warn)">
-    <b>The raw error still matters</b> — it goes in the tooltip and behind <b>Copy log</b>, never in the bar. That
-    means <code>CaptureState::Error(String)</code> has to carry two strings, a summary and a detail, rather than one
-    blob formatted for a developer.
+    <b>The raw error still matters</b> — it goes in the tooltip, never in the bar. <code>CaptureState::Error</code>
+    carries <code>CaptureFailure { summary, detail }</code>, so the written sentence and the developer blob travel
+    together instead of one being cut down to stand in for the other. <b>Copy log</b> is the half that is still
+    missing; the clipboard module writes images and file drops, not text.
   </div>
 
   <h2>Buttons and menus</h2>
