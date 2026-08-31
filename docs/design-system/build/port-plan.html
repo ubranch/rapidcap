@@ -87,7 +87,7 @@
     <tr><th>Work</th><th>Files</th><th></th></tr>
     <tr><td><code>Error(String)</code> → <code>Error { summary, detail }</code>. Surviving the next command is <b>done</b> — <code>AppController::error</code> outlives the state now, with <code>dismiss_error</code> to clear it — but the string is still one blob, so <code>error_summary</code> truncates a developer message rather than showing a written one</td><td class="file">state.rs · controller.rs</td><td><span class="tag t-bug">bug</span></td></tr>
     <tr><td>Amber error bar replacing the footer, with Retry, Copy log and Dismiss</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Saved chip — 6s expiry, opens the file, plus size and duration in the well</td><td class="file">window.rs · controller.rs:101-116</td><td><span class="tag t-new">new</span></td></tr>
+    <tr><td>Saved chip — 6s expiry, takes the folder chip's slot, opens the file: <b>done</b>. It pops rather than fades, and the size and duration still do not reach the well — <code>SavedCapture</code> carries pixels, not a file size, and nothing hands the recording's elapsed time on</td><td class="file">window.rs · <code>SAVED_CHIP</code></td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Tray icon: ring mark, 5 states, tooltip that tracks them — <b>done</b>. Still one 32px raster; 16, 20 and 24 remain</td><td class="file">tray.rs · platform/mod.rs:254-275</td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Tray menu: state header, capture commands with hotkeys, contextual Pause and Stop</td><td class="file">platform/mod.rs:196-199</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Panel dims to 45% while <code>Selecting</code></td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
@@ -126,7 +126,7 @@
     <tr><td>Panel shows raw Rust for every non-idle state — <code>Recording(Video)</code>, <code>Countdown(Gif, 3)</code></td><td class="file">window.rs · <code>status_text</code></td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>Errors clear themselves on the next command, so the message is never read</td><td class="file">controller.rs · <code>error</code></td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>Tray icon is a flat blue square and never changes state</td><td class="file">tray.rs</td><td><span class="tag t-done">fixed</span></td></tr>
-    <tr><td>A successful save produces no feedback at all — <code>CaptureEvent::OutputSaved</code> is emitted and has no subscriber</td><td class="file">controller.rs:94 · :117</td><td>3</td></tr>
+    <tr><td>A successful save produces no feedback at all — <code>CaptureEvent::OutputSaved</code> was emitted and had no subscriber</td><td class="file">window.rs · <code>saved</code></td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>Other monitors stay bright and live while the overlay is modal</td><td class="file">overlay.rs:209</td><td>2</td></tr>
     <tr><td>GIF hotkey default collides with Windows Snipping Tool</td><td class="file">platform/mod.rs:118</td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>A hotkey that loses <code>RegisterHotKey</code> to another app fails silently — <code>warn</code> log, nothing on screen</td><td class="file">platform/mod.rs:180-184</td><td>4</td></tr>

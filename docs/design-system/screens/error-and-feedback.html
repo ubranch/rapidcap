@@ -156,7 +156,16 @@
   <div class="note">
     <b>The confirmation is a control, not a toast.</b> A toast that floats over the desktop is one more thing to
     dismiss; a chip in the footer is already where the user's eye is, is clickable, and expires on its own. Saving is
-    the moment the product earns trust — today <code>SavedCapture</code> succeeds and nothing on screen changes at all.
+    the moment the product earns trust, and it used to pass in silence.
+  </div>
+  <div class="note">
+    <b>The chip ships; the well does not.</b> <code>MainWindow</code> subscribes to
+    <code>CaptureEvent::OutputSaved</code>, holds the path for <code>SAVED_CHIP</code> — 6s — and gives the slot back
+    to the folder chip when the timer fires or the chip is pressed. It takes that slot rather than adding one, so the
+    footer never reflows under the pointer, and a second save inside the six seconds hands the chip straight on
+    instead of letting the first timer clear it. Two pieces above are still drawn only: the expiry pops rather than
+    fading, and <code>Copied</code> · <code>00:42 · 12.4 MB</code> never reach the well — <code>SavedCapture</code>
+    carries pixels and a path, not a file size, and the recording's elapsed time stops at the controller.
   </div>
 
   <h2>Selecting — panel behind the overlay</h2>

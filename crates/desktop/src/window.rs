@@ -4,8 +4,10 @@ use gpui::{
     WindowHandle, WindowOptions, actions, canvas, div, prelude::*, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget};
+use rapidcap_capture::{CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget};
 
 use crate::controller::AppController;
 use crate::icons::Icon;
@@ -37,12 +39,22 @@ pub const CONTROL_IDS: [&str; 6] = [
     "toggle-audio",
 ];
 
+/// How long the saved chip sits in the footer before the folder chip returns.
+///
+/// Long enough to read a filename and reach for it, short enough that it is
+/// gone before the next capture. A confirmation that has to be dismissed is
+/// worse than no confirmation at all.
+const SAVED_CHIP: Duration = Duration::from_secs(6);
+
 pub struct MainWindow {
     controller: Entity<AppController>,
     focus_handle: FocusHandle,
     /// Where the cursor grabbed the panel, while a titlebar drag is in flight.
     drag_grab: Option<(i32, i32)>,
+    /// The file the saved chip is currently offering, if one is up.
+    saved: Option<PathBuf>,
     _controller_subscription: Subscription,
+    _event_subscription: Subscription,
 }
 
 impl MainWindow {
@@ -64,11 +76,34 @@ impl MainWindow {
             close_on_exit_request(&close_controller, cx);
             false
         });
+        let event_subscription = cx.subscribe(&controller, |this, _, event: &CaptureEvent, cx| {
+            let CaptureEvent::OutputSaved(path) = event else {
+                return;
+            };
+            this.saved = Some(path.clone());
+            cx.notify();
+            let path = path.clone();
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(SAVED_CHIP).await;
+                let _ = this.update(cx, |this, cx| {
+                    // A capture that saved inside the six seconds owns the
+                    // chip now, and has its own timer running. Only the one
+                    // whose file is still showing may take it down.
+                    if this.saved.as_deref() == Some(path.as_path()) {
+                        this.saved = None;
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
+        });
         Self {
             controller,
             focus_handle,
             drag_grab: None,
+            saved: None,
             _controller_subscription: controller_subscription,
+            _event_subscription: event_subscription,
         }
     }
 
@@ -105,6 +140,20 @@ impl MainWindow {
         }
     }
 
+    /// Open the file the saved chip is offering, and take the chip down.
+    ///
+    /// It has done its job once it has been pressed, and leaving it up for the
+    /// rest of the six seconds invites a second click on a file already open.
+    fn open_saved(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.saved.take() else {
+            return;
+        };
+        cx.notify();
+        if let Err(error) = open_path(&path) {
+            tracing::error!(%error, path = %path.display(), "open saved capture");
+        }
+    }
+
     fn focus_next(&mut self, _: &TabAction, window: &mut Window, cx: &mut Context<Self>) {
         window.focus_next(cx);
     }
@@ -126,6 +175,7 @@ impl Render for MainWindow {
         let output = controller.paths().capture_root.display().to_string();
         let folder_label = folder_label(&output);
         let error = controller.error().map(str::to_owned);
+        let saved = self.saved.clone();
 
         let status = status_text(&state, target.as_ref());
         let dot = status_dot(&state, target.is_some());
@@ -271,8 +321,25 @@ impl Render for MainWindow {
                                     },
                                 )),
                             )
-                            .child(
-                                chip(
+                            // The confirmation is a control, not a toast: it
+                            // lands where the eye already is, it is pressable,
+                            // and it expires on its own. It takes the folder
+                            // chip's place rather than adding a slot, so the
+                            // footer never reflows under the pointer.
+                            .child(match &saved {
+                                Some(path) => chip(
+                                    CONTROL_IDS[4],
+                                    "rapidcap.open-saved",
+                                    "RapidCapSaved",
+                                    Icon::Saved,
+                                    saved_label(path),
+                                    format!("Saved — open {}", path.display()),
+                                    None,
+                                )
+                                .border_color(theme::accent())
+                                .on_click(cx.listener(|this, _, _, cx| this.open_saved(cx)))
+                                .into_any_element(),
+                                None => chip(
                                     CONTROL_IDS[4],
                                     "rapidcap.open-output",
                                     "RapidCapOutput",
@@ -281,12 +348,11 @@ impl Render for MainWindow {
                                     format!("Open output folder {output}"),
                                     None,
                                 )
-                                .on_click(cx.listener(
-                                    |this, _, window, cx| {
-                                        this.open_output(&OpenOutputAction, window, cx)
-                                    },
-                                )),
-                            )
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_output(&OpenOutputAction, window, cx)
+                                }))
+                                .into_any_element(),
+                            })
                             .child(div().flex_1())
                             .child(status_well(status, dot))
                             .into_any_element(),
@@ -953,6 +1019,15 @@ fn folder_label(path: &str) -> String {
         .to_string()
 }
 
+/// The filename, for the saved chip. Falls back to the whole path rather than
+/// to an empty chip: a path with no final component is not a file we saved, so
+/// showing it is more use than showing nothing.
+fn saved_label(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
 fn recording_label(state: &CaptureState, kind: CaptureKind) -> &'static str {
     match state {
         CaptureState::Countdown(active, _) if *active == kind => {
@@ -1051,7 +1126,9 @@ pub fn open_main_window(
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext, VisualTestContext};
-    use rapidcap_capture::{AppPaths, CaptureKind, CaptureState, PhysicalRegion, Settings};
+    use rapidcap_capture::{
+        AppPaths, CaptureKind, CaptureState, PhysicalRegion, SavedCapture, Settings,
+    };
 
     use super::*;
     use crate::controller::AppController;
@@ -1183,6 +1260,67 @@ mod tests {
         assert_eq!(
             controller.read_with(&cx, |controller, _| controller.state().clone()),
             CaptureState::Selecting(CaptureKind::RegionScreenshot)
+        );
+    }
+
+    #[test]
+    fn saved_chip_shows_the_filename() {
+        assert_eq!(
+            saved_label(Path::new(
+                "C:\\Users\\me\\Documents\\RapidCap\\Screen_9EN.png"
+            )),
+            "Screen_9EN.png"
+        );
+        assert_eq!(saved_label(Path::new("Screen_JI2.mp4")), "Screen_JI2.mp4");
+        // No final component, so there is nothing to shorten to.
+        assert_eq!(saved_label(Path::new("C:\\")), "C:\\");
+    }
+
+    #[gpui::test]
+    fn a_saved_capture_holds_the_chip_for_six_seconds(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| {
+            AppController::new(
+                Settings::default(),
+                AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+            )
+        });
+        let window = cx.update(|cx| {
+            let controller = controller.clone();
+            cx.open_window(Default::default(), |window, cx| {
+                cx.new(|cx| MainWindow::new(window, cx, controller))
+            })
+            .unwrap()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let view = window.root(&mut cx).unwrap();
+        assert_eq!(view.read_with(&cx, |view, _| view.saved.clone()), None);
+
+        let path = PathBuf::from("C:/Documents/RapidCap/Screen_9EN.png");
+        controller.update(&mut cx, |controller, cx| {
+            controller.finish_screenshot(
+                Ok(SavedCapture {
+                    path: path.clone(),
+                    rgba: Vec::new(),
+                    width: 1,
+                    height: 1,
+                }),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            view.read_with(&cx, |view, _| view.saved.clone()),
+            Some(path),
+            "a save left no chip behind"
+        );
+
+        cx.executor()
+            .advance_clock(SAVED_CHIP + Duration::from_secs(1));
+        cx.run_until_parked();
+        assert_eq!(
+            view.read_with(&cx, |view, _| view.saved.clone()),
+            None,
+            "the chip outlived its timer"
         );
     }
 }
