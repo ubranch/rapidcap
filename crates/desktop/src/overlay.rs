@@ -322,6 +322,13 @@ pub fn open_region_overlay(
             placement.width as i32,
             placement.height as i32,
         );
+        // The screenshot is taken 40ms after this window asks to close, which is
+        // a bet on how long the compositor takes to stop drawing it. macOS lost
+        // that bet: the saved PNG came back with the selection rectangle and the
+        // size badge painted into it. Excluding the window settles it instead of
+        // lengthening the wait - the overlay is never part of a capture, whether
+        // or not it is still on screen when one is taken.
+        exclude_from_capture(hwnd);
     }
     Ok(handle)
 }
@@ -732,8 +739,7 @@ pub fn open_recording_hud(
             height.round() as i32,
         );
         // The bar is up for the whole take, over the region being recorded, so
-        // without this it is in the file. The region overlay does not need the
-        // same treatment: it is gone before the recorder starts.
+        // without this it is in the file.
         exclude_from_capture(hwnd);
         // Windows has no equivalent for one rectangle inside a window - the
         // DWM backdrops apply to a whole window - so the pill stays opaque
