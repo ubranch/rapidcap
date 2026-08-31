@@ -150,12 +150,29 @@ impl AppController {
     /// Countdown slots offered by the segmented control, in order.
     pub const COUNTDOWN_CHOICES: [u8; 3] = [0, 3, 5];
 
-    pub fn set_countdown(&mut self, seconds: u8, cx: &mut Context<Self>) {
-        if self.settings.countdown_seconds != seconds {
-            self.settings.countdown_seconds = seconds;
-            self.persist_settings();
-            cx.notify();
+    /// Change a setting, save the file and redraw - once, and only if the edit
+    /// changed something.
+    ///
+    /// One mutator rather than a setter per key. The settings screen writes
+    /// nine of them, and nine near-identical three-line methods here would be
+    /// nine places for the `persist` call to go missing from.
+    ///
+    /// The comparison is what makes the guard general: `Settings` is `PartialEq`
+    /// and small, so an edit that writes the value already there costs a clone
+    /// and saves a disk write plus a repaint.
+    pub fn edit_settings(&mut self, edit: impl FnOnce(&mut Settings), cx: &mut Context<Self>) {
+        let mut next = self.settings.clone();
+        edit(&mut next);
+        if next == self.settings {
+            return;
         }
+        self.settings = next;
+        self.persist_settings();
+        cx.notify();
+    }
+
+    pub fn set_countdown(&mut self, seconds: u8, cx: &mut Context<Self>) {
+        self.edit_settings(|settings| settings.countdown_seconds = seconds, cx);
     }
 
     /// Mute or unmute the soundtrack on video recordings.
@@ -164,9 +181,10 @@ impl AppController {
     /// are fixed at spawn, so a mid-capture change would need a restart and
     /// lose the take.
     pub fn toggle_audio(&mut self, cx: &mut Context<Self>) {
-        self.settings.audio.enabled = !self.settings.audio.enabled;
-        self.persist_settings();
-        cx.notify();
+        self.edit_settings(
+            |settings| settings.audio.enabled = !settings.audio.enabled,
+            cx,
+        );
     }
 
     /// Best effort: a settings file that cannot be written must not take the

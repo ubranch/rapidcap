@@ -238,6 +238,56 @@ pub fn place_main_window(client_width: f32, client_height: f32) {
     }
 }
 
+/// Change the panel's height without moving its top-left corner.
+///
+/// Distinct from [`place_main_window`], which re-centres: that is right once at
+/// launch and wrong every time after, because the panel is a window the user
+/// drags into a corner and leaves there. Growing it should push the bottom edge
+/// down, not throw it back to the middle of the screen.
+///
+/// The one exception is a bottom edge that would leave the work area, which is
+/// the normal case for a panel parked near the taskbar. Then the window slides
+/// up by exactly as much as it overflowed.
+pub fn resize_main_window(client_height: f32) {
+    let Some(window) = panel() else { return };
+    let scale = unsafe { GetDpiForWindow(window) } as f32 / 96.0;
+    let mut frame = RECT::default();
+    let mut client = RECT::default();
+    if unsafe { GetWindowRect(window, &mut frame) }.is_err()
+        || unsafe { GetClientRect(window, &mut client) }.is_err()
+    {
+        return;
+    }
+    let chrome_y = (frame.bottom - frame.top) - client.bottom;
+    let height = (client_height * scale).round() as i32 + chrome_y;
+    if height == frame.bottom - frame.top {
+        return;
+    }
+    let width = frame.right - frame.left;
+
+    let monitor = unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    let mut y = frame.top;
+    if unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        let work = info.rcWork;
+        y = y.min(work.bottom - height).max(work.top);
+    }
+    unsafe {
+        let _ = SetWindowPos(
+            window,
+            None,
+            frame.left,
+            y,
+            width,
+            height,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
 fn activate_existing_window() {
     // ponytail: title lookup is enough for one-window app; add IPC only if routing grows.
     for _ in 0..20 {

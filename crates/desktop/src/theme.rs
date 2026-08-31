@@ -238,6 +238,11 @@ pub const PANEL_W: f32 = 400.0;
 /// rather than adding one, so no state is taller than any other. 258 of body
 /// under a [`TITLEBAR_H`] bar.
 pub const PANEL_H: f32 = 288.0;
+/// Settings height. Taller than the panel because settings is a list and the
+/// panel is a layout: six sections do not fit 288, and a 288px viewport onto
+/// them is four screens of scrolling. Still fixed, and still shorter than the
+/// content - the column scrolls, it just does not have to scroll much.
+pub const SETTINGS_H: f32 = 520.0;
 
 /// The titlebar, and the panel it sits on.
 ///

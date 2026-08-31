@@ -130,6 +130,33 @@ pub fn place_main_window(client_width: f32, client_height: f32) {
     window.setFrame_display(NSRect::new(origin, size), true);
 }
 
+/// Change the panel's height without moving its top edge.
+///
+/// AppKit measures from the bottom left, so holding the top still means moving
+/// the origin down by whatever the window grew - the arithmetic the Win32
+/// sibling does not have to do, in exchange for not having to keep the window
+/// inside the work area by hand.
+///
+/// The min and max sizes have to move first. [`lock_window_size`] pins both to
+/// the current frame to kill the zoom button, and a pinned window ignores
+/// `setFrame_display:` outright.
+pub fn resize_main_window(client_height: f32) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let Some(window) = panel(mtm) else { return };
+    let frame = window.frame();
+    let height = f64::from(client_height);
+    if (frame.size.height - height).abs() < 0.5 {
+        return;
+    }
+    let size = NSSize::new(frame.size.width, height);
+    window.setMinSize(size);
+    window.setMaxSize(size);
+    let origin = NSPoint::new(frame.origin.x, frame.origin.y + frame.size.height - height);
+    window.setFrame_display(NSRect::new(origin, size), true);
+}
+
 pub fn lock_window_size() {
     let Some(mtm) = MainThreadMarker::new() else {
         return;

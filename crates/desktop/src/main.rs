@@ -7,6 +7,7 @@ mod menu;
 mod motion;
 mod overlay;
 mod platform;
+mod settings_view;
 mod theme;
 mod tray;
 mod window;

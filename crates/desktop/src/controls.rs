@@ -48,6 +48,9 @@ const ACTION_H: f32 = 24.0;
 /// only raised thing in the product that sits inside a recessed well, so it
 /// needs a fill lighter than the well and darker than a card.
 const ACTION_BG: u32 = 0x2a2a2a;
+/// The one warm colour in a neutral system, and only ever on text. Lightened
+/// well past a signal red so it stays readable on a near-black row.
+const DANGER: u32 = 0xff8a8a;
 const ACTION_BG_HOVER: u32 = 0x343434;
 
 /// Hotkeys are read as a shape, not as words - `Ctrl + Shift + W` has to line
@@ -327,6 +330,46 @@ pub fn action_button(
         .text_size(theme::u(theme::TEXT_MICRO))
         .font_weight(FontWeight::MEDIUM)
         .text_color(theme::text_label())
+        .child(label.into())
+}
+
+/// A bordered button that sits in a row rather than inside a field.
+///
+/// The same height as a select and drawn the same way, because it is the same
+/// kind of thing: a control the row is about, not an extra beside one. `danger`
+/// only recolours the text - a filled red button reads as the primary action of
+/// the screen, which destroying every setting is not.
+pub fn ghost_button(
+    id: &'static str,
+    label: impl Into<SharedString>,
+    danger: bool,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .accessibility_id(id)
+        .focusable()
+        .tab_stop(true)
+        .role(Role::Button)
+        .aria_keyshortcuts("Enter Space")
+        .flex_none()
+        .h(theme::u(CONTROL_H))
+        .px(theme::u(14.0))
+        .flex()
+        .items_center()
+        .rounded(theme::u(theme::RADIUS_PILL))
+        .bg(theme::bg_card())
+        .border_1()
+        .border_color(theme::border_card())
+        .cursor_pointer()
+        .hover(|style| style.bg(theme::bg_hover()))
+        .focus_visible(|style| style.border_color(theme::accent()))
+        .text_size(theme::u(theme::TEXT_SMALL))
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(if danger {
+            gpui::rgb(DANGER).into()
+        } else {
+            theme::text_label()
+        })
         .child(label.into())
 }
 

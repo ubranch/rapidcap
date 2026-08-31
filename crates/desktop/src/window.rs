@@ -18,8 +18,9 @@ use crate::icons::Icon;
 use crate::motion;
 use crate::platform::{
     drag_main_window, hide_main_window, lock_window_size, open_path, place_main_window,
-    remember_main_window, shortcut_label, window_drag_grab,
+    remember_main_window, resize_main_window, shortcut_label, window_drag_grab,
 };
+use crate::settings_view::SettingsView;
 use crate::theme;
 
 actions!(
@@ -52,6 +53,12 @@ pub const CONTROL_IDS: [&str; 6] = [
     "open-output",
     "toggle-audio",
 ];
+
+/// The gear in the header. Smaller than a chip and round, so it reads as an
+/// affordance on the brand row rather than as a fourth control in a row of
+/// three.
+const SETTINGS_BTN: f32 = 28.0;
+const SETTINGS_GLYPH: f32 = 15.0;
 
 /// How long the saved chip sits in the footer before the folder chip returns.
 ///
@@ -95,9 +102,26 @@ impl Saved {
     }
 }
 
+/// Which screen the window is showing.
+///
+/// One window, not three: RapidCap is 400px wide and pinned to a corner, and a
+/// second window for settings would be a second thing to find, move and close.
+/// The titlebar swaps its leading half for a Back arrow, the body swaps whole,
+/// and the window itself never moves.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Screen {
+    Panel,
+    Settings,
+}
+
 pub struct MainWindow {
     controller: Entity<AppController>,
     focus_handle: FocusHandle,
+    screen: Screen,
+    /// Built once at startup rather than on first open. It holds a scroll
+    /// position and which menu is down, and both of those should survive a trip
+    /// back to the panel.
+    settings: Entity<SettingsView>,
     /// Where the cursor grabbed the panel, while a titlebar drag is in flight.
     drag_grab: Option<(i32, i32)>,
     /// The confirmation the footer is currently showing, if one is up.
@@ -169,6 +193,11 @@ impl MainWindow {
             .detach();
         });
         Self {
+            screen: Screen::Panel,
+            settings: cx.new({
+                let controller = controller.clone();
+                |cx| SettingsView::new(cx, controller)
+            }),
             controller,
             focus_handle,
             drag_grab: None,
@@ -299,7 +328,41 @@ impl MainWindow {
     /// recording is left entirely alone, including the panel it is running
     /// behind, because stopping one is deliberate or it is not a stop; and an
     /// idle panel goes to the tray.
-    fn escape(&mut self, _: &EscapeAction, _: &mut Window, cx: &mut Context<Self>) {
+    /// Switch screens, and put the keyboard where the new screen is.
+    ///
+    /// Focus has to move with the body: leaving it on the panel's root means
+    /// the first Tab in settings lands on a control that is no longer drawn.
+    fn show(&mut self, screen: Screen, window: &mut Window, cx: &mut Context<Self>) {
+        if self.screen == screen {
+            return;
+        }
+        self.screen = screen;
+        resize_main_window(theme::scaled(match screen {
+            Screen::Panel => theme::PANEL_H,
+            Screen::Settings => theme::SETTINGS_H,
+        }));
+        let handle = match screen {
+            Screen::Panel => self.focus_handle.clone(),
+            Screen::Settings => self.settings.read(cx).focus_handle().clone(),
+        };
+        handle.focus(window, cx);
+        cx.notify();
+    }
+
+    fn escape(&mut self, _: &EscapeAction, window: &mut Window, cx: &mut Context<Self>) {
+        // Settings is in front of everything else on screen, so it answers
+        // first: one press shuts an open menu or disarms Reset, the next goes
+        // back to the panel. Only once the panel is showing again does Escape
+        // mean what it means there.
+        if self.screen == Screen::Settings {
+            let handled = self
+                .settings
+                .update(cx, |settings, cx| settings.dismiss(cx));
+            if !handled {
+                self.show(Screen::Panel, window, cx);
+            }
+            return;
+        }
         let to_tray = self.controller.update(cx, |controller, cx| {
             if controller.error().is_some() {
                 controller.dismiss_error(cx);
@@ -391,7 +454,13 @@ impl Render for MainWindow {
             .bg(theme::bg_body())
             .text_color(theme::text_label())
             .child(self.titlebar(cx))
-            .child(
+            .children((self.screen == Screen::Settings).then(|| {
+                // `min_h_0` or the scroll never engages: a flex child defaults
+                // to its content's height, so the column would grow past the
+                // window instead of scrolling inside it.
+                div().flex_1().min_h_0().child(self.settings.clone())
+            }))
+            .children((self.screen == Screen::Panel).then(|| {
                 div()
                     .flex()
                     .flex_col()
@@ -576,12 +645,49 @@ impl Render for MainWindow {
                             .child(div().flex_1())
                             .child(status_well(status, dot, pulsing))
                             .into_any_element(),
-                    }),
-            )
+                    })
+            }))
     }
 }
 
 impl MainWindow {
+    /// The way in to settings.
+    ///
+    /// In the header rather than the titlebar, which is what the design system
+    /// asks for - the bar carries the window's own controls and nothing of the
+    /// app's. It sits in the 60px between the frame rate badge and the
+    /// countdown track, which is the only gap in the panel that was not already
+    /// spoken for.
+    ///
+    /// Icon-only, and the only control on the panel that is. A gear is the one
+    /// glyph in this product that needs no caption, and it carries an
+    /// `aria_label` for the case where that is not true. No hover tooltip:
+    /// GPUI's `tooltip` wants a view to render, this app has no tooltip view,
+    /// and one built for a single button would be the largest component on the
+    /// screen it decorates.
+    fn settings_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .id("open-settings")
+            .accessibility_id("rapidcap.open-settings")
+            .key_context("RapidCapSettings")
+            .focusable()
+            .tab_stop(true)
+            .role(Role::Button)
+            .aria_label("Settings")
+            .aria_keyshortcuts("Enter Space")
+            .size(theme::u(SETTINGS_BTN))
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .rounded(theme::u(theme::RADIUS_PILL))
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::bg_hover()))
+            .focus_visible(|style| style.border_color(theme::accent()))
+            .child(Icon::Settings.element(theme::u(SETTINGS_GLYPH), theme::text_muted()))
+            .on_click(cx.listener(|this, _, window, cx| this.show(Screen::Settings, window, cx)))
+    }
+
     /// The header, wired: each countdown slot writes `countdown_seconds`.
     fn header_row(
         &self,
@@ -616,7 +722,7 @@ impl MainWindow {
                 }),
             ));
         }
-        header(video_fps, gif_fps, track)
+        header(video_fps, gif_fps, self.settings_button(cx), track)
     }
 
     /// Amber, not red: red already means a capture is running, and an error bar
@@ -767,11 +873,26 @@ impl MainWindow {
     /// [`drag_main_window`]. The strip only records the grab; the moving is
     /// driven from [`Self::drag_listener`], which hears the whole gesture.
     fn titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let settings = self.screen == Screen::Settings;
         div()
             .h(theme::u(theme::TITLEBAR_H))
             .flex()
             .items_center()
             .bg(theme::bg_titlebar())
+            // Leading, where the mark sits on the panel: the way back. On
+            // macOS that corner belongs to the traffic lights, so the arrow
+            // follows the same inset the mark does rather than a second rule.
+            .children(settings.then(|| {
+                window_button(
+                    "titlebar-back",
+                    "Back to the panel",
+                    "RapidCapBack",
+                    Icon::Back,
+                    false,
+                )
+                .ml(theme::u(theme::titlebar_leading()))
+                .on_click(cx.listener(|this, _, window, cx| this.show(Screen::Panel, window, cx)))
+            }))
             .child(
                 div()
                     .id("titlebar-drag")
@@ -780,19 +901,23 @@ impl MainWindow {
                     .flex()
                     .items_center()
                     .gap(theme::u(theme::TITLEBAR_GAP))
-                    .pl(theme::u(theme::titlebar_leading()))
                     .text_color(theme::text_muted())
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, _| this.drag_grab = window_drag_grab()),
                     )
                     .child(self.drag_listener(cx))
-                    .child(Icon::Mark.element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()))
+                    .when(!settings, |bar| {
+                        bar.pl(theme::u(theme::titlebar_leading())).child(
+                            Icon::Mark
+                                .element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()),
+                        )
+                    })
                     .child(
                         div()
                             .text_size(theme::u(theme::TEXT_SMALL))
                             .font_weight(FontWeight::MEDIUM)
-                            .child("RapidCap"),
+                            .child(if settings { "Settings" } else { "RapidCap" }),
                     ),
             )
             .children(self.window_controls(cx))
@@ -855,7 +980,12 @@ impl MainWindow {
 /// carries both. Two separate badges do not fit: the gap between the badge and
 /// the countdown track measures 60px, and a second `15 FPS` badge needs 66px
 /// with its gap.
-fn header(video_fps: u32, gif_fps: u32, countdown: impl IntoElement) -> impl IntoElement {
+fn header(
+    video_fps: u32,
+    gif_fps: u32,
+    settings: impl IntoElement,
+    countdown: impl IntoElement,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -890,7 +1020,8 @@ fn header(video_fps: u32, gif_fps: u32, countdown: impl IntoElement) -> impl Int
                         .text_color(theme::text_primary())
                         .child("RapidCap"),
                 )
-                .child(badge(format!("{video_fps} / {gif_fps} FPS"))),
+                .child(badge(format!("{video_fps} / {gif_fps} FPS")))
+                .child(settings),
         )
         .child(countdown_control(countdown))
 }
@@ -1870,6 +2001,55 @@ mod tests {
             assert_ne!(lost.text(), lost.label);
             assert_eq!(kept.text(), kept.label);
         });
+    }
+
+    #[gpui::test]
+    fn escape_leaves_settings_before_it_leaves_the_app(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| {
+            AppController::new(
+                Settings::default(),
+                AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+            )
+        });
+        let window = cx.update(|cx| {
+            let controller = controller.clone();
+            cx.open_window(Default::default(), |window, cx| {
+                cx.new(|cx| MainWindow::new(window, cx, controller))
+            })
+            .unwrap()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let view = window.root(&mut cx).unwrap();
+        let focus = view.read_with(&cx, |view, _| view.focus_handle().clone());
+
+        view.update_in(&mut cx, |view, window, cx| {
+            view.show(Screen::Settings, window, cx)
+        });
+        assert_eq!(view.read_with(&cx, |view, _| view.screen), Screen::Settings);
+
+        // Drawn, not just switched. Every panic GPUI has left in this codebase
+        // - a second `hover` on one element, two siblings under one id - fires
+        // at paint and nowhere else, so a settings screen nothing ever painted
+        // would test green and crash on the first click.
+        draw(&mut cx, &view, theme::SETTINGS_H);
+
+        cx.update(|window, cx| focus.dispatch_action(&EscapeAction, window, cx));
+        // Back to the panel, and nowhere near the tray: Escape on the settings
+        // screen is a Back arrow, not the app's exit.
+        assert_eq!(view.read_with(&cx, |view, _| view.screen), Screen::Panel);
+        draw(&mut cx, &view, theme::PANEL_H);
+    }
+
+    fn draw(cx: &mut VisualTestContext, view: &Entity<MainWindow>, height: f32) {
+        let view = view.clone();
+        cx.draw(
+            gpui::Point::default(),
+            gpui::size(
+                gpui::AvailableSpace::Definite(gpui::px(theme::PANEL_W)),
+                gpui::AvailableSpace::Definite(gpui::px(height)),
+            ),
+            |_, _| view.into_any_element(),
+        );
     }
 
     #[gpui::test]

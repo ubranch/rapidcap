@@ -36,15 +36,16 @@ mod windows;
 pub use macos::{
     SingleInstance, blur_behind, drag_main_window, exclude_from_capture, hide_main_window,
     hide_recording_frame, lock_window_size, monitor_containing, monitor_under_cursor, open_path,
-    place_main_window, place_window, remember_main_window, show_main_window, show_recording_frame,
-    text_scale, tray_icon_size, virtual_screen, window_drag_grab, window_target_at,
+    place_main_window, place_window, remember_main_window, resize_main_window, show_main_window,
+    show_recording_frame, text_scale, tray_icon_size, virtual_screen, window_drag_grab,
+    window_target_at,
 };
 #[cfg(windows)]
 pub use windows::{
     SingleInstance, drag_main_window, exclude_from_capture, hide_main_window, hide_recording_frame,
     lock_window_size, monitor_containing, monitor_under_cursor, open_path, place_main_window,
-    place_window, remember_main_window, show_main_window, show_recording_frame, text_scale,
-    tray_icon_size, virtual_screen, window_drag_grab, window_target_at,
+    place_window, remember_main_window, resize_main_window, show_main_window, show_recording_frame,
+    text_scale, tray_icon_size, virtual_screen, window_drag_grab, window_target_at,
 };
 
 const APP_ID: &str = "com.inspire.rapidcap";
@@ -95,6 +96,13 @@ impl HotkeySpec {
             code,
             command,
         }
+    }
+
+    /// Which command the chord fires. The settings screen lists the bindings
+    /// and needs a name for each, and the command is the only thing that says
+    /// which one this is.
+    pub fn command(self) -> CaptureCommand {
+        self.command
     }
 
     fn hotkey(self) -> HotKey {
