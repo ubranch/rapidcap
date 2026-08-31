@@ -4,11 +4,19 @@
 #
 # The bundle is not cosmetic here. macOS records the Screen Recording grant
 # against a bundle identifier and its code signature, so a bare binary run from
-# a terminal makes the *terminal* the grantee - every capture then comes back
-# empty, or asks again on each rebuild. Ad-hoc signing is enough to keep the
-# grant attached across rebuilds on one machine; shipping to another machine
-# needs a Developer ID and notarisation, which this script deliberately leaves
-# to whoever holds the certificate.
+# a terminal makes the *terminal* the grantee and every capture comes back
+# empty.
+#
+# Ad-hoc signing is not enough to keep that grant. An ad-hoc signature has no
+# certificate, so the requirement TCC stores is the code hash itself, and the
+# hash changes with every build - the toggle in System Settings stays on while
+# tccd quietly refuses with "Failed to match existing code requirement", and
+# AVFoundation answers a refusal by blocking in avformat_open_input forever.
+# Signing with any certificate, even a self-signed one, replaces that hash with
+# `identifier "com.inspire.rapidcap" and certificate leaf = H"..."`, which
+# survives rebuilds. Set RAPIDCAP_SIGN_IDENTITY to the name of a codesigning
+# identity to get that; see scripts/macos-signing-identity.sh. Shipping to another machine
+# still needs a Developer ID and notarisation.
 #
 # FFmpeg is not vendored. assets/ffmpeg holds audited *Windows* binaries, and
 # ffmpeg_path() searches PATH and then the two Homebrew prefixes, because a
@@ -28,9 +36,16 @@ cp "$target/release/RapidCap" "$app/Contents/MacOS/RapidCap"
 cp "$repo/crates/desktop/Info.plist" "$app/Contents/Info.plist"
 cp "$repo/crates/desktop/assets/rapidcap.icns" "$app/Contents/Resources/rapidcap.icns"
 
-# `-` is the ad-hoc identity. Signing has to come after everything is in place,
-# because the signature covers the whole bundle.
-codesign --force --sign - "$app"
+# Signing has to come after everything is in place, because the signature
+# covers the whole bundle. `-` is the ad-hoc identity, kept as the default so a
+# checkout with no certificate still produces a runnable bundle.
+identity="${RAPIDCAP_SIGN_IDENTITY:--}"
+keychain="${RAPIDCAP_SIGN_KEYCHAIN:-}"
+if [ -n "$keychain" ]; then
+  codesign --force --sign "$identity" --keychain "$keychain" "$app"
+else
+  codesign --force --sign "$identity" "$app"
+fi
 
 "$app/Contents/MacOS/RapidCap" --probe > /dev/null
 

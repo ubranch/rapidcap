@@ -29,12 +29,12 @@ pub(super) fn hide_console(_command: &mut Command) {}
 
 /// Interrupt, the way Ctrl-C in a terminal does.
 ///
-/// The "q" on stdin that stops FFmpeg everywhere else does not reliably reach
-/// it here: an AVFoundation capture session parks the main thread in a run
-/// loop, and the keyboard poll that would read the "q" runs on that thread, so
-/// a take could sit out the whole stop timeout and be killed with no trailer.
-/// `SIGINT` is the documented second door - FFmpeg's handler stops the muxer
-/// and writes the trailer exactly as "q" would.
+/// A belt to the "q" on stdin's braces. FFmpeg reads that "q" from its
+/// transcode loop, so a run that has not reached the loop - one still inside
+/// `avformat_open_input` on a device that never opens - never sees it and sits
+/// out the whole stop timeout. `SIGINT` is the documented second door: FFmpeg's
+/// handler stops the muxer and writes the trailer exactly as "q" would, and it
+/// arrives whatever the process is doing.
 pub(super) fn request_stop(child: &Child) {
     // SAFETY: `kill` on a pid this process owns and has not yet reaped. The
     // child is still borrowed here, so the pid cannot have been recycled.
