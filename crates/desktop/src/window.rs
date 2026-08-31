@@ -32,6 +32,13 @@ actions!(
         OpenOutputAction,
         TabAction,
         TabPrevAction,
+        FocusFirstAction,
+        FocusLastAction,
+        CountdownPrevAction,
+        CountdownNextAction,
+        EscapeAction,
+        MinimizeAction,
+        CloseAction,
         HidePanelAction,
         QuitAction
     ]
@@ -246,6 +253,83 @@ impl MainWindow {
     fn focus_previous(&mut self, _: &TabPrevAction, window: &mut Window, cx: &mut Context<Self>) {
         window.focus_prev(cx);
     }
+
+    /// Home and End: the first and last control in the panel.
+    ///
+    /// There is no `focus_first`, but stepping forward from nothing focused
+    /// lands on the first tab stop and stepping back from nothing lands on the
+    /// last. Blurring first is how you get to nothing focused.
+    fn focus_first(&mut self, _: &FocusFirstAction, window: &mut Window, cx: &mut Context<Self>) {
+        window.blur();
+        window.focus_next(cx);
+    }
+
+    fn focus_last(&mut self, _: &FocusLastAction, window: &mut Window, cx: &mut Context<Self>) {
+        window.blur();
+        window.focus_prev(cx);
+    }
+
+    fn countdown_previous(
+        &mut self,
+        _: &CountdownPrevAction,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.step_countdown(-1, cx);
+    }
+
+    fn countdown_next(&mut self, _: &CountdownNextAction, _: &mut Window, cx: &mut Context<Self>) {
+        self.step_countdown(1, cx);
+    }
+
+    /// Move the countdown one slot along the track.
+    ///
+    /// Only reachable from the arrow keys: the group is a single tab stop, so
+    /// this is the whole keyboard route to the two slots that are not lit.
+    fn step_countdown(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let current = self.controller.read(cx).settings().countdown_seconds;
+        let next = step_countdown(current, delta);
+        self.controller
+            .update(cx, |controller, cx| controller.set_countdown(next, cx));
+    }
+    /// Escape always goes somewhere, and never anywhere destructive.
+    ///
+    /// In order: an error is dismissed first, because it is the thing on
+    /// screen; a run-up is cancelled, because nothing has been recorded yet; a
+    /// recording is left entirely alone, including the panel it is running
+    /// behind, because stopping one is deliberate or it is not a stop; and an
+    /// idle panel goes to the tray.
+    fn escape(&mut self, _: &EscapeAction, _: &mut Window, cx: &mut Context<Self>) {
+        let to_tray = self.controller.update(cx, |controller, cx| {
+            if controller.error().is_some() {
+                controller.dismiss_error(cx);
+                return false;
+            }
+            match controller.state() {
+                CaptureState::Selecting(_) | CaptureState::Countdown(_, _) => {
+                    if let Err(error) = controller.dispatch(CaptureCommand::Cancel, cx) {
+                        tracing::error!(?error, "cancel on escape");
+                    }
+                    false
+                }
+                CaptureState::Recording(_)
+                | CaptureState::Paused(_)
+                | CaptureState::Finalizing(_) => false,
+                CaptureState::Idle | CaptureState::Error(_) => true,
+            }
+        });
+        if to_tray {
+            hide_main_window();
+        }
+    }
+
+    fn minimize(&mut self, _: &MinimizeAction, _: &mut Window, _: &mut Context<Self>) {
+        hide_main_window();
+    }
+
+    fn close(&mut self, _: &CloseAction, _: &mut Window, cx: &mut Context<Self>) {
+        close_on_exit_request(&self.controller, cx);
+    }
 }
 
 impl Render for MainWindow {
@@ -294,6 +378,13 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::open_output))
             .on_action(cx.listener(Self::focus_next))
             .on_action(cx.listener(Self::focus_previous))
+            .on_action(cx.listener(Self::focus_first))
+            .on_action(cx.listener(Self::focus_last))
+            .on_action(cx.listener(Self::countdown_previous))
+            .on_action(cx.listener(Self::countdown_next))
+            .on_action(cx.listener(Self::escape))
+            .on_action(cx.listener(Self::minimize))
+            .on_action(cx.listener(Self::close))
             .size_full()
             .flex()
             .flex_col()
@@ -421,6 +512,11 @@ impl Render for MainWindow {
                                     },
                                     Some(audio),
                                 )
+                                // The one footer label that is a fixed string,
+                                // so it is the one that never has to give up
+                                // room: the filename beside it absorbs the
+                                // shrink instead.
+                                .flex_shrink_0()
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.controller.update(cx, |controller, cx| {
@@ -494,21 +590,31 @@ impl MainWindow {
         countdown: u8,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        // One tab stop for the whole control, arrows inside: three radio
+        // buttons that each take a Tab is three quarters of the panel's tab
+        // order spent on one setting. The group carries the focus and the
+        // label; the slots carry only which of them is on.
         let mut track = div()
+            .id("countdown")
+            .accessibility_id("rapidcap.countdown")
+            .key_context("RapidCapCountdown")
+            .focusable()
+            .tab_stop(true)
+            .role(Role::RadioGroup)
+            .aria_label(countdown_label(countdown))
+            .aria_keyshortcuts("Left Right")
             .flex()
             .gap(theme::u(2.0))
             .p(theme::u(theme::SEG_PAD))
             .rounded(theme::u(theme::RADIUS_PILL))
             .bg(theme::bg_track());
-        for choice in AppController::COUNTDOWN_CHOICES {
-            track = track.child(
-                countdown_slot(choice, choice == countdown).on_click(cx.listener(
-                    move |this, _, _, cx| {
-                        this.controller
-                            .update(cx, |controller, cx| controller.set_countdown(choice, cx));
-                    },
-                )),
-            );
+        for (index, choice) in AppController::COUNTDOWN_CHOICES.into_iter().enumerate() {
+            track = track.child(countdown_slot(choice, index, choice == countdown).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    this.controller
+                        .update(cx, |controller, cx| controller.set_countdown(choice, cx));
+                }),
+            ));
         }
         header(video_fps, gif_fps, track)
     }
@@ -699,17 +805,23 @@ impl MainWindow {
                         window_button(
                             "titlebar-minimize",
                             "Minimize to tray",
+                            "RapidCapMinimize",
                             Icon::Minimize,
                             false,
                         )
                         .on_click(|_, _, _| hide_main_window()),
                     )
                     .child(
-                        window_button("titlebar-close", "Close", Icon::Close, true).on_click(
-                            cx.listener(|this, _, _, cx| {
-                                close_on_exit_request(&this.controller, cx);
-                            }),
-                        ),
+                        window_button(
+                            "titlebar-close",
+                            "Close",
+                            "RapidCapClose",
+                            Icon::Close,
+                            true,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            close_on_exit_request(&this.controller, cx);
+                        })),
                     ),
             )
     }
@@ -811,7 +923,9 @@ fn ghost_button(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::D
         .child(label)
 }
 
-fn countdown_slot(seconds: u8, active: bool) -> gpui::Stateful<gpui::Div> {
+/// One slot. Focusable only through the group above it, which owns the tab
+/// stop and hands the arrows down.
+fn countdown_slot(seconds: u8, index: usize, active: bool) -> gpui::Stateful<gpui::Div> {
     let colour = if active {
         theme::text_primary()
     } else {
@@ -826,13 +940,10 @@ fn countdown_slot(seconds: u8, active: bool) -> gpui::Stateful<gpui::Div> {
         .id(id)
         .accessibility_id(id)
         .role(Role::RadioButton)
-        .aria_label(if seconds == 0 {
-            "No countdown".to_string()
-        } else {
-            format!("{seconds} second countdown")
-        })
-        .focusable()
-        .tab_stop(true)
+        .aria_label(countdown_label(seconds))
+        .aria_selected(active)
+        .aria_position_in_set(index + 1)
+        .aria_size_of_set(AppController::COUNTDOWN_CHOICES.len())
         .size(theme::u(theme::SEGMENT))
         .flex()
         .flex_none()
@@ -855,6 +966,37 @@ fn countdown_slot(seconds: u8, active: bool) -> gpui::Stateful<gpui::Div> {
         slot.child(Icon::Instant.element(theme::u(16.0), colour))
     } else {
         slot.child(format!("{seconds}"))
+    }
+}
+
+/// The delay one slot along the track from `current`.
+///
+/// Wraps, the way a radio group does everywhere else. Three slots is short
+/// enough that nobody walks off one end expecting a stop.
+fn step_countdown(current: u8, delta: isize) -> u8 {
+    let choices = AppController::COUNTDOWN_CHOICES;
+    match choices.iter().position(|choice| *choice == current) {
+        Some(index) => {
+            choices[(index as isize + delta).rem_euclid(choices.len() as isize) as usize]
+        }
+        // A hand-edited settings file can hold a delay that is not on the
+        // track, and then no slot is lit at all. The first arrow press puts it
+        // back on, at whichever end it was pressed towards.
+        None if delta > 0 => choices[0],
+        None => choices[choices.len() - 1],
+    }
+}
+
+/// What a countdown delay is called out loud, for the group and for its slots.
+///
+/// Shared so the group announces the delay that is set in the same words the
+/// slot carrying it uses, rather than a screen reader reading two names for
+/// one setting.
+fn countdown_label(seconds: u8) -> String {
+    if seconds == 0 {
+        "No countdown".to_string()
+    } else {
+        format!("{seconds} second countdown")
     }
 }
 
@@ -1047,7 +1189,13 @@ fn chip(
         .when_some(toggled, |this, on| {
             this.aria_toggled(if on { Toggled::True } else { Toggled::False })
         })
-        .flex_none()
+        // Shrinkable, and `min_w(0)` so flexbox is allowed to take it below its
+        // content width. The footer is three fixed pills and a spacer inside a
+        // 400px panel, and the widths are text: measured with the macOS system
+        // font the row came out ~440px and the status well - the one part of
+        // the footer that is a live readout - was the part clipped off the
+        // right edge. Shrinking here ellipsises a filename instead.
+        .min_w(theme::u(0.0))
         .h(theme::u(theme::CHIP_H))
         .max_w(theme::u(theme::CHIP_MAX_W))
         .px(theme::u(12.0))
@@ -1072,7 +1220,17 @@ fn chip(
                 .text_color(icon_colour)
                 .child(icon.element(theme::u(16.0), icon_colour)),
         )
-        .child(div().overflow_hidden().child(label))
+        .child(
+            // One line, always. Without this the label wraps inside a pill
+            // fixed at `CHIP_H`, and a two-line filename came out clipped
+            // through the middle of both lines.
+            div()
+                .min_w(theme::u(0.0))
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(label),
+        )
 }
 
 /// Read-only, so recessed and never focusable: an inner shadow under the shared
@@ -1108,9 +1266,14 @@ fn status_well(status: String, dot: gpui::Hsla, pulsing: bool) -> impl IntoEleme
 ///
 /// Borderless: the titlebar already has an edge, and a second one around each
 /// glyph reads as a nested frame. Hover fill is what separates the buttons.
+///
+/// The last two stops in the tab order, after the work. Each takes its own
+/// `key_context` rather than sharing one, because Enter on the close button
+/// must not also be Enter on the minimize button sitting beside it.
 fn window_button(
     id: &'static str,
     label: &'static str,
+    context: &'static str,
     icon: Icon,
     close: bool,
 ) -> gpui::Stateful<gpui::Div> {
@@ -1122,8 +1285,12 @@ fn window_button(
     div()
         .id(id)
         .accessibility_id(id)
+        .key_context(context)
+        .focusable()
+        .tab_stop(true)
         .role(Role::Button)
         .aria_label(label)
+        .aria_keyshortcuts("Enter Space")
         .w(theme::u(theme::WIN_BTN_W))
         .h(theme::u(theme::TITLEBAR_H))
         .flex()
@@ -1384,6 +1551,17 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("space", GifAction, Some("RapidCapGif")),
         KeyBinding::new("enter", OpenOutputAction, Some("RapidCapOutput")),
         KeyBinding::new("space", OpenOutputAction, Some("RapidCapOutput")),
+        KeyBinding::new("enter", MinimizeAction, Some("RapidCapMinimize")),
+        KeyBinding::new("space", MinimizeAction, Some("RapidCapMinimize")),
+        KeyBinding::new("enter", CloseAction, Some("RapidCapClose")),
+        KeyBinding::new("space", CloseAction, Some("RapidCapClose")),
+        // Inside the segmented control only. Bound to its context rather than
+        // globally so the arrows stay free everywhere else in the panel.
+        KeyBinding::new("left", CountdownPrevAction, Some("RapidCapCountdown")),
+        KeyBinding::new("right", CountdownNextAction, Some("RapidCapCountdown")),
+        KeyBinding::new("home", FocusFirstAction, None),
+        KeyBinding::new("end", FocusLastAction, None),
+        KeyBinding::new("escape", EscapeAction, None),
         // Command-W and Command-Q, the two chords every Mac user tries first.
         // They are not Windows chords - Alt+F4 is the close there, and it is
         // handled by the window manager rather than by a binding - so this pair
@@ -1528,6 +1706,24 @@ mod tests {
                 assert!(!card_dimmed(&state, card), "{state:?} dimmed {card:?}");
             }
         }
+    }
+
+    #[test]
+    fn arrows_walk_the_countdown_track_and_wrap() {
+        let choices = AppController::COUNTDOWN_CHOICES;
+
+        // Right from every slot, including off the end and back to the front.
+        for pair in choices.windows(2) {
+            assert_eq!(step_countdown(pair[0], 1), pair[1]);
+            assert_eq!(step_countdown(pair[1], -1), pair[0]);
+        }
+        assert_eq!(step_countdown(choices[choices.len() - 1], 1), choices[0]);
+        assert_eq!(step_countdown(choices[0], -1), choices[choices.len() - 1]);
+
+        // A delay that is not on the track lights no slot, so the first press
+        // has to put one back on rather than step from nowhere.
+        assert_eq!(step_countdown(7, 1), choices[0]);
+        assert_eq!(step_countdown(7, -1), choices[choices.len() - 1]);
     }
 
     #[test]

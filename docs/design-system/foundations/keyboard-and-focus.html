@@ -151,12 +151,35 @@
   </table>
 
   <div class="note">
-    <b>What exists in code already:</b> <code>window.rs</code> wires <code>Tab</code> / <code>Shift+Tab</code> through
-    <code>focus_next</code> and <code>focus_prev</code>, every control has a stable <code>accessibility_id</code>, and
-    the status line carries <code>role=Status</code>. Missing: the focus-visible spacer on filled controls, arrow keys
-    in the segmented control, <code>Home</code> / <code>End</code>, every Escape route except the overlay's, and the
-    titlebar buttons — <code>window_button</code> is not <code>focusable()</code>, so stops 8 and 9 are unreachable
-    by keyboard today. The three countdown slots are also three separate stops rather than the one this specifies.
+    <b>Built.</b> All nine stops are reachable. <code>Tab</code> and <code>Shift+Tab</code> run through
+    <code>focus_next</code> and <code>focus_prev</code>; the titlebar buttons are focusable and answer
+    <code>Enter</code> and <code>Space</code> through their own key contexts, so Enter on Close is never Enter on
+    Minimize beside it; every control has a stable <code>accessibility_id</code>; the status line carries
+    <code>role=Status</code> and no focus.
+  </div>
+  <div class="note">
+    <b>The segmented control is one stop.</b> The track owns it &mdash; <code>role=RadioGroup</code>,
+    <code>tab_stop</code>, and the <code>RapidCapCountdown</code> key context that <code>Left</code> and
+    <code>Right</code> are bound to. The three slots are <code>role=RadioButton</code> and are not focusable at all;
+    they carry <code>aria_position_in_set</code> and <code>aria_size_of_set</code>, which is what makes the
+    announcement read "3 of 3". Arrows wrap. A settings file hand-edited to a delay that is not on the track lights no
+    slot, and the first arrow press puts it back on at whichever end it was pressed towards.
+  </div>
+  <div class="note">
+    <b><code>Home</code> and <code>End</code> go through nothing.</b> GPUI has <code>focus_next</code> and
+    <code>focus_prev</code> but no <code>focus_first</code>; stepping forward from nothing focused lands on the first
+    tab stop and stepping back from nothing lands on the last, so both actions blur and then step once.
+  </div>
+  <div class="note">
+    <b><code>Escape</code> during a recording does not hide the panel either.</b> "Nothing" in the table above means
+    nothing: minimising to the tray while a capture runs would leave the HUD as the only way back, which is a route
+    out of a recording that the user did not ask for. <code>escape</code> in <code>window.rs</code> walks the ladder
+    in order &mdash; error first, then a run-up, then the recording states, then the tray.
+  </div>
+  <div class="note">
+    <b>Still missing:</b> the focus-visible spacer on filled controls, and the whole Menu column of the table above.
+    <code>menu.rs</code> does not exist yet, so there is no menu to close, no item to arrow between, and no trigger to
+    return focus to.
   </div>
 </body>
 </html>

@@ -112,12 +112,13 @@
     <tr><th>Work</th><th>Files</th><th></th></tr>
     <tr><td>Gallery view — 3-column grid over <code>capture_root</code>, filters, hover actions, empty state</td><td class="file">crates/desktop/src/gallery.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Thumbnail cache at 236px in <code>%LOCALAPPDATA%</code>, generated off-thread</td><td class="file">crates/capture/src/thumbs.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Tab order, arrow keys in the segmented control, <code>Home</code> / <code>End</code>, every Esc route</td><td class="file">window.rs · <code>focus_next</code>, <code>focus_previous</code> · menu.rs</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>Tab order, arrow keys in the segmented control, <code>Home</code> / <code>End</code>, every Esc route in the panel. The segmented control is one stop with a <code>RadioGroup</code> track, not three</td><td class="file">window.rs · <code>escape</code>, <code>step_countdown</code>, <code>focus_first</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>The Menu column of the keyboard table — arrows between items, Esc closes and returns focus to the trigger. Waits on the menu itself</td><td class="file">menu.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Focus-visible spacer on filled controls</td><td class="file">theme.rs · controls.rs</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Three animations only: recording pulse, HUD idle fade, saved chip expiry. Built on GPUI's <code>with_animation</code>, which honours the system reduced-motion setting on its own</td><td class="file">motion.rs</td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>File names gain a timestamp: <code>{process}_{YYYY-MM-DD_HH-mm-ss}_{guard}</code></td><td class="file">naming.rs</td><td><span class="tag t-done">done</span></td></tr>
   </table>
-  <div class="gate"><b>Done when:</b> the whole product is reachable with the keyboard alone, and <code>Esc</code> during a recording does nothing.</div>
+  <div class="gate"><b>Done when:</b> the whole product is reachable with the keyboard alone. The panel already is, and <code>Esc</code> during a recording does nothing — not even minimise, which would leave the HUD as the only way back.</div>
 
   <h2>Bugs found while designing</h2>
   <table>
