@@ -1386,15 +1386,16 @@ mod tests {
 
     #[test]
     fn saved_chip_shows_the_filename() {
-        assert_eq!(
-            saved_label(Path::new(
-                "C:\\Users\\me\\Documents\\RapidCap\\Screen_9EN.png"
-            )),
-            "Screen_9EN.png"
-        );
+        // Joined rather than written out: a backslash separates components on
+        // Windows and is an ordinary filename character everywhere else, so a
+        // literal Windows path has no final component at all on macOS.
+        let nested = Path::new("Documents")
+            .join("RapidCap")
+            .join("Screen_9EN.png");
+        assert_eq!(saved_label(&nested), "Screen_9EN.png");
         assert_eq!(saved_label(Path::new("Screen_JI2.mp4")), "Screen_JI2.mp4");
         // No final component, so there is nothing to shorten to.
-        assert_eq!(saved_label(Path::new("C:\\")), "C:\\");
+        assert_eq!(saved_label(Path::new("/")), "/");
     }
 
     #[test]
