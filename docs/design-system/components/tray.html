@@ -61,7 +61,7 @@
 </head>
 <body>
   <h1>Tray</h1>
-  <p class="lede">RapidCap minimises to tray, so for most of its life this small square <b>is</b> the product. The icon is built — <code>tray::rgba</code> rasterises the ring for five states, and <code>PlatformRuntime::set_state</code> pushes a fresh icon and tooltip on every transition. The menu behind it is not: it is still three static items, so everything on this page below the icon states is a proposal.</p>
+  <p class="lede">RapidCap minimises to tray, so for most of its life this small square <b>is</b> the product. The icon is built — <code>tray::rgba</code> rasterises the ring for five states, and <code>PlatformRuntime::set_state</code> pushes a fresh icon and tooltip on every transition. The menu is built too — <code>tray_menu</code> rebuilds it on every state change, so its items follow the capture the same way the icon does. The one thing the code does not draw is the header: a native menu item is a single line, so it reads <code>RapidCap — Recording video</code> where the mock stacks the name over the state.</p>
 
   <h2>Icon states</h2>
   <div class="icons">
@@ -158,8 +158,8 @@
     <tr><td class="good">Ring mark with five state variants, rasterised in <code>tray.rs</code> and pushed on every transition</td><td>Done</td></tr>
     <tr><td class="good">Tooltip follows the state — "Recording video", "Paused GIF", "Ready", "Capture failed"</td><td>Done</td></tr>
     <tr><td class="bad">One 32px raster, <code>tray::SIZE</code></td><td>16, 20, 24 and 32px, so Windows picks by DPI instead of resampling one bitmap</td></tr>
-    <tr><td class="bad">Menu is 3 static items: Show / Open output folder / Exit</td><td>State header, 3 capture commands with hotkeys, contextual Pause / Stop</td></tr>
-    <tr><td class="bad">Menu identical in every state</td><td>Items swap on <code>CaptureState</code>, matching the transitions in <code>state.rs</code></td></tr>
+    <tr><td class="good">Header, capture commands with their chords, contextual Pause and Stop — <code>tray_menu</code></td><td>Done, except the two-line header: a native item is one line, so it borrows the tooltip’s wording</td></tr>
+    <tr><td class="good">Items swap on <code>CaptureState</code> — <code>menu_actions</code> offers only what the state machine in <code>state.rs</code> would accept, and nothing at all while Selecting, Countdown or Finalizing</td><td>Done</td></tr>
   </table>
 
   <div class="note">
@@ -170,8 +170,9 @@
   <div class="note">
     <b>The menu is native and will stay native.</b> It is a <code>tray_icon::menu::Menu</code>, so Windows draws it —
     nothing on the <a href="menus.html">Menus</a> page applies here, and the mocks above are only saying which items
-    to add and in which order. Accelerator text on a native item is a label, not a binding: the hotkeys are global
-    and fire whether or not the menu is open.
+    to add and in which order. Accelerator text on a native item is a label, not a binding: <code>muda</code> does
+    build an accelerator table alongside the item, but nothing in RapidCap runs <code>TranslateAccelerator</code>
+    over it — the hotkeys are global and fire whether or not the menu is open.
   </div>
 </body>
 </html>

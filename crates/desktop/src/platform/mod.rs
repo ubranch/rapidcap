@@ -6,7 +6,10 @@
 //! Win32 on Windows and AppKit on macOS with no shared shape at all, so it lives
 //! in a sibling module per platform, each exporting the same names.
 
-use std::{cell::Cell, path::Path};
+use std::{
+    cell::{Cell, RefCell},
+    path::Path,
+};
 
 use anyhow::Context as _;
 use async_channel::Receiver;
@@ -15,11 +18,11 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
 };
 use gpui::Global;
-use rapidcap_capture::{CaptureCommand, CaptureState};
+use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState};
 use serde_json::{Value, json};
 use tray_icon::{
     Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
-    menu::{Menu, MenuEvent, MenuItem},
+    menu::{IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, accelerator::Accelerator},
 };
 
 use crate::tray::{self, TrayState};
@@ -48,6 +51,35 @@ const APP_ID: &str = "com.inspire.rapidcap";
 const MENU_SHOW: &str = "show";
 const MENU_OUTPUT: &str = "output";
 const MENU_EXIT: &str = "exit";
+const MENU_STATE: &str = "state";
+
+/// The commands a tray item can dispatch, and the id its item carries.
+///
+/// A table rather than a `match`, because the lookup runs both ways: the menu
+/// builder needs an id for a command, and `MenuEvent` - a `'static` closure
+/// that never sees the app - needs the command back out of an id.
+const MENU_COMMANDS: [(&str, CaptureCommand); 5] = [
+    ("capture-region", CaptureCommand::CaptureRegion),
+    ("capture-window", CaptureCommand::CaptureActiveWindow),
+    ("record-video", CaptureCommand::ToggleVideo),
+    ("record-gif", CaptureCommand::ToggleGif),
+    ("toggle-pause", CaptureCommand::TogglePause),
+];
+
+fn menu_id(command: CaptureCommand) -> &'static str {
+    MENU_COMMANDS
+        .iter()
+        .find(|(_, candidate)| *candidate == command)
+        .map(|(id, _)| *id)
+        .expect("every menu command has an id")
+}
+
+fn menu_command(id: &str) -> Option<CaptureCommand> {
+    MENU_COMMANDS
+        .iter()
+        .find(|(candidate, _)| *candidate == id)
+        .map(|(_, command)| *command)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HotkeySpec {
@@ -159,6 +191,121 @@ pub enum PlatformEvent {
     Exit,
 }
 
+/// One command the tray menu offers, and the words it offers it with.
+///
+/// The label is not the command's name. `ToggleVideo` reads "Record video" in
+/// an idle menu and "Stop recording" in a recording one, and a menu that says
+/// "Record video" over a running recording is describing the wrong half of a
+/// toggle.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MenuAction {
+    command: CaptureCommand,
+    label: &'static str,
+}
+
+impl MenuAction {
+    const fn new(command: CaptureCommand, label: &'static str) -> Self {
+        Self { command, label }
+    }
+
+    /// Stopping a recording means toggling the kind that is running. Sending
+    /// `ToggleVideo` at a GIF is answered with `CommandError::Busy`, so the item
+    /// has to carry the live kind rather than a fixed command.
+    const fn stop(kind: CaptureKind) -> Self {
+        let command = match kind {
+            CaptureKind::Gif => CaptureCommand::ToggleGif,
+            _ => CaptureCommand::ToggleVideo,
+        };
+        Self::new(command, "Stop recording")
+    }
+}
+
+/// The capture commands the menu should offer in a state.
+///
+/// Only the ones `AppController::dispatch` would accept. An item that answers
+/// `CommandError::Busy` is worse than no item at all: the user clicked
+/// something RapidCap drew for them and nothing happened.
+fn menu_actions(state: &CaptureState) -> Vec<MenuAction> {
+    match state {
+        // `dispatch` clears the error state before it reads the command, so a
+        // failed capture offers everything an idle one does.
+        CaptureState::Idle | CaptureState::Error(_) => vec![
+            MenuAction::new(CaptureCommand::CaptureRegion, "Capture region"),
+            MenuAction::new(CaptureCommand::CaptureActiveWindow, "Capture window"),
+            MenuAction::new(CaptureCommand::ToggleVideo, "Record video"),
+        ],
+        CaptureState::Recording(kind) => vec![
+            MenuAction::new(CaptureCommand::TogglePause, "Pause"),
+            MenuAction::stop(*kind),
+        ],
+        CaptureState::Paused(kind) => vec![
+            MenuAction::new(CaptureCommand::TogglePause, "Resume"),
+            MenuAction::stop(*kind),
+        ],
+        // Selecting draws a full-screen overlay with the tray behind it,
+        // Countdown lasts three seconds, and Finalizing accepts nothing at all.
+        // None of the three has a command worth offering.
+        CaptureState::Selecting(_)
+        | CaptureState::Countdown(_, _)
+        | CaptureState::Finalizing(_) => Vec::new(),
+    }
+}
+
+/// The chord a menu item prints beside its label.
+///
+/// Drawn text, not a binding. The hotkeys are global and fire whether the menu
+/// is open or not, and nothing here runs `TranslateAccelerator` over the table
+/// `muda` builds alongside the item.
+fn menu_accelerator(command: CaptureCommand) -> Option<Accelerator> {
+    hotkey_specs()
+        .into_iter()
+        .find(|spec| spec.command == command)
+        .map(|spec| Accelerator::new(Some(spec.modifiers), spec.code))
+}
+
+/// The whole tray menu for a capture state.
+///
+/// Rebuilt rather than mutated: `muda` has no call that swaps a run of items,
+/// and the state changes a handful of times per capture, not per frame.
+fn tray_menu(state: &CaptureState) -> tray_icon::menu::Result<Menu> {
+    // Disabled because it is a label, not a command. Greying it is what tells a
+    // header apart from an item in a menu the OS draws.
+    let header = MenuItem::with_id(
+        MENU_STATE,
+        TrayState::from_capture(state).tooltip(state),
+        false,
+        None,
+    );
+    let actions: Vec<MenuItem> = menu_actions(state)
+        .into_iter()
+        .map(|action| {
+            MenuItem::with_id(
+                menu_id(action.command),
+                action.label,
+                true,
+                menu_accelerator(action.command),
+            )
+        })
+        .collect();
+    let show = MenuItem::with_id(MENU_SHOW, "Show RapidCap", true, None);
+    let output = MenuItem::with_id(MENU_OUTPUT, "Open output folder", true, None);
+    let exit = MenuItem::with_id(MENU_EXIT, "Exit", true, None);
+    // One separator per gap. A single item cannot sit in a menu twice.
+    let separators = [
+        PredefinedMenuItem::separator(),
+        PredefinedMenuItem::separator(),
+        PredefinedMenuItem::separator(),
+    ];
+
+    let mut items: Vec<&dyn IsMenuItem> = vec![&header, &separators[0]];
+    items.extend(actions.iter().map(|item| item as &dyn IsMenuItem));
+    if !actions.is_empty() {
+        items.push(&separators[1]);
+    }
+    items.extend([&show as &dyn IsMenuItem, &output, &separators[2], &exit]);
+    Menu::with_items(&items)
+}
+
 pub struct PlatformRuntime {
     receiver: Receiver<PlatformEvent>,
     _hotkeys: GlobalHotKeyManager,
@@ -169,6 +316,10 @@ pub struct PlatformRuntime {
     unavailable: Vec<CaptureCommand>,
     tray: TrayIcon,
     tray_state: Cell<Option<TrayState>>,
+    /// The state the menu on screen was built for. Its shape and its header
+    /// both follow the whole `CaptureState`, not the five-way `TrayState` the
+    /// icon uses, so the icon's guard cannot stand in for this one.
+    menu_state: RefCell<CaptureState>,
 }
 
 impl Global for PlatformRuntime {}
@@ -202,18 +353,15 @@ impl PlatformRuntime {
             }
         }));
 
-        let menu = Menu::with_items(&[
-            &MenuItem::with_id(MENU_SHOW, "Show RapidCap", true, None),
-            &MenuItem::with_id(MENU_OUTPUT, "Open output folder", true, None),
-            &MenuItem::with_id(MENU_EXIT, "Exit", true, None),
-        ])?;
+        let menu = tray_menu(&CaptureState::Idle)?;
         let menu_sender = sender.clone();
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
-            let event = match event.id().0.as_str() {
+            let id = event.id().0.as_str();
+            let event = match id {
                 MENU_SHOW => Some(PlatformEvent::Show),
                 MENU_OUTPUT => Some(PlatformEvent::OpenOutput),
                 MENU_EXIT => Some(PlatformEvent::Exit),
-                _ => None,
+                _ => menu_command(id).map(PlatformEvent::Capture),
             };
             if let Some(event) = event {
                 let _ = menu_sender.try_send(event);
@@ -254,6 +402,7 @@ impl PlatformRuntime {
             unavailable,
             tray,
             tray_state: Cell::new(Some(TrayState::Idle)),
+            menu_state: RefCell::new(CaptureState::Idle),
         })
     }
 
@@ -284,6 +433,15 @@ impl PlatformRuntime {
                 Err(error) => tracing::warn!(%error, "build tray icon"),
             }
         }
+        if *self.menu_state.borrow() != *state {
+            match tray_menu(state) {
+                Ok(menu) => {
+                    self.tray.set_menu(Some(Box::new(menu)));
+                    self.menu_state.replace(state.clone());
+                }
+                Err(error) => tracing::warn!(%error, "rebuild tray menu"),
+            }
+        }
         if let Err(error) = self.tray.set_tooltip(Some(next.tooltip(state))) {
             tracing::warn!(%error, "update tray tooltip");
         }
@@ -293,6 +451,67 @@ impl PlatformRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stopping_from_the_tray_toggles_the_kind_that_is_running() {
+        // A fixed "Stop recording" command would leave a GIF unstoppable from
+        // the tray: `ToggleVideo` at a running GIF is answered `Busy`.
+        assert!(
+            CaptureState::Recording(CaptureKind::Gif)
+                .stop(CaptureKind::Video)
+                .is_err()
+        );
+
+        let gif = menu_actions(&CaptureState::Recording(CaptureKind::Gif));
+        let video = menu_actions(&CaptureState::Paused(CaptureKind::Video));
+        assert_eq!(gif.last().unwrap().command, CaptureCommand::ToggleGif);
+        assert_eq!(video.last().unwrap().command, CaptureCommand::ToggleVideo);
+        assert_eq!(gif.last().unwrap().label, "Stop recording");
+    }
+
+    #[test]
+    fn the_menu_offers_nothing_a_state_would_reject() {
+        for state in [
+            CaptureState::Selecting(CaptureKind::Video),
+            CaptureState::Countdown(CaptureKind::Gif, 3),
+            CaptureState::Finalizing(CaptureKind::Video),
+        ] {
+            assert!(
+                menu_actions(&state).is_empty(),
+                "{state:?} offered a command"
+            );
+        }
+
+        let commands = |state| -> Vec<CaptureCommand> {
+            menu_actions(&state)
+                .into_iter()
+                .map(|action| action.command)
+                .collect()
+        };
+        // Nothing to pause when nothing is running, and no new capture to start
+        // over one that is.
+        assert!(!commands(CaptureState::Idle).contains(&CaptureCommand::TogglePause));
+        let recording = commands(CaptureState::Recording(CaptureKind::Video));
+        assert!(!recording.contains(&CaptureCommand::CaptureRegion));
+        assert!(!recording.contains(&CaptureCommand::CaptureActiveWindow));
+        // A failed capture is cleared by `dispatch`, so it offers what idle does.
+        assert_eq!(
+            commands(CaptureState::Error("disk full".to_string())),
+            commands(CaptureState::Idle)
+        );
+    }
+
+    #[test]
+    fn every_menu_command_id_round_trips() {
+        // The event handler only ever sees the id string. An id that does not
+        // map back is a menu item that silently does nothing when clicked.
+        for (id, command) in MENU_COMMANDS {
+            assert_eq!(menu_id(command), id);
+            assert_eq!(menu_command(id), Some(command));
+        }
+        assert_eq!(menu_command(MENU_EXIT), None);
+        assert_eq!(menu_command(MENU_STATE), None);
+    }
 
     #[test]
     fn every_command_except_cancel_has_exactly_one_shortcut() {
