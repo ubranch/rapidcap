@@ -275,6 +275,11 @@ impl Render for MainWindow {
         let gif_label = recording_label(&state, CaptureKind::Gif);
         let recording_video = matches!(&state, CaptureState::Recording(CaptureKind::Video));
         let recording_gif = matches!(&state, CaptureState::Recording(CaptureKind::Gif));
+        // While the overlay is up the panel steps back behind it: everything but
+        // the card that armed it drops out of the way, and the chips go
+        // entirely. The only thing left to say is how to get out, and the well
+        // is already saying it.
+        let selecting = matches!(&state, CaptureState::Selecting(_));
 
         div()
             .id("rapidcap-root")
@@ -317,6 +322,9 @@ impl Render for MainWindow {
                                     matches!(target, Some(CaptureTarget::Region(_))),
                                     false,
                                 )
+                                .when(card_dimmed(&state, CaptureKind::RegionScreenshot), |card| {
+                                    card.opacity(theme::CARD_DIMMED)
+                                })
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.dispatch(CaptureCommand::CaptureRegion, cx)
@@ -333,6 +341,10 @@ impl Render for MainWindow {
                                     self.shortcut(CaptureCommand::CaptureActiveWindow),
                                     matches!(target, Some(CaptureTarget::Window { .. })),
                                     false,
+                                )
+                                .when(
+                                    card_dimmed(&state, CaptureKind::ActiveWindowScreenshot),
+                                    |card| card.opacity(theme::CARD_DIMMED),
                                 )
                                 .on_click(cx.listener(
                                     |this, _, _, cx| {
@@ -360,6 +372,9 @@ impl Render for MainWindow {
                                     false,
                                     recording_video,
                                 )
+                                .when(card_dimmed(&state, CaptureKind::Video), |card| {
+                                    card.opacity(theme::CARD_DIMMED)
+                                })
                                 .on_click(cx.listener(
                                     |this, _, _, cx| this.dispatch(CaptureCommand::ToggleVideo, cx),
                                 )),
@@ -375,6 +390,9 @@ impl Render for MainWindow {
                                     false,
                                     recording_gif,
                                 )
+                                .when(card_dimmed(&state, CaptureKind::Gif), |card| {
+                                    card.opacity(theme::CARD_DIMMED)
+                                })
                                 .on_click(cx.listener(
                                     |this, _, _, cx| this.dispatch(CaptureCommand::ToggleGif, cx),
                                 )),
@@ -389,7 +407,7 @@ impl Render for MainWindow {
                             .items_center()
                             .gap(theme::u(6.0))
                             .h(theme::u(theme::CHIP_H))
-                            .child(
+                            .children((!selecting).then(|| {
                                 chip(
                                     CONTROL_IDS[5],
                                     "rapidcap.toggle-audio",
@@ -409,50 +427,56 @@ impl Render for MainWindow {
                                             controller.toggle_audio(cx)
                                         });
                                     },
-                                )),
-                            )
+                                ))
+                            }))
                             // The confirmation is a control, not a toast: it
                             // lands where the eye already is, it is pressable,
                             // and it expires on its own. It takes the folder
                             // chip's place rather than adding a slot, so the
                             // footer never reflows under the pointer.
-                            .child(match &saved {
-                                Some(saved) => chip(
-                                    CONTROL_IDS[4],
-                                    "rapidcap.open-saved",
-                                    "RapidCapSaved",
-                                    Icon::Saved,
-                                    saved_label(&saved.path),
-                                    format!("Saved — open {}", saved.path.display()),
-                                    None,
-                                )
-                                .border_color(theme::accent())
-                                .on_click(cx.listener(|this, _, _, cx| this.open_saved(cx)))
-                                .with_animation(
-                                    ("saved-chip", saved.expiring as usize),
-                                    Animation::new(motion::CHIP_FADE),
-                                    {
-                                        let expiring = saved.expiring;
-                                        move |chip, delta| {
-                                            chip.opacity(if expiring { 1.0 - delta } else { delta })
-                                        }
-                                    },
-                                )
-                                .into_any_element(),
-                                None => chip(
-                                    CONTROL_IDS[4],
-                                    "rapidcap.open-output",
-                                    "RapidCapOutput",
-                                    Icon::Folder,
-                                    folder_label,
-                                    format!("Open output folder {output}"),
-                                    None,
-                                )
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_output(&OpenOutputAction, window, cx)
-                                }))
-                                .into_any_element(),
-                            })
+                            .children((!selecting).then(|| {
+                                match &saved {
+                                    Some(saved) => chip(
+                                        CONTROL_IDS[4],
+                                        "rapidcap.open-saved",
+                                        "RapidCapSaved",
+                                        Icon::Saved,
+                                        saved_label(&saved.path),
+                                        format!("Saved — open {}", saved.path.display()),
+                                        None,
+                                    )
+                                    .border_color(theme::accent())
+                                    .on_click(cx.listener(|this, _, _, cx| this.open_saved(cx)))
+                                    .with_animation(
+                                        ("saved-chip", saved.expiring as usize),
+                                        Animation::new(motion::CHIP_FADE),
+                                        {
+                                            let expiring = saved.expiring;
+                                            move |chip, delta| {
+                                                chip.opacity(if expiring {
+                                                    1.0 - delta
+                                                } else {
+                                                    delta
+                                                })
+                                            }
+                                        },
+                                    )
+                                    .into_any_element(),
+                                    None => chip(
+                                        CONTROL_IDS[4],
+                                        "rapidcap.open-output",
+                                        "RapidCapOutput",
+                                        Icon::Folder,
+                                        folder_label,
+                                        format!("Open output folder {output}"),
+                                        None,
+                                    )
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_output(&OpenOutputAction, window, cx)
+                                    }))
+                                    .into_any_element(),
+                                }
+                            }))
                             .child(div().flex_1())
                             .child(status_well(status, dot, pulsing))
                             .into_any_element(),
@@ -1155,6 +1179,15 @@ impl Render for ErrorDetail {
     }
 }
 
+/// Whether a mode card should step back behind an open overlay.
+///
+/// Keyed on the kind being selected rather than on the armed target: a region
+/// capture starts with no target at all, so the card that opened the overlay
+/// would otherwise fade along with the three it is not.
+fn card_dimmed(state: &CaptureState, card: CaptureKind) -> bool {
+    matches!(state, CaptureState::Selecting(active) if *active != card)
+}
+
 /// Written strings, one per state. Never `format!("{state:?}")` — a user should
 /// not be able to read a Rust type off the panel.
 fn status_text(state: &CaptureState, target: Option<&CaptureTarget>) -> String {
@@ -1460,6 +1493,41 @@ mod tests {
             recording_label(&CaptureState::Idle, CaptureKind::Gif),
             "GIF"
         );
+    }
+
+    #[test]
+    fn only_the_card_that_opened_the_overlay_stays_lit() {
+        const CARDS: [CaptureKind; 4] = [
+            CaptureKind::RegionScreenshot,
+            CaptureKind::ActiveWindowScreenshot,
+            CaptureKind::Video,
+            CaptureKind::Gif,
+        ];
+
+        for armed in CARDS {
+            let state = CaptureState::Selecting(armed);
+            for card in CARDS {
+                assert_eq!(
+                    card_dimmed(&state, card),
+                    card != armed,
+                    "selecting {armed:?} got {card:?} wrong"
+                );
+            }
+        }
+
+        // Nothing dims outside Selecting. A recording card is red, not faded,
+        // and a countdown is the one moment the user is watching the panel.
+        for state in [
+            CaptureState::Idle,
+            CaptureState::Countdown(CaptureKind::Gif, 3),
+            CaptureState::Recording(CaptureKind::Video),
+            CaptureState::Paused(CaptureKind::Video),
+            CaptureState::Finalizing(CaptureKind::Gif),
+        ] {
+            for card in CARDS {
+                assert!(!card_dimmed(&state, card), "{state:?} dimmed {card:?}");
+            }
+        }
     }
 
     #[test]

@@ -272,6 +272,12 @@ pub fn scaled(value: f32) -> f32 {
 }
 
 pub const CARD_H: f32 = 64.0;
+/// What a card that did not arm the open overlay drops to.
+///
+/// The panel sits behind a translucent scrim while the user is dragging a
+/// region, so it is still legible. Dimming everything but the armed card is
+/// what makes it read as waiting on that card rather than as frozen.
+pub const CARD_DIMMED: f32 = 0.45;
 pub const CHIP_H: f32 = 36.0;
 pub const CHIP_MAX_W: f32 = 152.0;
 pub const STATUS_H: f32 = 28.0;

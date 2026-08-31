@@ -90,7 +90,7 @@
     <tr><td>Saved chip — 6s expiry, takes the folder chip's slot, opens the file, and hands the well its summary: <code>00:42 · 12.4 MB</code> for a recording, <code>Copied</code> for a screenshot. It fades in and out over 160ms, which is why the six-second timer is not the one that unmounts it</td><td class="file">window.rs · <code>Saved</code></td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Tray icon: ring mark, 5 states, tooltip that tracks them — <b>done</b>. Rasterised at whatever <code>SM_CXSMICON</code> reports — 16, 20, 24 or 32 by DPI — off a fixed 32-unit grid, with the ring held at three device pixels so it does not thin to a smudge at 16px</td><td class="file">tray.rs · platform/windows.rs · <code>tray_icon_size</code></td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Tray menu: state header, capture commands with hotkeys, contextual Pause and Stop. The header is one greyed line rather than two, because a native menu item is one line</td><td class="file">platform/mod.rs · <code>tray_menu</code></td><td><span class="tag t-done">done</span></td></tr>
-    <tr><td>Panel dims to 45% while <code>Selecting</code></td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
+    <tr><td>Panel dims to 45% while <code>Selecting</code> — every card but the one that opened the overlay, and the chips leave rather than fade, because a chip at 45% is still a tab stop</td><td class="file">window.rs · <code>card_dimmed</code></td><td><span class="tag t-done">done</span></td></tr>
   </table>
   <div class="gate"><b>Done when:</b> filling the disk mid-recording leaves a readable message on screen that survives a click, and the tray icon differs between idle and recording.</div>
 
