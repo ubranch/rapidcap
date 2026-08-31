@@ -41,7 +41,7 @@ use objc2_core_graphics::{
     CGWindowListOption, kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerName,
     kCGWindowOwnerPID,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_foundation::{NSFileManager, NSPoint, NSRect, NSSize, NSString, NSURL};
 use rapidcap_capture::{CaptureTarget, PhysicalRegion, display_scale};
 
 use gpui::DisplayId;
@@ -674,6 +674,41 @@ pub fn open_path(path: &Path) -> anyhow::Result<()> {
         anyhow::bail!("open(1) failed with {status}");
     }
     Ok(())
+}
+
+/// Open the folder holding `path` with `path` already picked out.
+///
+/// `-R` is Finder's reveal, the same thing Command-R does inside it. `open(1)`
+/// on the parent directory would open the folder and leave the user to find the
+/// file, which is what Show in folder exists to save them.
+pub fn reveal_path(path: &Path) -> anyhow::Result<()> {
+    let status = Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .context("launch open(1)")?;
+    if !status.success() {
+        anyhow::bail!("open(1) -R failed with {status}");
+    }
+    Ok(())
+}
+
+/// Delete to the Trash.
+///
+/// `std::fs::remove_file` would be one line and would be wrong: the gallery
+/// deletes on a single click with no confirmation, so the undo has to be the
+/// Finder's. `trashItemAtURL:` is the documented route and the only one that
+/// records a Put Back location, which is what makes the undo lead anywhere.
+///
+/// Main-thread-only like everything else in this file, but for a different
+/// reason: `NSFileManager` itself is thread-safe, and the marker is here so the
+/// call cannot be moved onto a background executor later without the compiler
+/// saying so.
+pub fn move_to_trash(path: &Path) -> anyhow::Result<()> {
+    let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
+    NSFileManager::defaultManager()
+        .trashItemAtURL_resultingItemURL_error(&url, None)
+        .map_err(|error| anyhow::anyhow!("trashItemAtURL: failed: {error}"))
 }
 
 /// The text-scale multiplier the titlebar is drawn at.

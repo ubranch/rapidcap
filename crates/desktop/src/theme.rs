@@ -132,6 +132,15 @@ pub fn accent_text() -> Hsla {
     rgb(0x8fb6fb).into()
 }
 
+/// Accent at 45% — the border of a chip whose fill is [`accent_fill`].
+///
+/// Full [`accent`] around a 16% fill reads as a focus ring rather than as a
+/// selected chip, and the two have to stay tellable apart: a gallery filter can
+/// be on and focused at the same time.
+pub fn accent_edge() -> Hsla {
+    rgba(0x3478f673).into()
+}
+
 /// A capture is running. The recording dot — nothing else.
 pub fn rec() -> Hsla {
     rgb(0xff2d2d).into()
@@ -182,6 +191,45 @@ pub fn warn_ghost_hover() -> Hsla {
 /// Error message text. 8.1:1 on [`warn_fill`].
 pub fn warn_text() -> Hsla {
     rgb(0xf0c07a).into()
+}
+
+// ---------------------------------------------------------------- gallery
+
+/// A gallery tile's thumbnail, top-left to bottom-right, before the thumbnail
+/// itself arrives.
+///
+/// A tone rather than a spinner: a grid of nine spinners is nine things moving
+/// for the half second the folder takes to decode, and the tile is 118px wide -
+/// there is no room for a spinner that is not also the whole picture.
+pub fn thumb_from() -> Hsla {
+    rgb(0x3a3a3a).into()
+}
+
+/// See [`thumb_from`].
+pub fn thumb_to() -> Hsla {
+    rgb(0x252525).into()
+}
+
+/// The kind and duration badges, which sit over a thumbnail of any brightness.
+/// Nearly opaque for that reason - a 50% scrim is legible over a screenshot of
+/// an editor and illegible over a screenshot of a document.
+pub fn thumb_badge() -> Hsla {
+    rgba(0x111111d1).into()
+}
+
+/// Darkens the thumbnail under a tile's hover actions.
+pub fn thumb_scrim() -> Hsla {
+    rgba(0x0a0a0a9e).into()
+}
+
+/// A hover action button on a tile.
+pub fn thumb_action() -> Hsla {
+    rgba(0x1c1c1ceb).into()
+}
+
+/// See [`thumb_action`].
+pub fn thumb_action_hover() -> Hsla {
+    rgb(0x2e2e2e).into()
 }
 
 // ---------------------------------------------------------------- overlay
@@ -243,6 +291,13 @@ pub const PANEL_H: f32 = 288.0;
 /// them is four screens of scrolling. Still fixed, and still shorter than the
 /// content - the column scrolls, it just does not have to scroll much.
 pub const SETTINGS_H: f32 = 520.0;
+/// Gallery height. Three rows of tiles, exactly: 12 of padding, a 30px filter
+/// row, a 9px gap, three 118px tiles with 9px between them, and 12 of padding
+/// again, under a [`TITLEBAR_H`] bar. Nine recent captures, which is more than
+/// the number anyone scrolls back through, and the grid scrolls past that.
+///
+/// The arithmetic is asserted in `gallery`, against the tile's own parts.
+pub const GALLERY_H: f32 = 465.0;
 
 /// The titlebar, and the panel it sits on.
 ///
@@ -416,6 +471,12 @@ mod tests {
             ("text_muted", text_muted()),
             ("text_off", text_off()),
             ("text_pill", text_pill()),
+            ("thumb_from", thumb_from()),
+            ("thumb_to", thumb_to()),
+            ("thumb_badge", thumb_badge()),
+            ("thumb_scrim", thumb_scrim()),
+            ("thumb_action", thumb_action()),
+            ("thumb_action_hover", thumb_action_hover()),
         ] {
             assert_eq!(
                 colour.s, 0.0,

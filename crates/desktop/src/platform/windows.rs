@@ -44,7 +44,10 @@ use windows::{
         },
         UI::{
             HiDpi::GetDpiForWindow,
-            Shell::ShellExecuteW,
+            Shell::{
+                FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT,
+                SHFILEOPSTRUCTW, SHFileOperationW, ShellExecuteW,
+            },
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, FindWindowW, GW_HWNDNEXT, GWL_STYLE,
                 GetClientRect, GetCursorPos, GetSystemMetrics, GetTopWindow, GetWindow,
@@ -679,6 +682,74 @@ pub fn open_path(path: &Path) -> anyhow::Result<()> {
     };
     if result.0 as isize <= 32 {
         anyhow::bail!("ShellExecuteW failed with code {}", result.0 as isize);
+    }
+    Ok(())
+}
+
+/// Open the folder holding `path` with `path` already picked out.
+///
+/// Not `open_path` on the parent: that opens the folder and leaves the user to
+/// find the file, which is the whole thing the gallery's Show in folder is for.
+/// Explorer's `/select` does both in one step, and it is the only route to it -
+/// there is no verb for "reveal" and `SHOpenFolderAndSelectItems` wants an
+/// `ITEMIDLIST` pair to say what `/select` says in one string.
+pub fn reveal_path(path: &Path) -> anyhow::Result<()> {
+    // Quoted, because a capture folder under Documents almost always has a
+    // space in it and Explorer splits its command line on those.
+    let mut parameters: Vec<u16> = "/select,\"".encode_utf16().collect();
+    parameters.extend(path.as_os_str().encode_wide());
+    parameters.extend("\"\0".encode_utf16());
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("open"),
+            w!("explorer.exe"),
+            PCWSTR(parameters.as_ptr()),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    if result.0 as isize <= 32 {
+        anyhow::bail!("ShellExecuteW failed with code {}", result.0 as isize);
+    }
+    Ok(())
+}
+
+/// Delete to the Recycle Bin.
+///
+/// `std::fs::remove_file` would be one line and would be wrong: the gallery
+/// deletes on a single click with no confirmation, so the undo has to be the
+/// shell's. `SHFileOperationW` is the old API and `IFileOperation` the current
+/// one, but the new one needs COM initialised on this thread and an apartment
+/// this process does not otherwise have - for one flag, that is the whole
+/// reason the old call is still here.
+///
+/// The four flags together are what makes it silent: `ALLOWUNDO` is the Recycle
+/// Bin, and the other three suppress the confirmation dialog, the progress
+/// window and the error box - none of which may appear over a panel that is
+/// always on top.
+pub fn move_to_trash(path: &Path) -> anyhow::Result<()> {
+    // `pFrom` is a *list*, terminated by an empty string on top of its own
+    // terminator. One trailing NUL deletes nothing and reports success.
+    let mut from: Vec<u16> = path.as_os_str().encode_wide().collect();
+    from.push(0);
+    from.push(0);
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO.0 | FOF_NOCONFIRMATION.0 | FOF_SILENT.0 | FOF_NOERRORUI.0) as u16,
+        ..Default::default()
+    };
+    let result = unsafe { SHFileOperationW(&mut operation) };
+    if result != 0 {
+        anyhow::bail!("SHFileOperationW failed with code {result}");
+    }
+    // Set when the user cancels out of a dialog the flags above should have
+    // stopped from appearing. Reported rather than swallowed: the caller drops
+    // the tile on success, and a tile whose file is still there is worse than
+    // an error in the log.
+    if operation.fAnyOperationsAborted.as_bool() {
+        anyhow::bail!("the shell aborted the delete");
     }
     Ok(())
 }

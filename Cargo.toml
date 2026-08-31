@@ -55,6 +55,11 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
   "std",
   "NSArray",
   "NSData",
+  # The gallery's delete: `trashItemAtURL:resultingItemURL:error:` is gated on
+  # both of these on top of NSURL, and it is the only Trash API that records a
+  # Put Back location.
+  "NSError",
+  "NSFileManager",
   "NSGeometry",
   "NSString",
   "NSURL",

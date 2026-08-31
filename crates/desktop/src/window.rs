@@ -14,6 +14,7 @@ use rapidcap_capture::{
 };
 
 use crate::controller::AppController;
+use crate::gallery::GalleryView;
 use crate::icons::Icon;
 use crate::motion;
 use crate::platform::{
@@ -30,7 +31,7 @@ actions!(
         WindowAction,
         VideoAction,
         GifAction,
-        OpenOutputAction,
+        GalleryAction,
         TabAction,
         TabPrevAction,
         FocusFirstAction,
@@ -50,7 +51,7 @@ pub const CONTROL_IDS: [&str; 6] = [
     "capture-window",
     "record-video",
     "record-gif",
-    "open-output",
+    "open-gallery",
     "toggle-audio",
 ];
 
@@ -112,6 +113,7 @@ impl Saved {
 pub enum Screen {
     Panel,
     Settings,
+    Gallery,
 }
 
 pub struct MainWindow {
@@ -122,6 +124,10 @@ pub struct MainWindow {
     /// position and which menu is down, and both of those should survive a trip
     /// back to the panel.
     settings: Entity<SettingsView>,
+    /// Held for the same reason as [`Self::settings`], plus one of its own: it
+    /// caches the folder listing, so coming back from a file that was just
+    /// opened does not re-read the disk.
+    gallery: Entity<GalleryView>,
     /// Where the cursor grabbed the panel, while a titlebar drag is in flight.
     drag_grab: Option<(i32, i32)>,
     /// The confirmation the footer is currently showing, if one is up.
@@ -198,6 +204,10 @@ impl MainWindow {
                 let controller = controller.clone();
                 |cx| SettingsView::new(cx, controller)
             }),
+            gallery: cx.new({
+                let controller = controller.clone();
+                |cx| GalleryView::new(cx, controller)
+            }),
             controller,
             focus_handle,
             drag_grab: None,
@@ -255,7 +265,17 @@ impl MainWindow {
         self.dispatch(CaptureCommand::ToggleGif, cx);
     }
 
-    fn open_output(&mut self, _: &OpenOutputAction, _: &mut Window, cx: &mut Context<Self>) {
+    /// The footer chip, and the Enter on it.
+    ///
+    /// It goes to the gallery rather than to Explorer. The chip names the
+    /// capture folder and the gallery *is* that folder, drawn in the app's own
+    /// window instead of a file manager that opens behind an always-on-top
+    /// panel; Explorer is still one button away, in the gallery's titlebar.
+    fn open_gallery(&mut self, _: &GalleryAction, window: &mut Window, cx: &mut Context<Self>) {
+        self.show(Screen::Gallery, window, cx);
+    }
+
+    fn open_output(&mut self, cx: &mut Context<Self>) {
         if let Err(error) = open_path(&self.controller.read(cx).paths().capture_root) {
             tracing::error!(%error, "open output folder");
         }
@@ -340,10 +360,18 @@ impl MainWindow {
         resize_main_window(theme::scaled(match screen {
             Screen::Panel => theme::PANEL_H,
             Screen::Settings => theme::SETTINGS_H,
+            Screen::Gallery => theme::GALLERY_H,
         }));
+        // On the way in, every time. The folder is shared with Explorer, the
+        // shell and whatever else the user drags into it, so a listing from the
+        // last visit is a guess about a folder this app does not own.
+        if screen == Screen::Gallery {
+            self.gallery.update(cx, |gallery, cx| gallery.reload(cx));
+        }
         let handle = match screen {
             Screen::Panel => self.focus_handle.clone(),
             Screen::Settings => self.settings.read(cx).focus_handle().clone(),
+            Screen::Gallery => self.gallery.read(cx).focus_handle().clone(),
         };
         handle.focus(window, cx);
         cx.notify();
@@ -361,6 +389,12 @@ impl MainWindow {
             if !handled {
                 self.show(Screen::Panel, window, cx);
             }
+            return;
+        }
+        // The gallery has nothing of its own to dismiss - no menu, no armed
+        // button - so its Escape is the Back arrow.
+        if self.screen == Screen::Gallery {
+            self.show(Screen::Panel, window, cx);
             return;
         }
         let to_tray = self.controller.update(cx, |controller, cx| {
@@ -438,7 +472,7 @@ impl Render for MainWindow {
             .on_action(cx.listener(Self::capture_window))
             .on_action(cx.listener(Self::toggle_video))
             .on_action(cx.listener(Self::toggle_gif))
-            .on_action(cx.listener(Self::open_output))
+            .on_action(cx.listener(Self::open_gallery))
             .on_action(cx.listener(Self::focus_next))
             .on_action(cx.listener(Self::focus_previous))
             .on_action(cx.listener(Self::focus_first))
@@ -460,6 +494,10 @@ impl Render for MainWindow {
                 // window instead of scrolling inside it.
                 div().flex_1().min_h_0().child(self.settings.clone())
             }))
+            .children(
+                (self.screen == Screen::Gallery)
+                    .then(|| div().flex_1().min_h_0().child(self.gallery.clone())),
+            )
             .children((self.screen == Screen::Panel).then(|| {
                 div()
                     .flex()
@@ -629,15 +667,15 @@ impl Render for MainWindow {
                                     .into_any_element(),
                                     None => chip(
                                         CONTROL_IDS[4],
-                                        "rapidcap.open-output",
-                                        "RapidCapOutput",
-                                        Icon::Folder,
+                                        "rapidcap.open-gallery",
+                                        "RapidCapGallery",
+                                        Icon::Gallery,
                                         folder_label,
-                                        format!("Open output folder {output}"),
+                                        format!("Recent captures in {output}"),
                                         None,
                                     )
                                     .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_output(&OpenOutputAction, window, cx)
+                                        this.open_gallery(&GalleryAction, window, cx)
                                     }))
                                     .into_any_element(),
                                 }
@@ -661,10 +699,10 @@ impl MainWindow {
     ///
     /// Icon-only, and the only control on the panel that is. A gear is the one
     /// glyph in this product that needs no caption, and it carries an
-    /// `aria_label` for the case where that is not true. No hover tooltip:
-    /// GPUI's `tooltip` wants a view to render, this app has no tooltip view,
-    /// and one built for a single button would be the largest component on the
-    /// screen it decorates.
+    /// `aria_label` for the case where that is not true. No hover tooltip
+    /// either, though [`ErrorDetail`] would serve as one: a gear that has to
+    /// explain itself is the wrong gear, and the label is already there for the
+    /// screen reader that does need the words.
     fn settings_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("open-settings")
@@ -873,7 +911,7 @@ impl MainWindow {
     /// [`drag_main_window`]. The strip only records the grab; the moving is
     /// driven from [`Self::drag_listener`], which hears the whole gesture.
     fn titlebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let settings = self.screen == Screen::Settings;
+        let panel = self.screen == Screen::Panel;
         div()
             .h(theme::u(theme::TITLEBAR_H))
             .flex()
@@ -882,7 +920,7 @@ impl MainWindow {
             // Leading, where the mark sits on the panel: the way back. On
             // macOS that corner belongs to the traffic lights, so the arrow
             // follows the same inset the mark does rather than a second rule.
-            .children(settings.then(|| {
+            .children((!panel).then(|| {
                 window_button(
                     "titlebar-back",
                     "Back to the panel",
@@ -907,7 +945,7 @@ impl MainWindow {
                         cx.listener(|this, _, _, _| this.drag_grab = window_drag_grab()),
                     )
                     .child(self.drag_listener(cx))
-                    .when(!settings, |bar| {
+                    .when(panel, |bar| {
                         bar.pl(theme::u(theme::titlebar_leading())).child(
                             Icon::Mark
                                 .element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()),
@@ -917,9 +955,28 @@ impl MainWindow {
                         div()
                             .text_size(theme::u(theme::TEXT_SMALL))
                             .font_weight(FontWeight::MEDIUM)
-                            .child(if settings { "Settings" } else { "RapidCap" }),
+                            .child(match self.screen {
+                                Screen::Panel => "RapidCap",
+                                Screen::Settings => "Settings",
+                                Screen::Gallery => "Recent captures",
+                            }),
                     ),
             )
+            // The one app action the bar carries, and only on the screen that
+            // is a folder. The design system keeps app actions out of the
+            // titlebar, but "the same folder, in the file manager" is a way out
+            // of this view rather than a thing done inside it - which is what
+            // the leading Back arrow is too.
+            .children((self.screen == Screen::Gallery).then(|| {
+                window_button(
+                    "titlebar-output",
+                    "Open output folder",
+                    "RapidCapOutput",
+                    Icon::Folder,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.open_output(cx)))
+            }))
             .children(self.window_controls(cx))
     }
 
@@ -1418,10 +1475,9 @@ fn status_well(status: String, dot: gpui::Hsla, pulsing: bool) -> impl IntoEleme
 /// Borderless: the titlebar already has an edge, and a second one around each
 /// glyph reads as a nested frame. Hover fill is what separates the buttons.
 ///
-/// The last two stops in the tab order, after the work. Each takes its own
+/// The last stops in the tab order, after the work. Each takes its own
 /// `key_context` rather than sharing one, because Enter on the close button
 /// must not also be Enter on the minimize button sitting beside it.
-#[cfg(not(target_os = "macos"))]
 fn window_button(
     id: &'static str,
     label: &'static str,
@@ -1591,17 +1647,23 @@ fn saved_label(path: &Path) -> String {
     let Some(name) = path.file_name() else {
         return path.display().to_string();
     };
-    let name = name.to_string_lossy();
-    let count = name.chars().count();
-    if count <= SAVED_LABEL_MAX {
-        return name.into_owned();
+    middle_trim(&name.to_string_lossy(), SAVED_LABEL_MAX, SAVED_LABEL_TAIL)
+}
+
+/// Trim `text` to `max` characters by taking a bite out of its middle.
+///
+/// Counted in characters rather than bytes, so a name in Cyrillic is trimmed
+/// where it looks trimmed and never split through a code point. `tail` is what
+/// survives at the end; the ellipsis costs one of the `max`.
+pub(crate) fn middle_trim(text: &str, max: usize, tail: usize) -> String {
+    debug_assert!(max > tail, "a trim has to leave room for the head");
+    let count = text.chars().count();
+    if count <= max {
+        return text.to_string();
     }
-    let head: String = name
-        .chars()
-        .take(SAVED_LABEL_MAX - 1 - SAVED_LABEL_TAIL)
-        .collect();
-    let tail: String = name.chars().skip(count - SAVED_LABEL_TAIL).collect();
-    format!("{head}…{tail}")
+    let head: String = text.chars().take(max - 1 - tail).collect();
+    let end: String = text.chars().skip(count - tail).collect();
+    format!("{head}…{end}")
 }
 
 /// What the status well reads while the chip is up.
@@ -1701,8 +1763,8 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("space", VideoAction, Some("RapidCapVideo")),
         KeyBinding::new("enter", GifAction, Some("RapidCapGif")),
         KeyBinding::new("space", GifAction, Some("RapidCapGif")),
-        KeyBinding::new("enter", OpenOutputAction, Some("RapidCapOutput")),
-        KeyBinding::new("space", OpenOutputAction, Some("RapidCapOutput")),
+        KeyBinding::new("enter", GalleryAction, Some("RapidCapGallery")),
+        KeyBinding::new("space", GalleryAction, Some("RapidCapGallery")),
         KeyBinding::new("enter", MinimizeAction, Some("RapidCapMinimize")),
         KeyBinding::new("space", MinimizeAction, Some("RapidCapMinimize")),
         KeyBinding::new("enter", CloseAction, Some("RapidCapClose")),
@@ -2038,6 +2100,57 @@ mod tests {
         // screen is a Back arrow, not the app's exit.
         assert_eq!(view.read_with(&cx, |view, _| view.screen), Screen::Panel);
         draw(&mut cx, &view, theme::PANEL_H);
+    }
+
+    #[gpui::test]
+    fn the_gallery_is_a_screen_of_this_window_and_escape_backs_out_of_it(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| {
+            AppController::new(
+                Settings::default(),
+                AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+            )
+        });
+        let window = cx.update(|cx| {
+            let controller = controller.clone();
+            cx.open_window(Default::default(), |window, cx| {
+                cx.new(|cx| MainWindow::new(window, cx, controller))
+            })
+            .unwrap()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let view = window.root(&mut cx).unwrap();
+        let focus = view.read_with(&cx, |view, _| view.focus_handle().clone());
+
+        // Through the action the footer chip fires, not through `show`: that is
+        // the route a user takes, and it is the one that has to end up here
+        // rather than in Explorer.
+        view.update_in(&mut cx, |view, window, cx| {
+            view.open_gallery(&GalleryAction, window, cx)
+        });
+        assert_eq!(view.read_with(&cx, |view, _| view.screen), Screen::Gallery);
+        // At the gallery's own height, with its own titlebar: a Back arrow, the
+        // folder button, and no mark.
+        draw(&mut cx, &view, theme::GALLERY_H);
+
+        cx.update(|window, cx| focus.dispatch_action(&EscapeAction, window, cx));
+        assert_eq!(view.read_with(&cx, |view, _| view.screen), Screen::Panel);
+        draw(&mut cx, &view, theme::PANEL_H);
+    }
+
+    #[test]
+    fn a_trim_bites_the_middle_and_counts_characters_not_bytes() {
+        let long = "Screen_2026-08-27_14-32-05_a7Kq.png";
+        assert_eq!(middle_trim("short.png", 16, 8), "short.png");
+        assert_eq!(middle_trim(long, 16, 8), "Screen_\u{2026}a7Kq.png");
+        assert_eq!(middle_trim(long, 16, 8).chars().count(), 16);
+        // Cyrillic: sixteen characters out, and never split through one - which
+        // a byte count would do halfway into the seventh.
+        let cyrillic =
+            "\u{441}\u{43a}\u{440}\u{438}\u{43d}\u{448}\u{43e}\u{442}_2026_08_27_a7Kq.png";
+        let trimmed = middle_trim(cyrillic, 16, 8);
+        assert_eq!(trimmed.chars().count(), 16);
+        assert!(trimmed.ends_with("a7Kq.png"));
+        assert!(trimmed.starts_with("\u{441}\u{43a}\u{440}\u{438}\u{43d}\u{448}\u{43e}"));
     }
 
     fn draw(cx: &mut VisualTestContext, view: &Entity<MainWindow>, height: f32) {

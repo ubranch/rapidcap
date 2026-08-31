@@ -2,6 +2,7 @@
 
 mod controller;
 mod controls;
+mod gallery;
 mod icons;
 mod menu;
 mod motion;
