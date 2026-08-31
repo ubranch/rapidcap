@@ -28,6 +28,7 @@ public class RcUi {
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowTextW(IntPtr h, StringBuilder s, int c);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, StringBuilder s, int c);
+  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, IntPtr e);
@@ -103,17 +104,28 @@ public class RcUi {
 # one run and 500 on another and the finder stops finding it.
 #
 # Everything below therefore works in physical pixels. Constants that come from
-# the design are written logically and converted with `Px` at the point of use.
+# the design are written in design pixels and converted with `Du` at the point
+# of use.
 $PER_MONITOR_V2 = [IntPtr](-4)
 [void][RcUi]::SetThreadDpiAwarenessContext($PER_MONITOR_V2)
 $scale = [RcUi]::GetDpiForSystem() / 96.0
 
-# Logical -> physical, for a coordinate the design gives us.
-function Px([double]$logical) { [int][Math]::Round($logical * $scale) }
+# Settings > Accessibility > Text size, the same value the app reads. The panel
+# is authored in design pixels and multiplied by this on the way to the screen,
+# so a script that only undoes the DPI scale aims every click short by whatever
+# the slider is set to - at 130% a footer chip 250 design pixels down is clicked
+# 94 physical pixels above itself, which lands on nothing.
+$textScale = 1.0
+$stored = (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Accessibility' -Name TextScaleFactor -ErrorAction SilentlyContinue).TextScaleFactor
+if ($stored) { $textScale = [Math]::Min([Math]::Max($stored / 100.0, 1.0), 2.25) }
+$unit = $scale * $textScale
+
+# Design unit -> physical, for a coordinate the design gives us.
+function Du([double]$design) { [int][Math]::Round($design * $unit) }
 
 $proc = Get-Process -Name RapidCap -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $proc) { Write-Host "FAIL  RapidCap is not running"; exit 1 }
-$panel = [RcUi]::Panel([uint32]$proc.Id, (Px 380), (Px 460), (Px 240), (Px 340))
+$panel = [RcUi]::Panel([uint32]$proc.Id, (Du 380), (Du 460), (Du 240), (Du 340))
 if ($panel -eq [IntPtr]::Zero) { Write-Host "FAIL  the panel is not on screen"; exit 1 }
 
 $settingsFile = Join-Path $env:APPDATA "RapidCap\settings.json"
@@ -133,6 +145,15 @@ function Check([string]$name, [bool]$ok, [string]$detail) {
   if ($ok) { $script:pass++; Write-Host ("  PASS  {0}" -f $name) }
   else { $script:fail++; Write-Host ("  FAIL  {0} - {1}" -f $name, $detail) -ForegroundColor Red }
 }
+
+# Somewhere the panel is not. The panel is parked at 300,200 and is 400x288
+# design pixels, so it reaches 300 + 400 * $unit across - past 900 on any
+# machine with the text size raised, which is what a literal 900,500 used to
+# assume it was clear of. A rest sample taken there was really a hover sample.
+$AWAY_X = 300 + (Du 460)
+$AWAY_Y = 200
+
+function Away { [void][RcUi]::SetCursorPos($AWAY_X, $AWAY_Y) }
 
 function Park {
   [void][RcUi]::SetWindowPos($panel, $TOPMOST, 300, 200, 0, 0, $MOVE_ONLY)
@@ -161,7 +182,7 @@ function Shot([string]$label) {
   # A minimised window still reports IsWindowVisible, and its bounds are the
   # -32000 placeholder. Capturing that yields a 146x28 white smear that quietly
   # passes for a panel screenshot.
-  if (($r.R - $r.L) -lt (Px 300) -or ($r.B - $r.T) -lt (Px 200)) { return $null }
+  if (($r.R - $r.L) -lt (Du 300) -or ($r.B - $r.T) -lt (Du 200)) { return $null }
   return Grab $r.L $r.T ($r.R - $r.L) ($r.B - $r.T) $label
 }
 
@@ -196,56 +217,6 @@ function Next($choices, $current) {
   for ($i = 0; $i -lt $choices.Count; $i++) { if ($choices[$i] -eq $current) { return $choices[($i + 1) % $choices.Count] } }
   return $choices[0]
 }
-# The bar fades to 55% after three seconds alone, so anything that measures its
-# colours has to wake it first.
-function WakeHud($hud) {
-  [void][RcUi]::SetCursorPos(($hud.L + [int]($hud.W / 2)), ($hud.T + [int]($hud.H0 / 2)))
-  Start-Sleep -Milliseconds 400
-}
-
-# The pill is a neutral near-black (#1B1B1B). Testing for "dark" alone is not
-# enough: the window around it is transparent, so a dark wallpaper reads as pill
-# and every measurement below slides left.
-function IsPill($c) {
-  return ($c.R -lt 45 -and $c.G -lt 45 -and $c.B -lt 45 -and
-          [Math]::Abs($c.R - $c.G) -lt 12 -and [Math]::Abs($c.G - $c.B) -lt 12)
-}
-
-# Width of the HUD pill on row $y.
-function PillSpan($bmp, [int]$y) {
-  $first = -1; $last = -1
-  for ($x = 0; $x -lt $bmp.Width; $x++) {
-    if (IsPill $bmp.GetPixel($x, $y)) {
-      if ($first -lt 0) { $first = $x }
-      $last = $x
-    }
-  }
-  if ($first -lt 0) { return 0 }
-  return $last - $first + 1
-}
-
-# The recording dot is an 8px disc with pill on both sides of it. The stop
-# button is red too but 28px across, and the recording frame behind the
-# transparent window is a red band - both fail the "pill within 8px" test.
-function HasDot($bmp) {
-  # The pill is not vertically centred in its window - it carries a drop shadow -
-  # so the dot straddles rows above the midline. Sweep a band rather than trust
-  # one row.
-  # One dot-width out on either side: far enough to clear the 8px disc, close
-  # enough to stay inside the 28px stop button, which is what this has to reject.
-  $reach = Px 8
-  for ($y = [int]($bmp.Height * 0.35); $y -le [int]($bmp.Height * 0.55); $y++) {
-    for ($x = $reach; $x -lt $bmp.Width - $reach; $x++) {
-      $c = $bmp.GetPixel($x, $y)
-      if ($c.R -gt 180 -and $c.G -lt 90 -and $c.B -lt 90 -and
-          (IsPill $bmp.GetPixel($x - $reach, $y)) -and (IsPill $bmp.GetPixel($x + $reach, $y))) {
-        return $true
-      }
-    }
-  }
-  return $false
-}
-
 # Every visible app window except the panel: the overlay, the HUD, the frame.
 function Extra {
   @([RcUi]::Windows([uint32]$proc.Id)) |
@@ -291,7 +262,7 @@ Snap "idle"
 Write-Host ""
 Write-Host "Countdown"
 foreach ($slot in @(@(334, 3, 'countdown-3'), @(368, 5, 'countdown-5'), @(300, 0, 'countdown-off'))) {
-  Click ($o.X + (Px $slot[0])) ($o.Y + (Px 54))
+  Click ($o.X + (Du $slot[0])) ($o.Y + (Du 54))
   Snap $slot[2]
   $got = (Settings).countdown_seconds
   Check ("{0} writes countdown_seconds = {1}" -f $slot[2], $slot[1]) ($got -eq $slot[1]) "settings.json says $got"
@@ -310,9 +281,9 @@ Write-Host "Frame rate"
 $fps = Settings
 Check "video records at 30 fps" ($fps.video.fps -eq 30) "settings.json says $($fps.video.fps)"
 Check "GIF records at 15 fps" ($fps.gif.fps -eq 15) "settings.json says $($fps.gif.fps)"
-$edgeX = $o.X + (Px 371)
-$edgeY = $o.Y + (Px 191)
-[void][RcUi]::SetCursorPos(900, 500); Start-Sleep -Milliseconds 500
+$edgeX = $o.X + (Du 371)
+$edgeY = $o.Y + (Du 191)
+Away; Start-Sleep -Milliseconds 500
 $rest = Grab $edgeX $edgeY 1 1 "gif-card-edge-rest"
 [void][RcUi]::SetCursorPos($edgeX, $edgeY); Start-Sleep -Milliseconds 500
 $lit = Grab $edgeX $edgeY 1 1 "gif-card-edge-hover"
@@ -320,12 +291,15 @@ $restPixel = $rest.GetPixel(0, 0)
 $litPixel = $lit.GetPixel(0, 0)
 $rest.Dispose(); $lit.Dispose()
 Check "the strip the stepper used to own is part of the GIF card" ($litPixel.ToArgb() -ne $restPixel.ToArgb()) ("the fill stayed {0:X6} with the pointer on it - a dead zone is still there" -f ($restPixel.ToArgb() -band 0xFFFFFF))
-[void][RcUi]::SetCursorPos(900, 500); Start-Sleep -Milliseconds 300
+Away; Start-Sleep -Milliseconds 300
 
 # --- footer ----------------------------------------------------------------
 Write-Host ""
 Write-Host "Footer"
-Click ($o.X + (Px 60)) ($o.Y + (Px 250)) 800
+# The footer runs audio chip, output chip, status well. The output chip is the
+# middle one - aiming at the left edge toggles the audio instead, silently, and
+# then waits seven seconds for an Explorer window nothing asked for.
+Click ($o.X + (Du 175)) ($o.Y + (Du 258)) 800
 Snap "output-chip"
 $explorer = [IntPtr]::Zero
 foreach ($tick in 1..15) {
@@ -338,7 +312,7 @@ if ($explorer -ne [IntPtr]::Zero) { [void][RcUi]::PostMessageW($explorer, 0x0010
 $o = Park
 
 $snapshot = (Settings) | ConvertTo-Json -Depth 5
-Click ($o.X + (Px 330)) ($o.Y + (Px 250))
+Click ($o.X + (Du 330)) ($o.Y + (Du 250))
 Snap "status-well"
 Check "the status well is not a button" (((Settings) | ConvertTo-Json -Depth 5) -eq $snapshot) "clicking the status well changed a setting"
 
@@ -360,8 +334,8 @@ function DropRegion {
 }
 # The overlay is the full-screen window; the HUD is the short wide pill. The
 # recording frame is also short and wide, so the HUD is the narrower of the two.
-function Overlay { @(Extra) | Where-Object { $_.H0 -gt (Px 400) } | Select-Object -First 1 }
-function Hud { @(Extra) | Where-Object { $_.H0 -lt (Px 120) -and $_.W -gt (Px 200) -and $_.W -lt (Px 900) } | Select-Object -First 1 }
+function Overlay { @(Extra) | Where-Object { $_.H0 -gt (Du 400) } | Select-Object -First 1 }
+function Hud { @(Extra) | Where-Object { $_.H0 -lt (Du 120) -and $_.W -gt (Du 200) -and $_.W -lt (Du 900) } | Select-Object -First 1 }
 function WaitFor([scriptblock]$probe, [int]$seconds) {
   foreach ($tick in 1..($seconds * 4)) {
     $found = & $probe
@@ -374,39 +348,57 @@ function WaitFor([scriptblock]$probe, [int]$seconds) {
 Write-Host ""
 Write-Host "Region capture"
 $countBefore = Captures
-# A patch of desktop clear of the panel, sampled before and after the scrim
-# goes up: the design calls for rgba(0,0,0,.55), which leaves 45% of whatever
-# was underneath.
-$bare = New-Object System.Drawing.Bitmap(1, 1)
+# The whole desktop, sampled before the overlay goes up so the scrim has
+# something to be measured against. A single reference pixel was not enough:
+# whatever is behind the overlay keeps repainting - a browser, a clock, a
+# progress bar - and the pixel read seconds before the overlay appeared is not
+# the pixel the scrim ended up over.
+$bare = New-Object System.Drawing.Bitmap([int][RcUi]::GetSystemMetrics(78), [int][RcUi]::GetSystemMetrics(79))
 $g = [System.Drawing.Graphics]::FromImage($bare)
-$g.CopyFromScreen(1600, 300, 0, 0, $bare.Size)
+$g.CopyFromScreen([int][RcUi]::GetSystemMetrics(76), [int][RcUi]::GetSystemMetrics(77), 0, 0, $bare.Size)
 $g.Dispose()
-$under = $bare.GetPixel(0, 0)
-$bare.Dispose()
 
-Click ($o.X + (Px 103)) ($o.Y + (Px 118)) 1000
+Click ($o.X + (Du 103)) ($o.Y + (Du 118)) 1000
 $overlay = WaitFor { Overlay } 6
 Check "the Region card opens the overlay" ($null -ne $overlay) "no full-screen window appeared"
+if (-not $overlay) { $bare.Dispose() }
 if ($overlay) {
   $shot = Grab $overlay.L $overlay.T $overlay.W $overlay.H0 "region-overlay"
-  $dimmed = $shot.GetPixel(1600 - $overlay.L, 300 - $overlay.T)
-  $wantR = [int]($under.R * 0.45)
-  $wantG = [int]($under.G * 0.45)
-  $wantB = [int]($under.B * 0.45)
-  $close = ([Math]::Abs($dimmed.R - $wantR) -le 6) -and ([Math]::Abs($dimmed.G - $wantG) -le 6) -and ([Math]::Abs($dimmed.B - $wantB) -le 6)
-  Check "the scrim dims the desktop by 55%" $close ("under {0},{1},{2} -> {3},{4},{5}, expected {6},{7},{8}" -f $under.R, $under.G, $under.B, $dimmed.R, $dimmed.G, $dimmed.B, $wantR, $wantG, $wantB)
+  # Black at alpha 0x8c over whatever was there, so every channel should land at
+  # 1 - 140/255 of its bare value. Measured across a grid rather than at one
+  # point, and reduced to a median: the parts of the desktop that repainted
+  # between the two grabs are outliers, and the ratio the scrim actually applied
+  # is what survives them. Channels under 24 are skipped - near-black rounds too
+  # coarsely to carry a ratio.
+  # The bare grab starts at the virtual screen's origin and the overlay grab at
+  # the overlay's, which are the same point on one monitor and are not on more
+  # than one.
+  $ox = $overlay.L - [RcUi]::GetSystemMetrics(76)
+  $oy = $overlay.T - [RcUi]::GetSystemMetrics(77)
+  $ratios = [Collections.Generic.List[double]]::new()
+  for ($sx = 0; $sx -lt [Math]::Min($bare.Width - $ox, $shot.Width); $sx += 40) {
+    for ($sy = 0; $sy -lt [Math]::Min($bare.Height - $oy, $shot.Height); $sy += 40) {
+      $u = $bare.GetPixel($sx + $ox, $sy + $oy)
+      $t = $shot.GetPixel($sx, $sy)
+      if ($u.R -ge 24) { $ratios.Add($t.R / $u.R) }
+      if ($u.G -ge 24) { $ratios.Add($t.G / $u.G) }
+      if ($u.B -ge 24) { $ratios.Add($t.B / $u.B) }
+    }
+  }
   $shot.Dispose()
+  $bare.Dispose()
+  $keep = 1.0 - (140.0 / 255.0)
+  $sorted = $ratios | Sort-Object
+  $median = if ($sorted.Count) { $sorted[[int]($sorted.Count / 2)] } else { [double]::NaN }
+  Check "the scrim dims the desktop by 55%" ([Math]::Abs($median - $keep) -le 0.03) ("the median of {0} samples kept {1:n3} of the desktop, not {2:n3}" -f $sorted.Count, $median, $keep)
 
   DragRegion 600 400
   $shot = Grab $overlay.L $overlay.T $overlay.W $overlay.H0 "region-selecting"
-  # The drag ran from 600,400 to 840,560 in screen pixels. Each corner carries a
-  # 7px grip straddling the border, so there is near-white within a few pixels
-  # of the corner - which side of it depends on rounding, so scan a small box.
+  # The four corner grips are near-white on a dimmed desktop, so a small box
+  # around each corner of the rectangle that was just dragged should hold one.
   $corners = @(@(600, 400), @(840, 400), @(600, 560), @(840, 560))
   $grips = 0
-  # The grip is 7 logical px straddling the border, so the box has to widen with
-  # the display scale or a 125% run misses it by rounding alone.
-  $slack = Px 5
+  $slack = Du 5
   foreach ($corner in $corners) {
     $found = $false
     foreach ($dx in -$slack..$slack) {
@@ -441,7 +433,7 @@ $o = Park
 Write-Host ""
 Write-Host "Window capture"
 $countBefore = Captures
-Click ($o.X + (Px 296)) ($o.Y + (Px 118)) 1000
+Click ($o.X + (Du 296)) ($o.Y + (Du 118)) 1000
 $overlay = WaitFor { Overlay } 6
 Check "the Window card opens the overlay" ($null -ne $overlay) "no full-screen window appeared"
 if ($overlay) {
@@ -478,9 +470,9 @@ foreach ($rec in @(@(86, 'video', 'Video'), @(279, 'gif', 'GIF'))) {
   Write-Host ("{0} recording" -f $rec[2])
   # Video runs with a 3s countdown so the countdown bar can be checked; GIF runs
   # with none, so the rest of the pass is not waiting on it.
-  Click ($o.X + (Px $(if ($rec[1] -eq 'video') { 334 } else { 300 }))) ($o.Y + (Px 54))
+  Click ($o.X + (Du $(if ($rec[1] -eq 'video') { 334 } else { 300 }))) ($o.Y + (Du 54))
   $countBefore = Captures
-  Click ($o.X + (Px $rec[0])) ($o.Y + (Px 191)) 1000
+  Click ($o.X + (Du $rec[0])) ($o.Y + (Du 191)) 1000
   $overlay = WaitFor { Overlay } 6
   Check ("the {0} card opens the target overlay" -f $rec[2]) ($null -ne $overlay) "no overlay appeared"
   if (-not $overlay) { $o = Park; continue }
@@ -490,85 +482,85 @@ foreach ($rec in @(@(86, 'video', 'Video'), @(279, 'gif', 'GIF'))) {
   Check ("the {0} recording shows the HUD" -f $rec[2]) ($null -ne $hud) "no HUD pill appeared"
   if (-not $hud) { $o = Park; continue }
 
-  if ($rec[1] -eq 'video') {
-    # Countdown state: the one moment the bar is allowed to be wide, because it
-    # names the target while there is still time to cancel.
-    $shot = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-countdown"
-    $counting = PillSpan $shot ([int]($hud.H0 / 2))
-    Check "the countdown HUD is wider than the running bar" ($counting -gt (Px 200)) "pill is only ${counting}px wide"
-    Check "the countdown HUD shows no recording dot" (-not (HasDot $shot)) "the red dot is up before recording starts"
-    $shot.Dispose()
-  }
+  # Where the bar sits, measured off its window rect rather than its pixels.
+  # The bar carries WDA_EXCLUDEFROMCAPTURE - it has to, or it lands in the file
+  # being recorded - and that hides it from `CopyFromScreen` as well, so a
+  # screenshot of it reads straight through to the desktop behind. Its position
+  # is still readable, and position is what kept going wrong: the gap was a
+  # design-pixel constant compared against device coordinates, and the centre
+  # was truncated instead of rounded.
+  $region = @{ L = 600; T = 400; W = 240; H = 160 }
+  $wantW = Du 360; $wantH = Du 44
+  Check ("the {0} HUD is the size the letterbox asks for" -f $rec[2]) `
+    ([Math]::Abs($hud.W - $wantW) -le 1 -and [Math]::Abs($hud.H0 - $wantH) -le 1) `
+    ("{0}x{1}, expected {2}x{3}" -f $hud.W, $hud.H0, $wantW, $wantH)
+  $hudCentre = $hud.L + $hud.W / 2.0
+  $regionCentre = $region.L + $region.W / 2.0
+  Check ("the {0} HUD is centred on the region" -f $rec[2]) `
+    ([Math]::Abs($hudCentre - $regionCentre) -le 1) `
+    ("bar centre {0}, region centre {1}" -f $hudCentre, $regionCentre)
+  # GAP is 9 design pixels below the region's bottom edge.
+  $gap = $hud.T - ($region.T + $region.H)
+  Check ("the {0} HUD sits one gap below the region" -f $rec[2]) `
+    ([Math]::Abs($gap - (Du 9)) -le 1) ("gap is {0}px, expected {1}px" -f $gap, (Du 9))
 
-  # Wait out any countdown so the checks below see the running bar.
-  $running = WaitFor {
-    WakeHud $hud
-    $probe = Grab $hud.L $hud.T $hud.W $hud.H0 "probe"
-    $ok = HasDot $probe
-    $probe.Dispose()
-    Remove-Item (Join-Path $frames ("{0:d2}-probe.png" -f $script:frame)) -Force -ErrorAction SilentlyContinue
-    $script:frame--
-    if ($ok) { $true } else { $null }
-  } 12
-  Check ("the {0} recording reaches the running state" -f $rec[2]) ($null -ne $running) "no recording dot after 12s"
-
-  Start-Sleep -Seconds 2
-  WakeHud $hud
-  $shot = Grab $hud.L $hud.T $hud.W $hud.H0 ("hud-" + $rec[1])
-  # The stop button is the rightmost danger-red run on the pill's middle row.
-  # Rightmost, not first-to-last: the recording dot is painted the same danger
-  # red, so a left-to-right span straddles the dot and the button and puts the
-  # midpoint out in the status text - and the pause click, measured back from
-  # that midpoint, then lands on the clock instead of the button.
+  # Both buttons sit at fixed offsets from the pill's right edge: 4px of pill
+  # padding, then a 28px stop button, then a 4px gap, then a 28px pause button.
+  # The pill is 248 design pixels wide and centred in its window.
   $y = [int]($hud.H0 / 2)
-  $first = -1; $last = -1
-  for ($x = $hud.W - 1; $x -ge 0; $x--) {
-    $c = $shot.GetPixel($x, $y)
-    if ($c.R -gt 170 -and $c.R -lt 225 -and $c.G -lt 80 -and $c.B -lt 80) {
-      if ($last -lt 0) { $last = $x }
-      $first = $x
+  $pillRight = $hud.L + [int]($hud.W / 2) + (Du 124)
+  $stopX = $pillRight - (Du 18)
+  $pauseX = $stopX - (Du 32)
+
+  # Wait out the countdown, then hold the recording open long enough for its
+  # duration to say something.
+  Start-Sleep -Seconds $(if ($rec[1] -eq 'video') { 5 } else { 2 })
+  $rolling = 2
+  Start-Sleep -Seconds $rolling
+  $held = 0
+  if ($rec[1] -eq 'video') {
+    # Pause suspends the encoder process, so a paused stretch is missing from
+    # the finished file. That is the only observable pause has: the bar carries
+    # WDA_EXCLUDEFROMCAPTURE - it has to, or it lands in the recording - so a
+    # screenshot of it reads through to the desktop. `hud_face` covers what each
+    # state draws; the duration below covers whether it did anything.
+    Click $pauseX ($hud.T + $y) 900
+    Check "the pause button is where the pill's geometry puts it" ($null -ne (Hud)) "the HUD vanished - the pause click hit the stop button"
+    $held = 4
+    Start-Sleep -Seconds $held
+    Click $pauseX ($hud.T + $y) 900
+    Check "the HUD survives resume" ($null -ne (Hud)) "the HUD vanished on the resume click"
+    Start-Sleep -Seconds $rolling
+    $rolling += 2
+  }
+  # Stop is not instant on a take that was paused: each unpaused stretch is its
+  # own FFmpeg run, and they are concatenated before the file exists, so the bar
+  # stays up through the join. Waited on rather than slept past, and the wait is
+  # reported, so a join that starts costing real time shows up as a number
+  # instead of as a flake.
+  Click $stopX ($hud.T + $y) 300
+  $began = Get-Date
+  $gone = WaitFor { if ($null -eq (Hud)) { $true } } 15
+  $took = [int]((Get-Date) - $began).TotalMilliseconds
+  Check ("stop ends the {0} recording" -f $rec[2]) ($gone -eq $true) "the HUD was still up 15s after the stop click"
+  if ($gone) { Write-Host ("        the bar came down {0}ms after the stop click" -f $took) -ForegroundColor DarkGray }
+  Check ("the {0} recording is written to disk" -f $rec[2]) (WaitForCapture $countBefore 60) "no new file under $captureRoot"
+
+  if ($rec[1] -eq 'video') {
+    $file = Get-ChildItem $captureRoot -Recurse -File | Sort-Object LastWriteTime | Select-Object -Last 1
+    $probe = Get-Command ffprobe -ErrorAction SilentlyContinue
+    if (-not $probe) {
+      Check "pause keeps the paused seconds out of the file" $false "ffprobe is not on PATH, so the recording's duration cannot be read"
+    } else {
+      $seconds = [double](& $probe.Source -v error -show_entries format=duration -of csv=p=0 $file.FullName)
+      # Four seconds of frames either side of a four-second pause. A pause that
+      # did nothing leaves all eight in the file; the clicks and the countdown
+      # add slop, so the window is wide and the two outcomes still cannot
+      # overlap.
+      Check "pause keeps the paused seconds out of the file" `
+        ($seconds -gt 2.0 -and $seconds -lt ($rolling + $held - 1.0)) `
+        ("the file runs {0:n1}s - {1}s of frames were recorded around a {2}s pause" -f $seconds, $rolling, $held)
     }
-    elseif ($last -ge 0) { break }
-  }
-  $shot.Dispose()
-  Check ("the {0} HUD draws a stop button" -f $rec[2]) ($first -ge 0) "no danger-red run on the pill"
-  if ($first -ge 0 -and $rec[1] -eq 'video') {
-    # Pause sits one 28px button plus a 4px gap to the left of stop.
-    $stopX = $hud.L + [int](($first + $last) / 2)
-    Click ($stopX - (Px 32)) ($hud.T + $y) 900
-    WakeHud $hud
-    $shot = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-paused"
-    Check "pause greys the recording dot" (-not (HasDot $shot)) "the dot is still recording red while paused"
-    $shot.Dispose()
-    Click ($stopX - (Px 32)) ($hud.T + $y) 900
-    WakeHud $hud
-    $shot = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-resumed"
-    Check "resume brings the recording dot back" (HasDot $shot) "the dot stayed grey after resume"
-    $shot.Dispose()
-
-    # Idle fade: three seconds with the pointer away and the bar drops to 55%.
-    WakeHud $hud
-    $lit = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-lit"
-    [void][RcUi]::SetCursorPos(60, 60)
-    Start-Sleep -Milliseconds 3800
-    $dim = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-faded"
-    $litPixel = $lit.GetPixel([int]($hud.W / 2), $y)
-    $dimPixel = $dim.GetPixel([int]($hud.W / 2), $y)
-    Check "the HUD fades when the pointer leaves" ($litPixel.ToArgb() -ne $dimPixel.ToArgb()) "the bar looks identical after 3s away"
-    $lit.Dispose(); $dim.Dispose()
-
-    [void][RcUi]::SetCursorPos($stopX, $hud.T + $y)
-    Start-Sleep -Milliseconds 700
-    $back = Grab $hud.L $hud.T $hud.W $hud.H0 "hud-rehover"
-    $backPixel = $back.GetPixel([int]($hud.W / 2), $y)
-    Check "the HUD comes back on hover" ($backPixel.ToArgb() -ne $dimPixel.ToArgb()) "the bar stayed faded with the pointer on it"
-    $back.Dispose()
-  }
-  if ($first -ge 0) {
-    WakeHud $hud
-    Click ($hud.L + [int](($first + $last) / 2)) ($hud.T + $y) 1500
-    Check ("stop ends the {0} recording" -f $rec[2]) ($null -eq (Hud)) "the HUD is still up"
-    Check ("the {0} recording is written to disk" -f $rec[2]) (WaitForCapture $countBefore 60) "no new file under $captureRoot"
   }
   $o = Park
   Snap ("after-" + $rec[1])

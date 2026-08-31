@@ -10,7 +10,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use crate::{
     controller::AppController,
     icons::Icon,
-    platform::{monitor_under_cursor, place_window, window_target_at},
+    platform::{exclude_from_capture, monitor_under_cursor, place_window, window_target_at},
     theme,
 };
 
@@ -374,50 +374,18 @@ impl Render for RecordingHud {
             CaptureTarget::Region(region) => format!("{} × {}", region.width, region.height),
             CaptureTarget::Window { process_name, .. } => process_name.clone(),
         };
-        // While a capture runs the only fact worth width is the clock. The kind
-        // and the target are shown during the countdown, when there is still a
-        // decision to make, and collapse away once recording starts.
-        let (status, pause_label, pause_icon, can_pause, dot) = match state {
-            CaptureState::Countdown(kind, seconds) => (
-                format!(
-                    "{} in {} · {target}",
-                    kind_noun(kind),
-                    seconds.saturating_sub(self.countdown_since.elapsed().as_secs() as u8)
-                ),
-                "Pause",
-                Icon::Pause,
-                false,
-                theme::text_muted(),
-            ),
-            CaptureState::Recording(_) => (
-                clock(self.controller.read(cx).recording_elapsed().as_secs()),
-                "Pause",
-                Icon::Pause,
-                true,
-                theme::rec(),
-            ),
-            CaptureState::Paused(_) => (
-                clock(self.controller.read(cx).recording_elapsed().as_secs()),
-                "Resume",
-                Icon::Play,
-                true,
-                theme::text_pill(),
-            ),
-            CaptureState::Finalizing(kind) => (
-                format!("Finalizing {}…", kind_noun(kind)),
-                "Pause",
-                Icon::Pause,
-                false,
-                theme::text_muted(),
-            ),
-            _ => (
-                "Closing…".into(),
-                "Pause",
-                Icon::Pause,
-                false,
-                theme::text_muted(),
-            ),
-        };
+        let HudFace {
+            status,
+            pause_label,
+            pause_icon,
+            can_pause,
+            dot,
+        } = hud_face(
+            &state,
+            &target,
+            self.countdown_since.elapsed().as_secs() as u8,
+            self.controller.read(cx).recording_elapsed().as_secs(),
+        );
         // Long recordings stop feeling watched: after three quiet seconds the bar
         // drops to 55% and comes back on hover. Only while something is running -
         // a countdown is asking a question and has to stay legible.
@@ -540,6 +508,69 @@ fn kind_noun(kind: CaptureKind) -> &'static str {
     }
 }
 
+/// What the pill says and shows, for one capture state.
+///
+/// Pulled out of `render` so it can be asserted on. The bar is excluded from
+/// screen capture - it has to be, or it lands in the recording - which also
+/// hides it from the screenshots the interaction suite takes, so its colours
+/// cannot be checked from outside the process. This is where that check lives
+/// instead.
+struct HudFace {
+    status: String,
+    pause_label: &'static str,
+    pause_icon: Icon,
+    can_pause: bool,
+    dot: gpui::Hsla,
+}
+
+/// While a capture runs the only fact worth width is the clock. The kind and the
+/// target are shown during the countdown, when there is still a decision to
+/// make, and collapse away once recording starts.
+fn hud_face(state: &CaptureState, target: &str, countdown_elapsed: u8, recorded: u64) -> HudFace {
+    let (status, pause_label, pause_icon, can_pause, dot) = match state {
+        CaptureState::Countdown(kind, seconds) => (
+            format!(
+                "{} in {} · {target}",
+                kind_noun(*kind),
+                seconds.saturating_sub(countdown_elapsed)
+            ),
+            "Pause",
+            Icon::Pause,
+            false,
+            theme::text_muted(),
+        ),
+        CaptureState::Recording(_) => (clock(recorded), "Pause", Icon::Pause, true, theme::rec()),
+        CaptureState::Paused(_) => (
+            clock(recorded),
+            "Resume",
+            Icon::Play,
+            true,
+            theme::text_pill(),
+        ),
+        CaptureState::Finalizing(kind) => (
+            format!("Finalizing {}…", kind_noun(*kind)),
+            "Pause",
+            Icon::Pause,
+            false,
+            theme::text_muted(),
+        ),
+        _ => (
+            "Closing…".into(),
+            "Pause",
+            Icon::Pause,
+            false,
+            theme::text_muted(),
+        ),
+    };
+    HudFace {
+        status,
+        pause_label,
+        pause_icon,
+        can_pause,
+        dot,
+    }
+}
+
 /// Circular icon button, 28px inside a 36px pill. Text labels cost width the
 /// HUD does not have — `aria_label` carries the name.
 fn hud_button(
@@ -601,16 +632,28 @@ pub fn open_recording_hud(
     let region = match &target {
         CaptureTarget::Region(region) | CaptureTarget::Window { region, .. } => region,
     };
-    let (x, y) = hud_origin(
-        region,
-        cx.primary_display().map(|display| display.bounds()),
-        theme::scaled(HUD_WINDOW_W),
-        theme::scaled(HUD_WINDOW_H),
-    );
+    // Every number below is a device pixel, because the region is. GPUI's
+    // display bounds are logical, and mixing the two put the bar above a region
+    // that had room under it and left it off centre by half the difference
+    // between the pill's logical and physical width.
+    let (display_id, monitor) = monitor_under_cursor()?;
+    let scale = cx
+        .find_display(display_id)
+        .or_else(|| cx.primary_display())
+        .map_or(1.0, |display| {
+            monitor.width as f32 / f32::from(display.bounds().size.width)
+        });
+    let width = theme::scaled(HUD_WINDOW_W) * scale;
+    let height = theme::scaled(HUD_WINDOW_H) * scale;
+    let screen_bottom = (monitor.y + monitor.height as i32) as f32;
+    let gap = theme::scaled(theme::GAP) * scale;
+    let (x, y) = hud_origin(region, Some(screen_bottom), width, height, gap);
     let handle = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
-                origin: point(px(x), px(y)),
+                // Logical, which is the only unit GPUI accepts here. The
+                // device-pixel placement below is what actually lands.
+                origin: point(px(x / scale), px(y / scale)),
                 size: size(theme::u(HUD_WINDOW_W), theme::u(HUD_WINDOW_H)),
             })),
             titlebar: None,
@@ -633,14 +676,20 @@ pub fn open_recording_hud(
     // where it was aimed. Moving the HWND afterwards skips the conversion, and
     // strips the Windows 11 border DWM draws around a transparent popup.
     if let Some(hwnd) = handle.update(cx, |_view, window, _cx| panel_hwnd(window))? {
-        let scale = handle.update(cx, |_view, window, _cx| window.scale_factor())?;
+        // Rounded, not truncated. A pill centred at 707.5 truncates to 707 and
+        // sits a pixel left of the region it belongs to, which is visible next
+        // to a selection rectangle drawn on the exact boundary.
         place_window(
             hwnd,
-            x as i32,
-            y as i32,
-            (theme::scaled(HUD_WINDOW_W) * scale) as i32,
-            (theme::scaled(HUD_WINDOW_H) * scale) as i32,
+            x.round() as i32,
+            y.round() as i32,
+            width.round() as i32,
+            height.round() as i32,
         );
+        // The bar is up for the whole take, over the region being recorded, so
+        // without this it is in the file. The region overlay does not need the
+        // same treatment: it is gone before the recorder starts.
+        exclude_from_capture(hwnd);
     }
     Ok(handle)
 }
@@ -661,20 +710,24 @@ const HUD_WINDOW_H: f32 = 44.0;
 /// Below the region and centred on it — controls belong under the thing they
 /// control. Falls back above when the region is near the screen bottom, and
 /// inside it when neither fits.
+///
+/// Everything here is a device pixel, including `gap`, because the region is.
+/// The gap arrives already scaled rather than being read from the theme: a
+/// design-pixel constant compared against device coordinates draws the bar
+/// closer to the region than the design asks for, by exactly the display and
+/// text scale.
 fn hud_origin(
     region: &PhysicalRegion,
-    screen: Option<Bounds<Pixels>>,
+    screen_bottom: Option<f32>,
     width: f32,
     height: f32,
+    gap: f32,
 ) -> (f32, f32) {
-    let gap = theme::GAP;
     let region_bottom = (region.y + region.height as i32) as f32;
     let below = region_bottom + gap;
     let above = region.y as f32 - gap - height;
 
-    let screen_bottom = screen
-        .map(|bounds| f32::from(bounds.origin.y + bounds.size.height))
-        .unwrap_or(f32::MAX);
+    let screen_bottom = screen_bottom.unwrap_or(f32::MAX);
 
     let y = if below + height <= screen_bottom {
         below
@@ -812,10 +865,11 @@ mod tests {
 
     #[test]
     fn hud_sits_below_the_region_unless_there_is_no_room() {
-        let screen = Some(Bounds {
-            origin: point(px(0.0), px(0.0)),
-            size: size(px(1920.0), px(1080.0)),
-        });
+        let screen = Some(1080.0);
+        // Device pixels, the unit the caller works in. Held apart from
+        // `theme::GAP` so the assertions read against a number rather than
+        // against the same expression the function evaluates.
+        let gap = 12.0;
         let region = PhysicalRegion {
             x: 400,
             y: 200,
@@ -823,9 +877,9 @@ mod tests {
             height: 400,
         };
 
-        // Normal: 9px under the bottom edge, centred on the region.
-        let (x, y) = hud_origin(&region, screen, HUD_WINDOW_W, HUD_WINDOW_H);
-        assert_eq!(y, 600.0 + theme::GAP);
+        // Normal: one gap under the bottom edge, centred on the region.
+        let (x, y) = hud_origin(&region, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        assert_eq!(y, 600.0 + gap);
         assert_eq!(x, 400.0 + (800.0 - HUD_WINDOW_W) / 2.0);
 
         // No room below: flip above the top edge.
@@ -835,8 +889,8 @@ mod tests {
             width: 800,
             height: 460,
         };
-        let (_, y) = hud_origin(&low, screen, HUD_WINDOW_W, HUD_WINDOW_H);
-        assert_eq!(y, 600.0 - theme::GAP - HUD_WINDOW_H);
+        let (_, y) = hud_origin(&low, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        assert_eq!(y, 600.0 - gap - HUD_WINDOW_H);
 
         // Region fills the display: sit inside its bottom edge.
         let full = PhysicalRegion {
@@ -845,8 +899,8 @@ mod tests {
             width: 1920,
             height: 1080,
         };
-        let (x, y) = hud_origin(&full, screen, HUD_WINDOW_W, HUD_WINDOW_H);
-        assert_eq!(y, 1080.0 - theme::GAP - HUD_WINDOW_H);
+        let (x, y) = hud_origin(&full, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        assert_eq!(y, 1080.0 - gap - HUD_WINDOW_H);
         assert!(x >= 0.0, "the HUD never starts off the left edge");
 
         // A region narrower than the pill still clamps on screen.
@@ -856,7 +910,66 @@ mod tests {
             width: 120,
             height: 80,
         };
-        let (x, _) = hud_origin(&narrow, screen, HUD_WINDOW_W, HUD_WINDOW_H);
+        let (x, _) = hud_origin(&narrow, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
         assert_eq!(x, 0.0);
+    }
+
+    #[test]
+    fn the_dot_is_red_only_while_something_is_being_recorded() {
+        // The dot is the one thing on the bar that says whether frames are
+        // being written, so the states around a recording have to be able to
+        // tell themselves apart at a glance.
+        let face = |state| hud_face(&state, "800 × 600", 0, 27).dot;
+        assert_eq!(
+            face(CaptureState::Recording(CaptureKind::Video)),
+            theme::rec()
+        );
+        assert_ne!(face(CaptureState::Paused(CaptureKind::Video)), theme::rec());
+        assert_ne!(
+            face(CaptureState::Countdown(CaptureKind::Video, 3)),
+            theme::rec()
+        );
+        assert_ne!(
+            face(CaptureState::Finalizing(CaptureKind::Video)),
+            theme::rec()
+        );
+    }
+
+    #[test]
+    fn the_countdown_names_the_target_and_the_recording_only_keeps_the_clock() {
+        // The countdown is the last chance to cancel, so it spells out what is
+        // about to be recorded. Once it is running the pill is a fixed width
+        // and the clock is the only thing worth that width.
+        let counting = hud_face(
+            &CaptureState::Countdown(CaptureKind::Video, 3),
+            "800 × 600",
+            1,
+            0,
+        );
+        assert_eq!(counting.status, "Video in 2 · 800 × 600");
+        assert!(!counting.can_pause, "nothing to pause before it starts");
+
+        let running = hud_face(
+            &CaptureState::Recording(CaptureKind::Video),
+            "800 × 600",
+            0,
+            87,
+        );
+        assert_eq!(running.status, "01:27");
+        assert!(running.can_pause);
+    }
+
+    #[test]
+    fn the_pause_button_offers_the_action_the_state_is_missing() {
+        // Pressing pause has to leave a button that resumes, or a paused
+        // recording is a stuck one.
+        let running = hud_face(&CaptureState::Recording(CaptureKind::Gif), "app", 0, 0);
+        assert_eq!(running.pause_label, "Pause");
+        assert_eq!(running.pause_icon, Icon::Pause);
+
+        let paused = hud_face(&CaptureState::Paused(CaptureKind::Gif), "app", 0, 0);
+        assert_eq!(paused.pause_label, "Resume");
+        assert_eq!(paused.pause_icon, Icon::Play);
+        assert!(paused.can_pause, "a paused recording must be resumable");
     }
 }
