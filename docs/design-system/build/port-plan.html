@@ -58,8 +58,8 @@
   <p class="sub">The visible rebuild. Cards: Panel, Cards rows &amp; controls, Titlebar, Pills &amp; status.</p>
   <table>
     <tr><th>Work</th><th>Files</th><th></th></tr>
-    <tr><td>Window 360 × 240 → <b>400 × ~290</b>, min 360 × 260, <code>titlebar: None</code></td><td class="file">window.rs:288-300</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Custom titlebar: drag region, 3 app actions at 36 × 36, minimize and close at 46 × 44, close owns the corner radius</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
+    <tr><td>Window 360 × 240 → <b>400 × 288</b>, fixed size, <code>appears_transparent</code> — <code>titlebar: None</code> hides the system bar on paper but produces a window that never becomes visible on Windows</td><td class="file">window.rs:288-300</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>Custom titlebar: 30px bar, drag region, minimize and close at 34 × 30, no app actions, close reaches the corner</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Mode grid: 4 cards at 64px, icon over label, chevron pane <b>absolutely positioned</b> so labels centre on the card</td><td class="file">window.rs:113-260</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Footer: two chips plus the recessed status well, replacing the button row</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Header: 34px mark, 22px wordmark, FPS badge, countdown segmented control</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>

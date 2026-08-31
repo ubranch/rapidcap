@@ -61,7 +61,7 @@
     <tr><td><code>9px</code></td><td><div class="bar" style="width:9px"></div></td><td>Grid column gap, grid row gap, grid→rows, row→row. No exceptions.</td></tr>
     <tr><td><code>12px</code></td><td><div class="bar" style="width:12px"></div></td><td>Panel body padding · row horizontal padding</td></tr>
     <tr><td><code>10px</code></td><td><div class="bar" style="width:10px"></div></td><td>Icon→label gap inside a row</td></tr>
-    <tr><td><code>4px</code></td><td><div class="bar" style="width:4px"></div></td><td>Between titlebar action buttons — matches the 4px a 36px button leaves in a 44px bar</td></tr>
+    <tr><td><code>8px</code></td><td><div class="bar" style="width:8px"></div></td><td>Everything inside the titlebar — mark to wordmark, and minimize to close. One value for the whole bar</td></tr>
   </table>
   <div class="note">Compacted from the first pass: body padding was <code>18px</code>. The <code>9px</code> gap did not move — the panel got shorter by shrinking elements, not by breaking the one-spacing-value rule.</div>
 
@@ -69,7 +69,7 @@
   <table>
     <tr><th>Element</th><th>Size</th><th>Note</th></tr>
     <tr><td>Panel</td><td><code>400 × ~300</code></td><td>Width is fixed. Long names truncate, never wrap.</td></tr>
-    <tr><td>Titlebar</td><td><code>400 × 44</code></td><td>No bottom border — the tone step separates it</td></tr>
+    <tr><td>Titlebar</td><td><code>400 × 30</code></td><td>No bottom border — the tone step separates it. A 9px leading inset before the mark</td></tr>
     <tr><td>Mode card</td><td><code>flex 1 × 64</code></td><td>2 × 2 grid, ~183px each at 400 panel width</td></tr>
     <tr><td>Chevron pane</td><td><code>34px</code> wide</td><td>Full card height, 1px divider on its left</td></tr>
     <tr><td>Footer</td><td><code>376 × 36</code></td><td>Chips left, status text right, <code>6px</code> gap</td></tr>
@@ -87,11 +87,10 @@
     <tr><td>Mode card</td><td><code>~183 × 64</code></td><td>Whole card; chevron pane is a separate <code>34 × 64</code> target</td></tr>
     <tr><td>Footer chip</td><td><code>36px</code> tall</td><td>Free-standing pill, never shares an edge</td></tr>
     <tr><td>HUD icon button</td><td><code>28 × 28</code></td><td>Circular, inside a 36px pill — tooltip carries the label</td></tr>
-    <tr><td>Titlebar action</td><td><code>36 × 36</code></td><td>Rounded hover pill at <code>#2A2A2A</code>, 4px apart</td></tr>
-    <tr><td>Window control</td><td><code>46 × 44</code></td><td>Full bar height, flush — the corner is clickable</td></tr>
+    <tr><td>Window control</td><td><code>34 × 30</code></td><td>The full height of the bar, square hover fill at <code>#2A2A2A</code>. Close reaches the corner</td></tr>
     <tr><td>Segment slot</td><td><code>32 × 32</code></td><td>Smallest target in the product; arrow keys are the accessible path</td></tr>
   </table>
-  <div class="note"><b>36px floor</b> on anything that is not a segment slot. Compact means less padding between targets, never smaller targets — the panel shrank ~80px in height while every hit box grew or held.</div>
+  <div class="note"><b>36px floor</b> on anything that is not a segment slot or a titlebar control — a titlebar control is wider than it is tall by convention, and close reaches the window corner regardless. Compact means less padding between targets, never smaller targets — the panel shrank ~80px in height while every hit box grew or held.</div>
 
   <h2>Radii</h2>
   <div class="radii">

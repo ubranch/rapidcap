@@ -97,11 +97,8 @@
       <div class="stop"><span class="num">8</span>Audio chip</div>
       <div class="stop"><span class="num">9</span>Output folder chip</div>
       <div class="stop"><span class="num skip">—</span><span style="color:var(--text-muted)">Status well — never focusable</span></div>
-      <div class="stop"><span class="num">10</span>Keep on top</div>
-      <div class="stop"><span class="num">11</span>Recent captures</div>
-      <div class="stop"><span class="num">12</span>Settings</div>
-      <div class="stop"><span class="num">13</span>Minimize</div>
-      <div class="stop"><span class="num">14</span>Close</div>
+      <div class="stop"><span class="num">10</span>Minimize</div>
+      <div class="stop"><span class="num">11</span>Close</div>
     </div>
     <div class="cap">Work first, chrome last. Someone opening the panel wants to capture something, so the first Tab lands on Region — not on a titlebar button they will never press. The status well is read-only and is skipped; a screen reader still announces it through <code>role=Status</code> without focus ever going there.</div>
   </div>
@@ -141,14 +138,16 @@
     <tr><td>Audio chip</td><td><code>Button</code></td><td>"System audio, off", <code>aria_haspopup=menu</code></td></tr>
     <tr><td>Status well</td><td><code>Status</code></td><td>Live region — announces on change, never takes focus</td></tr>
     <tr><td>Error bar</td><td><code>Alert</code></td><td>Announces immediately, interrupts</td></tr>
-    <tr><td>Keep on top</td><td><code>Button</code></td><td><code>aria_pressed</code> true or false</td></tr>
+    <tr><td>Minimize · Close</td><td><code>Button</code></td><td>"Minimize to tray" and "Close". Neither holds state</td></tr>
   </table>
 
   <div class="note">
     <b>What exists in code already:</b> <code>window.rs</code> wires <code>Tab</code> / <code>Shift+Tab</code> through
     <code>focus_next</code> and <code>focus_prev</code>, every control has a stable <code>accessibility_id</code>, and
     the status line carries <code>role=Status</code>. Missing: the focus-visible spacer on filled controls, arrow keys
-    in the segmented control, <code>Home</code> / <code>End</code>, and every Escape route except the overlay's.
+    in the segmented control, <code>Home</code> / <code>End</code>, every Escape route except the overlay's, and the
+    titlebar buttons — <code>window_button</code> is not <code>focusable()</code>, so stops 10 and 11 are unreachable
+    by keyboard today. The three countdown slots are also three separate stops rather than the one this specifies.
   </div>
 </body>
 </html>

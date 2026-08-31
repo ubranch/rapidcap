@@ -22,19 +22,18 @@
   .cases { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
   .caption { font-size:11px; color:var(--text-muted); margin-top:10px; max-width:400px; line-height:1.55; }
 
-  .panel { width:400px; background:var(--bg-body); border-radius:12px; overflow:hidden;
+  .panel { width:400px; background:var(--bg-body); overflow:hidden;
            box-shadow:0 18px 48px rgba(0,0,0,.6); }
-  .tb { height:44px; background:var(--bg-titlebar); display:flex; align-items:center; }
-  .tb-drag { flex:1; height:100%; display:flex; align-items:center; gap:8px; padding-left:6px; }
-  .tb-title { font-size:12px; font-weight:500; color:var(--text-label); }
-  .tb-actions { display:flex; align-items:center; }
-  .act { width:36px; height:36px; border-radius:8px; border:none; background:none; color:var(--text-muted);
-         display:flex; align-items:center; justify-content:center; cursor:pointer; margin-left:4px; }
-  .act:hover { background:var(--bg-tb-hover); color:var(--text-primary); }
-  .win { width:46px; height:44px; border:none; background:none; color:var(--text-muted);
+  .tb { height:30px; background:var(--bg-titlebar); display:flex; align-items:center; }
+  /* Back sits flush to the left edge, the way close sits flush to the right. */
+  .tb-drag { flex:1; height:100%; display:flex; align-items:center; gap:8px; }
+  .tb-title { font-size:12px; font-weight:500; color:var(--text-muted); }
+  /* no trailing padding on this cluster — the close button must reach the window edge */
+  .tb-actions { display:flex; align-items:center; gap:8px; }
+  /* Back and Open folder are titlebar controls too, so they take the same box. */
+  .win { width:34px; height:30px; border:none; background:none; color:var(--text-muted);
          display:flex; align-items:center; justify-content:center; cursor:pointer; }
   .win:hover { background:var(--bg-tb-hover); color:var(--text-primary); }
-  .win.close { border-top-right-radius:12px; }
   .win.close:hover { background:var(--danger); color:#fff; }
   .body { padding:12px; display:flex; flex-direction:column; gap:var(--gap); }
 
@@ -94,20 +93,20 @@
 </head>
 <body>
   <h1>Gallery &amp; first run</h1>
-  <p class="lede">The titlebar's Recent captures button currently leads nowhere. This is what it opens — and what it looks like the first time, when the folder is empty.</p>
+  <p class="lede"><b>Not built yet.</b> There is no way into this screen from the app today — the titlebar carries minimize and close only. This is what it should look like once something opens it, and what it looks like the first time, when the folder is empty.</p>
 
   <div class="cases">
     <div>
       <div class="panel">
         <div class="tb">
           <div class="tb-drag">
-            <button class="act" title="Back"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <button class="win" title="Back"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>
             <span class="tb-title">Recent captures</span>
           </div>
           <div class="tb-actions">
-            <button class="act" title="Open output folder"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
-            <button class="win"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
-            <button class="win close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+            <button class="win" title="Open output folder"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+            <button class="win"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
+            <button class="win close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
           </div>
         </div>
 
@@ -166,13 +165,13 @@
       <div class="panel">
         <div class="tb">
           <div class="tb-drag">
-            <button class="act"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>
+            <button class="win"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15 5l-7 7 7 7"/></svg></button>
             <span class="tb-title">Recent captures</span>
           </div>
           <div class="tb-actions">
-            <button class="act"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
-            <button class="win"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
-            <button class="win close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+            <button class="win"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+            <button class="win"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button>
+            <button class="win close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
           </div>
         </div>
         <div class="body">

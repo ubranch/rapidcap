@@ -6,8 +6,8 @@
 <title>RapidCap · Titlebar</title>
 <style>
   :root {
-    --bg-body:#111111; --bg-titlebar:#1C1C1C; --bg-card:#1C1C1C; --bg-hover:#2A2A2A;
-    --border-card:#333333; --border-divider:#3A3A3A;
+    --bg-body:#111111; --bg-titlebar:#1C1C1C; --bg-card:#1C1C1C; --bg-titlebar-hover:#2A2A2A;
+    --border-card:#333333;
     --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-muted:#8A8A8A;
     --accent:#3478F6; --danger:#C92A2A;
     --font:-apple-system,"SF Pro Text","Segoe UI Variable Text","Segoe UI",Inter,system-ui,sans-serif;
@@ -20,41 +20,28 @@
        color:var(--text-muted); margin:28px 0 10px; }
   code { font-family:"Cascadia Mono",Consolas,ui-monospace,monospace; font-size:11px; color:var(--text-label); }
   .caption { font-size:11px; color:var(--text-muted); margin-top:9px; line-height:1.55; max-width:440px; }
-  .frame { width:400px; border-radius:12px 12px 0 0; overflow:hidden; box-shadow:0 14px 36px rgba(0,0,0,.55); }
+  /* Square, because the panel asks DWM for DWMWCP_DONOTROUND. See the last note. */
+  .frame { width:400px; overflow:hidden; box-shadow:0 14px 36px rgba(0,0,0,.55); }
   .under { height:56px; background:var(--bg-body); }
   .cols { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
 
   /* ---------- titlebar ---------- */
-  .tb { height:44px; background:var(--bg-titlebar); display:flex; align-items:center; }
-  .tb-drag { flex:1; height:100%; display:flex; align-items:center; gap:8px; padding-left:10px; cursor:default; }
+  .tb { height:30px; background:var(--bg-titlebar); display:flex; align-items:center; }
+  .tb-drag { flex:1; height:100%; display:flex; align-items:center; gap:8px; padding-left:9px; cursor:default; }
   .tb-title { font-size:12px; font-weight:500; color:var(--text-muted); letter-spacing:.01em; }
-  /* no padding on this cluster — the close button must reach the window edge */
-  .tb-actions { display:flex; align-items:center; gap:0; }
-  .tb-sep { width:1px; height:20px; background:var(--border-divider); margin:0 4px; }
+  /* no trailing padding on this cluster — the close button must reach the window edge */
+  .tb-actions { display:flex; align-items:center; gap:8px; }
 
-  /* app action — 36 x 36 hit box, rounded hover */
-  .act {
-    width:36px; height:36px; border-radius:8px; border:none; background:none; color:var(--text-muted);
-    display:flex; align-items:center; justify-content:center; cursor:pointer;
-  }
-  /* 4px between buttons — same as the 4px above and below a 36px button in a 44px bar */
-  .act:first-child { margin-left:4px; }
-  .act + .act { margin-left:4px; }
-  .hit + .hit .act { margin-left:4px; }
-  .act:hover { background:var(--bg-hover); color:var(--text-primary); }
-  .act[aria-pressed="true"] { background:rgba(52,120,246,.18); color:#8FB6FB; }
-
-  /* window control — 46 x 44 full-bleed, flush to each other and to the window edge */
+  /* window control — 34 x 30, the full height of the bar, no radius */
   .win {
-    width:46px; height:44px; border:none; background:none; color:var(--text-muted);
+    width:34px; height:30px; padding:0; border:none; background:none; color:var(--text-muted);
     display:flex; align-items:center; justify-content:center; cursor:pointer;
   }
-  .win:hover { background:var(--bg-hover); color:var(--text-primary); }
-  .win.close { border-top-right-radius:12px; }
+  .win:hover { background:var(--bg-titlebar-hover); color:var(--text-primary); }
   .win.close:hover { background:var(--danger); color:#FFFFFF; }
 
   .hit { position:relative; }
-  .hit::after { content:""; position:absolute; inset:0; outline:1px dashed rgba(52,120,246,.55); border-radius:8px; }
+  .hit::after { content:""; position:absolute; inset:0; outline:1px dashed rgba(52,120,246,.55); }
   .old { height:48px; background:var(--bg-titlebar); display:flex; align-items:center;
          justify-content:space-between; padding:0 12px 0 14px; }
   .old span { color:#7A7A7A; display:flex; cursor:pointer; }
@@ -71,8 +58,8 @@
 </head>
 <body>
   <h1>Titlebar</h1>
-  <p class="lede">44px tall. Two clusters with different rules: <b>app actions</b> are 36 × 36 rounded buttons on a <code>4px</code> rhythm, <b>window controls</b> are 46 × 44 full-bleed squares with no gap at all. Everything not a button is drag surface.</p>
-  <p class="lede">The 4px comes from the bar itself — a 36px button in a 44px bar leaves 4px above and below, so 4px between buttons makes the spacing square. App actions read as a group of tiles instead of a crowded strip; window controls stay flush because that is the platform convention and it keeps close on the corner.</p>
+  <p class="lede">30px tall. Identity on the left, two window controls on the right, and every pixel that is not a control is drag surface. There are no app actions in the bar — the panel body carries all of those.</p>
+  <p class="lede">The numbers are cumcord's, taken off its source rather than measured off its pixels: a 30px bar, 34 × 30 window controls, 13px glyphs, a 9px leading inset, and 8px between everything. One gap value for the whole bar, so the space between the mark and the wordmark is the same 8px as the space between minimize and close. Matching a native bar by eye is what produced the 22px strip this replaces.</p>
 
   <h2>Redesigned</h2>
   <div class="cols">
@@ -80,52 +67,38 @@
       <div class="frame">
         <div class="tb">
           <div class="tb-drag" title="Drag to move">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#8A8A8A"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#8A8A8A"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/></svg>
             <span class="tb-title">RapidCap</span>
           </div>
           <div class="tb-actions">
-            <button class="act" aria-pressed="true" title="Keep on top">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/></svg>
-            </button>
-            <button class="act" title="Recent captures">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 5-5 4 4 3-2 4 4"/></svg>
-            </button>
-            <button class="act" title="Settings">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.5 15H3a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 4.3 8.2l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 9.9 4.3V4a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7h.3a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.2 1z"/></svg>
-            </button>
-            <div class="tb-sep"></div>
             <button class="win" title="Minimize to tray">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg>
             </button>
             <button class="win close" title="Close">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg>
             </button>
           </div>
         </div>
         <div class="under"></div>
       </div>
-      <div class="caption">Left cluster is the drag handle and carries identity — mark + 12px title. The gap between it and the first button is the grab zone, so the window is easy to move without hunting for empty pixels.</div>
+      <div class="caption">Left cluster is the drag handle and carries identity — a 13px mark and a 12px title, both at <code>#8A8A8A</code>. Everything from the wordmark to the first button is grab zone, so the window is easy to move without hunting for empty pixels.</div>
     </div>
 
     <div>
       <div class="frame">
         <div class="tb">
           <div class="tb-drag">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#8A8A8A"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:#8A8A8A"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/></svg>
             <span class="tb-title">RapidCap</span>
           </div>
           <div class="tb-actions">
-            <span class="hit"><button class="act" aria-pressed="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 4h6l-1 6 4 3v2H6v-2l4-3z"/><path d="M12 15v5"/></svg></button></span>
-            <span class="hit"><button class="act"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 17 5-5 4 4 3-2 4 4"/></svg></button></span>
-            <span class="hit"><button class="act"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4m0-12.8-1.4 1.4m-10 10-1.4 1.4"/></svg></button></span>
-            <div class="tb-sep"></div>
-            <span class="hit"><button class="win"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button></span>
-            <span class="hit"><button class="win close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button></span>
+            <span class="hit"><button class="win"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14"/></svg></button></span>
+            <span class="hit"><button class="win close"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6 6 18"/></svg></button></span>
           </div>
         </div>
         <div class="under"></div>
       </div>
-      <div class="caption">Hit boxes shown. No target is under 36 × 36; window controls run the full 44px height so the top screen edge is a valid click, the way Windows users expect.</div>
+      <div class="caption">Hit boxes shown. These two are the only targets in the app that sit under the 36px floor — a titlebar control is wider than it is tall by convention. Each one runs the full height of the bar, so there is no dead strip above or below it and close still reaches the window corner.</div>
     </div>
   </div>
 
@@ -146,30 +119,37 @@
 
   <table style="margin-top:16px">
     <tr><th>Problem</th><th>Fix</th></tr>
-    <tr><td class="bad">Hit box was the 17px glyph itself — no padding, no hover surface</td><td class="good">36 × 36 button with an <code>#2A2A2A</code> hover pill; 46 × 44 for window controls</td></tr>
-    <tr><td class="bad">Close sat 14px from Minimize, same weight, same colour — misclicks quit the app</td><td class="good">1px divider + 6px margin splits app actions from window controls; close hovers <code>#C92A2A</code></td></tr>
-    <tr><td class="bad">Six undifferentiated icons, two of them duplicating body controls</td><td class="good">Three app actions kept — Keep on top, Recent captures, Settings. Output folder already lives as a row; Help moves into Settings.</td></tr>
-    <tr><td class="bad">Orphan <code>?</code> on the left, nothing to grab, no window identity</td><td class="good">Mark + title on the left, and the whole strip minus the buttons is drag surface</td></tr>
+    <tr><td class="bad">Hit box was the 17px glyph itself — no padding, no hover surface</td><td class="good">34 × 30 buttons that fill the height of the bar, with a <code>#2A2A2A</code> hover fill</td></tr>
+    <tr><td class="bad">Close sat 14px from Minimize, same weight, same colour — misclicks quit the app</td><td class="good">Colour carries the distinction: close hovers <code>#C92A2A</code>, minimize hovers the neutral <code>#2A2A2A</code>. The gap between them is the bar's own 8px, not a special case</td></tr>
+    <tr><td class="bad">Six undifferentiated icons, two of them duplicating body controls</td><td class="good">All six dropped. The bar holds minimize and close only — capture actions, the output folder and settings live in the panel body, where they can be labelled</td></tr>
+    <tr><td class="bad">Orphan <code>?</code> on the left, nothing to grab, no window identity</td><td class="good">Mark and wordmark on the left, and the whole strip minus the two buttons is drag surface</td></tr>
     <tr><td class="bad">Icons at <code>#7A7A7A</code> on <code>#1C1C1C</code> — 2.9:1, unreadable at rest</td><td class="good"><code>#8A8A8A</code> at rest (3.6:1), <code>#FCFCFC</code> on hover</td></tr>
   </table>
 
   <div class="note" style="border-color:var(--danger)">
-    <b>The close button owns the corner.</b> No padding on the control cluster, no gap between minimize and close, and
-    <code>border-top-right-radius:12px</code> on close so its hover fill follows the window corner instead of cutting a
-    square out of it. A gap there breaks Fitts's law twice over — the top-right corner is an infinitely large target
-    when the button reaches it, and a 6px miss strip when it does not. App actions keep their 2px rhythm; window
-    controls are flush.
+    <b>The close button owns the corner.</b> No trailing padding on the control cluster and no radius on the button,
+    so its hover fill runs into the top-right corner of the window instead of leaving a miss strip beside it. The
+    panel asks DWM for <code>DWMWCP_DONOTROUND</code>, so the corner really is square and the fill really does reach
+    it — a rounded window would cut a notch out of that same fill.
   </div>
 
   <div class="note">
-    <b>Keep on top</b> is a toggle, so it shows pressed state — accent tint at 18%, not a border, because a border on a
-    36px square inside a 44px bar reads as a misalignment. It is the only titlebar button that holds state.
+    <b>Nothing in the bar holds state.</b> Both controls are momentary. Any toggle — keep on top, a capture mode, a
+    format — belongs in the panel body, where there is room to label it. A 34 × 30 square with a tint on it is not
+    something a state can be read off.
   </div>
 
   <div class="note">
-    Implementation on Windows: the drag region is the titlebar element minus <code>.tb-actions</code>. In GPUI that is
-    a <code>titlebar: None</code> window plus a hit-test region; the buttons must sit above it in z-order or the drag
-    swallows their clicks.
+    <b>Implementation on Windows.</b> The window is opened with <code>appears_transparent: true</code> rather than
+    <code>titlebar: None</code>. Both hide the system bar on paper, but on Windows the latter produces a window that
+    never becomes visible. The strip does not answer <code>WM_NCHITTEST</code> with <code>HTCAPTION</code> either:
+    that hands the drag to <code>DefWindowProc</code>'s modal move loop, and something in this window cancels it —
+    measured, the panel tracked the cursor the whole way and then snapped back to its starting rect the instant the
+    button came up. GPUI's own <code>Window::start_window_move</code> is implemented for Wayland and X11 only. So
+    mouse-down on the strip records the cursor's offset inside the window, and a move listener calls
+    <code>SetWindowPos</code> to keep the panel under that same point until the button comes up. That listener has to
+    be window-level: a strip-local one stops hearing moves the moment the pointer outruns the strip, which is the
+    drag catching partway through a gesture.
   </div>
 </body>
 </html>
