@@ -8,7 +8,7 @@ use std::{
 use core_graphics::display::CGDisplay;
 
 use super::RecordingError;
-use crate::{CaptureKind, PhysicalRegion, Settings};
+use crate::{CaptureKind, PhysicalRegion, Settings, display_scale};
 
 pub(super) const FFMPEG_EXE: &str = "ffmpeg";
 
@@ -44,14 +44,21 @@ impl CaptureSource {
     pub(super) fn resolve(region: &PhysicalRegion) -> Result<Self, RecordingError> {
         let displays = CGDisplay::active_displays()
             .map_err(|error| RecordingError(format!("enumerate displays failed: {error}")))?;
+        // AVFoundation hands FFmpeg the display at its native resolution, so
+        // the crop filter counts pixels. `CGDisplay::bounds` counts points, and
+        // on a Retina display an unconverted crop would be half the size the
+        // user selected, in the top-left quarter of what they picked.
+        let scale = f64::from(
+            display_scale().ok_or_else(|| RecordingError("no display to record from".into()))?,
+        );
         let mut best: Option<(usize, PhysicalRegion, PhysicalRegion)> = None;
         for (screen_index, id) in displays.into_iter().enumerate() {
             let rect = CGDisplay::new(id).bounds();
             let bounds = PhysicalRegion {
-                x: rect.origin.x as i32,
-                y: rect.origin.y as i32,
-                width: rect.size.width as u32,
-                height: rect.size.height as u32,
+                x: (rect.origin.x * scale) as i32,
+                y: (rect.origin.y * scale) as i32,
+                width: (rect.size.width * scale) as u32,
+                height: (rect.size.height * scale) as u32,
             };
             let Some(crop) = region.intersection(bounds.clone()) else {
                 continue;

@@ -5,12 +5,14 @@
 //! remembered panel window, a lazily built recording frame, and free functions
 //! that no-op when the window they need is not up yet.
 //!
-//! Two things differ in every function and are worth reading once rather than
+//! Three things differ in every function and are worth reading once rather than
 //! rediscovering. AppKit is main-thread-only, so each entry point takes a
-//! `MainThreadMarker` and gives up without one. And AppKit measures y upwards
-//! from the bottom-left of the primary screen while capture rectangles measure
-//! it downwards from the top-left, so anything crossing that boundary goes
-//! through `flip_y`.
+//! `MainThreadMarker` and gives up without one. AppKit measures y upwards from
+//! the bottom-left of the primary screen while capture rectangles measure it
+//! downwards from the top-left, so anything crossing that boundary goes through
+//! `flip_y`. And macOS measures every rectangle in points while a
+//! `PhysicalRegion` is device pixels, so the same boundary also goes through
+//! `display_scale` - together, that is `appkit_frame`.
 
 use std::{
     ffi::c_void,
@@ -37,7 +39,7 @@ use objc2_core_graphics::{
     kCGWindowBounds, kCGWindowLayer, kCGWindowNumber, kCGWindowOwnerName, kCGWindowOwnerPID,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
-use rapidcap_capture::{CaptureTarget, PhysicalRegion};
+use rapidcap_capture::{CaptureTarget, PhysicalRegion, display_scale};
 
 use gpui::DisplayId;
 
@@ -80,6 +82,22 @@ fn flip_y(mtm: MainThreadMarker, top: f64, height: f64) -> f64 {
         .map(|screen| screen.frame().size.height)
         .unwrap_or_default();
     primary - top - height
+}
+
+/// A capture rectangle as an AppKit window frame: pixels to points, and
+/// top-left origin to bottom-left.
+///
+/// Capture rectangles are device pixels and AppKit frames are points, so
+/// everything crossing that boundary goes through [`display_scale`] as well as
+/// [`flip_y`]. `None` means there is no display to read a scale off, which is
+/// also no place to put a window.
+fn appkit_frame(mtm: MainThreadMarker, x: f64, y: f64, width: f64, height: f64) -> Option<NSRect> {
+    let scale = f64::from(display_scale()?);
+    let height = height / scale;
+    Some(NSRect::new(
+        NSPoint::new(x / scale, flip_y(mtm, y / scale, height)),
+        NSSize::new(width / scale, height),
+    ))
 }
 
 /// `NSFloatingWindowLevel`, which AppKit spells as a plain integer rather than
@@ -222,14 +240,16 @@ pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
     let Some(window) = view_window(handle, mtm) else {
         return;
     };
-    let height = f64::from(height);
-    window.setFrame_display(
-        NSRect::new(
-            NSPoint::new(f64::from(x), flip_y(mtm, f64::from(y), height)),
-            NSSize::new(f64::from(width), height),
-        ),
-        true,
-    );
+    let Some(frame) = appkit_frame(
+        mtm,
+        f64::from(x),
+        f64::from(y),
+        f64::from(width),
+        f64::from(height),
+    ) else {
+        return;
+    };
+    window.setFrame_display(frame, true);
 }
 
 /// The recording frame: one borderless window, hollow so the recorded content
@@ -284,17 +304,16 @@ pub fn show_recording_frame(region: &PhysicalRegion, thickness: u32) {
         return;
     };
     let window = frame_window(mtm);
-    let height = f64::from(region.height);
-    window.setFrame_display(
-        NSRect::new(
-            NSPoint::new(
-                f64::from(region.x),
-                flip_y(mtm, f64::from(region.y), height),
-            ),
-            NSSize::new(f64::from(region.width), height),
-        ),
-        false,
-    );
+    let Some(frame) = appkit_frame(
+        mtm,
+        f64::from(region.x),
+        f64::from(region.y),
+        f64::from(region.width),
+        f64::from(region.height),
+    ) else {
+        return;
+    };
+    window.setFrame_display(frame, false);
     // The hollow middle is a layer border rather than a cut-out shape: it is
     // the effect the Windows sibling gets from `SetWindowRgn` with `RGN_DIFF`,
     // without needing a custom `NSView` subclass to draw it.
@@ -326,6 +345,12 @@ pub fn hide_recording_frame() {
 /// is why a missing name is an error rather than a skipped entry.
 pub fn window_target_at(point: (i32, i32)) -> anyhow::Result<CaptureTarget> {
     let ours = i64::from(std::process::id());
+    // The cursor arrives in capture pixels and the window list answers in
+    // points, so the hit test happens in points and the rectangle that comes
+    // back is scaled up. Skipping this drew the highlight at half the size of
+    // the window it was tracking, and picked the wrong window entirely once the
+    // cursor was past the middle of the screen.
+    let scale = f64::from(display_scale().context("read the display backing scale")?);
     let windows = CGWindowListCopyWindowInfo(
         CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
         0,
@@ -346,7 +371,7 @@ pub fn window_target_at(point: (i32, i32)) -> anyhow::Result<CaptureTarget> {
         let Some(bounds) = bounds(entry) else {
             continue;
         };
-        let (x, y) = (f64::from(point.0), f64::from(point.1));
+        let (x, y) = (f64::from(point.0) / scale, f64::from(point.1) / scale);
         if x < bounds.origin.x
             || x >= bounds.origin.x + bounds.size.width
             || y < bounds.origin.y
@@ -357,10 +382,10 @@ pub fn window_target_at(point: (i32, i32)) -> anyhow::Result<CaptureTarget> {
         return Ok(CaptureTarget::Window {
             hwnd: number(entry, unsafe { kCGWindowNumber }).unwrap_or_default() as isize,
             region: PhysicalRegion {
-                x: bounds.origin.x as i32,
-                y: bounds.origin.y as i32,
-                width: bounds.size.width as u32,
-                height: bounds.size.height as u32,
+                x: (bounds.origin.x * scale) as i32,
+                y: (bounds.origin.y * scale) as i32,
+                width: (bounds.size.width * scale) as u32,
+                height: (bounds.size.height * scale) as u32,
             },
             process_name: string(entry, unsafe { kCGWindowOwnerName })
                 .context("read window owner name - grant RapidCap Screen Recording permission")?,
@@ -390,8 +415,9 @@ fn string(entry: &CFDictionary, key: &CFString) -> Option<String> {
 }
 
 /// `kCGWindowBounds` is a rectangle serialised as a dictionary. It comes back
-/// in top-left screen coordinates, which is what `PhysicalRegion` wants, so
-/// this is one of the few places that does not flip.
+/// in top-left screen coordinates, the same way round as `PhysicalRegion`, so
+/// this is one of the few places that does not flip - but it is in points, so
+/// the caller still scales it.
 fn bounds(entry: &CFDictionary) -> Option<CGRect> {
     let value = value(entry, unsafe { kCGWindowBounds })?;
     let mut rect = CGRect::default();
@@ -408,9 +434,10 @@ fn bounds(entry: &CFDictionary) -> Option<CGRect> {
 
 /// The display under the cursor, as a GPUI id and a capture rectangle.
 ///
-/// Nothing here needs converting: GPUI's macOS `DisplayId` is a
-/// `CGDirectDisplayID`, and `CGDisplayBounds` reports in the same global
-/// top-left space `PhysicalRegion` uses.
+/// The id needs no converting - GPUI's macOS `DisplayId` is a
+/// `CGDirectDisplayID` - and `CGDisplayBounds` is already the same global
+/// top-left space `PhysicalRegion` uses, just measured in points rather than
+/// pixels.
 pub fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
     // A synthesised event reports the cursor in that same top-left space.
     // `NSEvent::mouseLocation` would come back bottom-left and relative to the
@@ -432,13 +459,14 @@ pub fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
         anyhow::bail!("the cursor is not on any display");
     }
     let bounds = CGDisplayBounds(display);
+    let scale = f64::from(display_scale().context("read the display backing scale")?);
     Ok((
         DisplayId::new(u64::from(display)),
         PhysicalRegion {
-            x: bounds.origin.x as i32,
-            y: bounds.origin.y as i32,
-            width: bounds.size.width as u32,
-            height: bounds.size.height as u32,
+            x: (bounds.origin.x * scale) as i32,
+            y: (bounds.origin.y * scale) as i32,
+            width: (bounds.size.width * scale) as u32,
+            height: (bounds.size.height * scale) as u32,
         },
     ))
 }
