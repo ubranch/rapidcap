@@ -61,10 +61,9 @@ unsafe extern "C" {
 /// way. Asking anyway is what puts the prompt on screen the first time, and the
 /// next attempt goes through once the box is ticked.
 ///
-/// RapidCap is signed ad hoc, so its code hash changes with every build and
-/// macOS treats each new build as a different application that has to be
-/// granted again. Until the app ships with a stable signing identity this will
-/// fire after every update rather than only once.
+/// A bundle signed ad hoc has to be granted again after every build, because
+/// the requirement TCC stores for it is the code hash. One signed with a
+/// certificate is granted once; scripts/macos-signing-identity.sh sets that up.
 pub fn ensure_screen_access() -> Result<(), CaptureError> {
     // SAFETY: neither call takes an argument or returns anything to free.
     if unsafe { CGPreflightScreenCaptureAccess() } {
@@ -72,8 +71,12 @@ pub fn ensure_screen_access() -> Result<(), CaptureError> {
     }
     unsafe { CGRequestScreenCaptureAccess() };
     Err(CaptureError(
-        "RapidCap has no Screen Recording permission - allow it in System Settings > Privacy &          Security > Screen & System Audio Recording, then try again"
-            .into(),
+        concat!(
+            "RapidCap has no Screen Recording permission - allow it in ",
+            "System Settings > Privacy & Security > Screen & System Audio ",
+            "Recording, then try again",
+        )
+        .into(),
     ))
 }
 
