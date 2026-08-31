@@ -4,7 +4,7 @@ use std::{
     fs,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command},
 };
 
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
@@ -20,6 +20,10 @@ pub(super) const EXTRA_SEARCH_DIRS: &[&str] = &[];
 
 /// FFmpeg is a console subsystem program, so without this a black window blinks
 /// up over whatever is being recorded, in the first frames of the recording.
+/// Nothing to add: FFmpeg reads the "q" off its stdin pipe here, and Windows
+/// has no signal that asks a process to finish rather than stopping it dead.
+pub(super) fn request_stop(_child: &Child) {}
+
 pub(super) fn hide_console(command: &mut Command) {
     command.creation_flags(0x0800_0000);
 }

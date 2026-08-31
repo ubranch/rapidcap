@@ -135,13 +135,14 @@ impl RecordingSession {
         let Some(mut child) = self.child.take() else {
             return Ok(());
         };
-        if child.try_wait().map_err(recording_error)?.is_none()
-            && let Some(mut stdin) = child.stdin.take()
-        {
-            let _ = stdin.write_all(
-                b"q
+        if child.try_wait().map_err(recording_error)?.is_none() {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(
+                    b"q
 ",
-            );
+                );
+            }
+            platform::request_stop(&child);
         }
         let deadline = Instant::now() + STOP_TIMEOUT;
         let path = self.segments.last().cloned().unwrap_or_default();

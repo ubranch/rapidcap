@@ -2,7 +2,7 @@
 
 use std::{
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command},
 };
 
 use core_graphics::display::CGDisplay;
@@ -26,6 +26,22 @@ pub(super) const EXTRA_SEARCH_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local
 /// FFmpeg spawned from a bundle never gets a console to hide, so unlike the
 /// Windows backend there is nothing to suppress here.
 pub(super) fn hide_console(_command: &mut Command) {}
+
+/// Interrupt, the way Ctrl-C in a terminal does.
+///
+/// The "q" on stdin that stops FFmpeg everywhere else does not reliably reach
+/// it here: an AVFoundation capture session parks the main thread in a run
+/// loop, and the keyboard poll that would read the "q" runs on that thread, so
+/// a take could sit out the whole stop timeout and be killed with no trailer.
+/// `SIGINT` is the documented second door - FFmpeg's handler stops the muxer
+/// and writes the trailer exactly as "q" would.
+pub(super) fn request_stop(child: &Child) {
+    // SAFETY: `kill` on a pid this process owns and has not yet reaped. The
+    // child is still borrowed here, so the pid cannot have been recycled.
+    unsafe {
+        libc::kill(child.id() as libc::pid_t, libc::SIGINT);
+    }
+}
 
 /// macOS has no equivalent of scoop's shim files - a `ffmpeg` found on PATH is
 /// already the real binary, or a symlink the kernel resolves for us.
