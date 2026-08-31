@@ -24,6 +24,8 @@ use rapidcap_capture::{
     SettingsStore, capture_and_save, write_clipboard, write_clipboard_file,
 };
 
+#[cfg(target_os = "macos")]
+use crate::window::close_on_exit_request;
 use crate::{
     controller::AppController,
     icons::IconAssets,
@@ -34,6 +36,37 @@ use crate::{
     },
     window::{key_bindings, open_main_window},
 };
+
+/// The macOS menu bar, which exists only so Command-W and Command-Q work.
+///
+/// AppKit gives an application's main menu first refusal on every Command
+/// chord, before the key window is offered the event. A GPUI key binding for
+/// `cmd-q` alone therefore never fires - the menu swallows the chord and finds
+/// nothing to run - and an app with no menu at all cannot be quit or hidden
+/// from the keyboard, which is what happened here. Naming the two actions in a
+/// menu is what wires the chords up, and it also puts them somewhere a user can
+/// find them.
+///
+/// Windows has no such menu and gets its close from Alt+F4, so this is
+/// macOS-only rather than a shared surface with an empty implementation.
+#[cfg(target_os = "macos")]
+fn install_app_menu(cx: &mut App, controller: &gpui::Entity<AppController>) {
+    cx.on_action(|_: &window::HidePanelAction, _cx| hide_main_window());
+    let quit = controller.clone();
+    cx.on_action(move |_: &window::QuitAction, cx| close_on_exit_request(&quit, cx));
+    cx.set_menus([gpui::Menu {
+        name: "RapidCap".into(),
+        items: vec![
+            gpui::MenuItem::action("Hide RapidCap", window::HidePanelAction),
+            gpui::MenuItem::separator(),
+            gpui::MenuItem::action("Quit RapidCap", window::QuitAction),
+        ],
+        disabled: false,
+    }]);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn install_app_menu(_cx: &mut App, _controller: &gpui::Entity<AppController>) {}
 
 enum RecordingControl {
     Stop,
@@ -75,6 +108,7 @@ fn main() -> anyhow::Result<()> {
         bindings.extend(overlay_key_bindings());
         cx.bind_keys(bindings);
         let controller = cx.new(|_| AppController::new(settings, paths));
+        install_app_menu(cx, &controller);
         let recording_stop = Arc::new(Mutex::new(None::<mpsc::Sender<RecordingControl>>));
         let recording_hud = Rc::new(RefCell::new(None));
         let main_window =

@@ -29,7 +29,9 @@ actions!(
         GifAction,
         OpenOutputAction,
         TabAction,
-        TabPrevAction
+        TabPrevAction,
+        HidePanelAction,
+        QuitAction
     ]
 );
 
@@ -1039,7 +1041,7 @@ fn window_button(
 /// is in the way: hides it. The recording keeps running and the tray icon keeps
 /// carrying its state, so there is still a way to stop the take and then a way
 /// out.
-fn close_on_exit_request(controller: &Entity<AppController>, cx: &mut App) {
+pub fn close_on_exit_request(controller: &Entity<AppController>, cx: &mut App) {
     if controller.read(cx).state().blocks_exit() {
         hide_main_window();
     } else {
@@ -1268,6 +1270,17 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("space", GifAction, Some("RapidCapGif")),
         KeyBinding::new("enter", OpenOutputAction, Some("RapidCapOutput")),
         KeyBinding::new("space", OpenOutputAction, Some("RapidCapOutput")),
+        // Command-W and Command-Q, the two chords every Mac user tries first.
+        // They are not Windows chords - Alt+F4 is the close there, and it is
+        // handled by the window manager rather than by a binding - so this pair
+        // is macOS-only. The menu bar built from these in `main` is what puts
+        // the shortcut text next to the items and what makes the keys fire at
+        // all: AppKit routes Command chords through the main menu before any
+        // window sees them.
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-w", HidePanelAction, None),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-q", QuitAction, None),
     ]
 }
 
