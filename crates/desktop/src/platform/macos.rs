@@ -30,7 +30,7 @@ use anyhow::Context as _;
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained};
 use objc2_app_kit::{
     NSApplication, NSBackingStoreType, NSColor, NSScreen, NSView, NSVisualEffectBlendingMode,
-    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton,
+    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow,
     NSWindowCollectionBehavior, NSWindowLevel, NSWindowOrderingMode, NSWindowSharingType,
     NSWindowStyleMask,
 };
@@ -142,23 +142,12 @@ pub fn lock_window_size() {
     let size = window.frame().size;
     window.setMinSize(size);
     window.setMaxSize(size);
-
-    // The traffic lights go with them. GPUI asks for a transparent titlebar so
-    // the custom one can draw, but on macOS that leaves the real close,
-    // minimise and zoom buttons floating on top of the mark and the wordmark.
-    // Hiding rather than disabling, because the panel's own two buttons are not
-    // the same actions: minimise sends it to the tray, not the Dock, and close
-    // quits. Leaving a greyed-out set of natives beside them would just be two
-    // sets of controls for one window.
-    for button in [
-        NSWindowButton::CloseButton,
-        NSWindowButton::MiniaturizeButton,
-        NSWindowButton::ZoomButton,
-    ] {
-        if let Some(button) = window.standardWindowButton(button) {
-            button.setHidden(true);
-        }
-    }
+    // Dropping the bit also greys out the zoom button, which is what a
+    // fixed-size window is supposed to look like here. The three buttons stay
+    // visible: they are the panel's window controls on this platform, placed
+    // into our own titlebar by `traffic_light_position`. Hiding them and
+    // drawing a Windows minimise and close on the trailing edge instead is what
+    // made the panel read as a port.
 }
 
 /// Hands the whole drag to AppKit, and reports no grab to follow up on.

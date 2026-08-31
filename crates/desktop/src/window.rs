@@ -780,7 +780,7 @@ impl MainWindow {
                     .flex()
                     .items_center()
                     .gap(theme::u(theme::TITLEBAR_GAP))
-                    .pl(theme::u(theme::TITLEBAR_LEADING))
+                    .pl(theme::u(theme::titlebar_leading()))
                     .text_color(theme::text_muted())
                     .on_mouse_down(
                         MouseButton::Left,
@@ -795,35 +795,55 @@ impl MainWindow {
                             .child("RapidCap"),
                     ),
             )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    // The bar's own gap, which runs between these two as well.
-                    .gap(theme::u(theme::TITLEBAR_GAP))
-                    .child(
-                        window_button(
-                            "titlebar-minimize",
-                            "Minimize to tray",
-                            "RapidCapMinimize",
-                            Icon::Minimize,
-                            false,
-                        )
-                        .on_click(|_, _, _| hide_main_window()),
+            .children(self.window_controls(cx))
+    }
+
+    /// The trailing minimise and close pair, on the platforms that draw their
+    /// own.
+    ///
+    /// macOS does not: its close, minimise and zoom are real AppKit buttons in
+    /// the leading corner, and the panel shows those rather than a second set
+    /// beside them - a hand-drawn imitation is the thing that reads as a ported
+    /// Windows app. Their behaviour comes out right without wiring: the close
+    /// button goes through `on_window_should_close`, which is already the same
+    /// exit path as ours, and minimise means the Dock there the way it means
+    /// the tray here.
+    #[cfg(target_os = "macos")]
+    fn window_controls(&self, _cx: &mut Context<Self>) -> Option<gpui::Div> {
+        None
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn window_controls(&self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        Some(
+            div()
+                .flex()
+                .items_center()
+                // The bar's own gap, which runs between these two as well.
+                .gap(theme::u(theme::TITLEBAR_GAP))
+                .child(
+                    window_button(
+                        "titlebar-minimize",
+                        "Minimize to tray",
+                        "RapidCapMinimize",
+                        Icon::Minimize,
+                        false,
                     )
-                    .child(
-                        window_button(
-                            "titlebar-close",
-                            "Close",
-                            "RapidCapClose",
-                            Icon::Close,
-                            true,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            close_on_exit_request(&this.controller, cx);
-                        })),
-                    ),
-            )
+                    .on_click(|_, _, _| hide_main_window()),
+                )
+                .child(
+                    window_button(
+                        "titlebar-close",
+                        "Close",
+                        "RapidCapClose",
+                        Icon::Close,
+                        true,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        close_on_exit_request(&this.controller, cx);
+                    })),
+                ),
+        )
     }
 }
 
@@ -1270,6 +1290,7 @@ fn status_well(status: String, dot: gpui::Hsla, pulsing: bool) -> impl IntoEleme
 /// The last two stops in the tab order, after the work. Each takes its own
 /// `key_context` rather than sharing one, because Enter on the close button
 /// must not also be Enter on the minimize button sitting beside it.
+#[cfg(not(target_os = "macos"))]
 fn window_button(
     id: &'static str,
     label: &'static str,
@@ -1601,9 +1622,19 @@ pub fn open_main_window(
             // `appears_transparent` hides the system titlebar so the custom one
             // can draw. `titlebar: None` does the same on paper, but on Windows
             // it creates a window that never becomes visible.
+            //
+            // The traffic lights survive that on macOS and are the controls the
+            // panel uses, so they are placed into our own 30px bar rather than
+            // left where AppKit puts them for its 28pt one.
             titlebar: Some(gpui::TitlebarOptions {
                 title: Some("RapidCap".into()),
                 appears_transparent: true,
+                #[cfg(target_os = "macos")]
+                traffic_light_position: Some(gpui::point(
+                    theme::u(theme::TRAFFIC_LIGHT_X),
+                    theme::u(theme::TRAFFIC_LIGHT_Y),
+                )),
+                #[cfg(not(target_os = "macos"))]
                 traffic_light_position: None,
             }),
             window_bounds: Some(WindowBounds::Windowed(bounds)),

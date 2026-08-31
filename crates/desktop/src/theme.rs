@@ -50,6 +50,13 @@ pub fn bg_track() -> Hsla {
     rgb(0x282828).into()
 }
 
+/// Read-only fields: the path and the hotkey. Darker than the body it sits in,
+/// which is what makes a well look cut rather than raised - a fill lighter than
+/// its surround is a button no matter what shadow you put on it.
+pub fn bg_well() -> Hsla {
+    rgb(0x161616).into()
+}
+
 // ---------------------------------------------------------------- borders
 
 /// Outer border on every element. [`BORDER`] pixels, all four sides.
@@ -245,11 +252,33 @@ pub const PANEL_H: f32 = 288.0;
 pub const TITLEBAR_H: f32 = 30.0;
 /// Minimize and close. Wider than they are tall, which is what a titlebar
 /// control is; full bar height so the screen corner stays clickable.
+///
+/// Windows only. macOS has its own controls in the leading corner and the panel
+/// shows the real ones - see [`titlebar_leading`].
+#[cfg(not(target_os = "macos"))]
 pub const WIN_BTN_W: f32 = 34.0;
 /// Mark, wordmark and window-control glyphs. One size, the whole bar.
 pub const TITLEBAR_GLYPH: f32 = 13.0;
 /// Leading inset before the mark.
-pub const TITLEBAR_LEADING: f32 = 9.0;
+///
+/// Windows leaves this corner empty and puts its controls on the trailing edge,
+/// so 9px is the whole inset. macOS owns it: the close, minimise and zoom
+/// buttons are real AppKit views placed at [`TRAFFIC_LIGHT_X`] and span 54px
+/// from there, so the mark starts clear of them instead.
+pub fn titlebar_leading() -> f32 {
+    if cfg!(target_os = "macos") { 72.0 } else { 9.0 }
+}
+/// Leading inset of the macOS traffic lights inside the bar.
+///
+/// Their vertical inset is not a constant because it follows the bar: GPUI
+/// resizes AppKit's titlebar container to the button height plus twice this
+/// number, so `(TITLEBAR_H - 14) / 2` is what centres a 14pt button in a 30px
+/// bar.
+#[cfg(target_os = "macos")]
+pub const TRAFFIC_LIGHT_X: f32 = 10.0;
+/// See [`TRAFFIC_LIGHT_X`].
+#[cfg(target_os = "macos")]
+pub const TRAFFIC_LIGHT_Y: f32 = (TITLEBAR_H - 14.0) / 2.0;
 /// Between the mark and the wordmark, and between the two window controls.
 pub const TITLEBAR_GAP: f32 = 8.0;
 
@@ -355,6 +384,9 @@ pub const TEXT_ROW: f32 = 14.0;
 pub const TEXT_BODY: f32 = 13.0;
 pub const TEXT_SMALL: f32 = 12.0;
 pub const TEXT_MICRO: f32 = 11.0;
+/// Group labels inside menus, uppercased. The smallest size in the system,
+/// and the only one that is never a sentence.
+pub const TEXT_TINY: f32 = 10.0;
 
 #[cfg(test)]
 mod tests {
@@ -371,6 +403,7 @@ mod tests {
             ("bg_hover", bg_hover()),
             ("bg_titlebar_hover", bg_titlebar_hover()),
             ("bg_track", bg_track()),
+            ("bg_well", bg_well()),
             ("bg_pill_off", bg_pill_off()),
             ("border_card", border_card()),
             ("text_primary", text_primary()),
