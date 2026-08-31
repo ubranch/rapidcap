@@ -97,28 +97,28 @@
   <p class="sub">Cards: Menus, Form controls, Settings. The first phase where <code>Settings</code> is written from the UI.</p>
   <table>
     <tr><th>Work</th><th>Files</th><th></th></tr>
-    <tr><td>Menu primitive — 212px, 32px items, tick column, group headers, empty state</td><td class="file">crates/desktop/src/menu.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>FPS menus, writing <code>video.*</code> and <code>gif.*</code> — <b>needs a trigger designed first</b>, the chevrons that were going to open them are gone and the rates are a read-only header badge</td><td class="file">window.rs · menu.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Audio device menu behind the chip — needs <code>cpal</code> device enumeration</td><td class="file">crates/capture/src/audio.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Form controls: toggle, select, stepper, path field, hotkey field</td><td class="file">crates/desktop/src/controls.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Settings view — 6 sections, <code>SettingsStore::save</code> on every change</td><td class="file">crates/desktop/src/settings_view.rs</td><td><span class="tag t-new">new</span></td></tr>
+    <tr><td>Menu primitive — 212px, 32px items, tick column, group headers, empty state</td><td class="file">crates/desktop/src/menu.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>FPS menus, writing <code>video.fps</code> and <code>gif.fps</code> — the trigger the panel lost is the settings screen’s select, not a header chevron. The panel keeps a read-only <code>30 / 15 FPS</code> badge</td><td class="file">settings_view.rs · menu.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Audio device menu behind the chip. No <code>cpal</code>: FFmpeg’s <code>dshow -list_devices</code> already enumerates microphones, off-thread, on the menu’s first open. System audio is a pair of rows rather than a list of speakers — <code>virtual-audio-capturer</code> follows the default playback device, so a row per speaker would be a row nothing can record from</td><td class="file">window.rs · recording/windows.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Form controls: toggle, select, stepper, path field, hotkey field</td><td class="file">crates/desktop/src/controls.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Settings view — 6 sections, <code>SettingsStore::save</code> on every change</td><td class="file">crates/desktop/src/settings_view.rs</td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Surface <code>global-hotkey</code> registration failures — the card’s shortcut pill turns amber and reads <code>Alt+E · taken</code>, and the dead chord is dropped from <code>aria-keyshortcuts</code>. The settings screen’s hotkey list carries the same clash, as an amber ring and a second line under the command name</td><td class="file">platform/mod.rs · <code>unavailable_hotkeys</code></td><td><span class="tag t-done">done</span></td></tr>
   </table>
-  <div class="gate"><b>Done when:</b> changing frame rate in the UI survives a restart, and a hotkey that fails to register says so.</div>
+  <div class="gate"><b>Done:</b> the FPS selects write <code>video.fps</code> and <code>gif.fps</code> through <code>SettingsStore::save</code>, so they survive a restart, and a chord the OS refused is amber on the panel card and on the settings row.</div>
 
   <h2><span class="n">Phase 5</span> — gallery, keyboard, motion</h2>
   <p class="sub">Cards: Gallery &amp; first run, Keyboard &amp; focus, Motion, Content &amp; voice.</p>
   <table>
     <tr><th>Work</th><th>Files</th><th></th></tr>
-    <tr><td>Gallery view — 3-column grid over <code>capture_root</code>, filters, hover actions, empty state</td><td class="file">crates/desktop/src/gallery.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Thumbnail cache at 236px in <code>%LOCALAPPDATA%</code>, generated off-thread</td><td class="file">crates/capture/src/thumbs.rs</td><td><span class="tag t-new">new</span></td></tr>
+    <tr><td>Gallery view — 3-column grid over <code>capture_root</code>, filters, hover actions, empty state</td><td class="file">crates/desktop/src/gallery.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Thumbnail cache at 236px in <code>%LOCALAPPDATA%</code>, generated off-thread. The directory <i>is</i> the index, so there is no schema to migrate and deleting it heals it</td><td class="file">crates/desktop/src/thumbs.rs</td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Tab order, arrow keys in the segmented control, <code>Home</code> / <code>End</code>, every Esc route in the panel. The segmented control is one stop with a <code>RadioGroup</code> track, not three</td><td class="file">window.rs · <code>escape</code>, <code>step_countdown</code>, <code>focus_first</code></td><td><span class="tag t-done">done</span></td></tr>
-    <tr><td>The Menu column of the keyboard table — arrows between items, Esc closes and returns focus to the trigger. Waits on the menu itself</td><td class="file">menu.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Focus-visible spacer on filled controls</td><td class="file">theme.rs · controls.rs</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>The Menu column of the keyboard table — arrows between items, Esc closes and returns focus to the trigger. Arrows skip headers, separators and empty states</td><td class="file">menu.rs · settings_view.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Focus-visible spacer on filled controls — <code>theme::focus_ring</code>, a transparent gap in the host colour so the accent ring never touches the fill</td><td class="file">theme.rs · controls.rs</td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Three animations only: recording pulse, HUD idle fade, saved chip expiry. Built on GPUI's <code>with_animation</code>, which honours the system reduced-motion setting on its own</td><td class="file">motion.rs</td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>File names gain a timestamp: <code>{process}_{YYYY-MM-DD_HH-mm-ss}_{guard}</code></td><td class="file">naming.rs</td><td><span class="tag t-done">done</span></td></tr>
   </table>
-  <div class="gate"><b>Done when:</b> the whole product is reachable with the keyboard alone. The panel already is, and <code>Esc</code> during a recording does nothing — not even minimise, which would leave the HUD as the only way back.</div>
+  <div class="gate"><b>Done:</b> the whole product is reachable with the keyboard alone — panel, settings, menus and gallery, with <code>Esc</code> walking back one layer at a time. <code>Esc</code> during a recording still does nothing, not even minimise, which would leave the HUD as the only way back.</div>
 
   <h2>Bugs found while designing</h2>
   <table>
@@ -136,14 +136,15 @@
 
   <div class="note">
     <b>Phases 1 to 3 are the product.</b> After those, RapidCap looks like the design system, never shows the user a
-    Rust debug string, and tells them when something failed or saved. Phases 4 and 5 are features the app does not
-    have yet — worth building, but nothing in them fixes something broken.
+    Rust debug string, and tells them when something failed or saved. Phases 4 and 5 were the features the app did
+    not have yet — worth building, but nothing in them fixed something broken. All six phases have now landed.
   </div>
   <div class="note" style="border-color:var(--warn)">
-    <b>Test debt to expect.</b> <code>window_size.rs</code> asserts the old 360 × 240 bounds,
-    <code>probe.rs</code> and <code>primary_controls_have_stable_ids</code> pin the current control ids, and
-    <code>recording_boundary_is_four_thin_edges</code> pins a 4px frame. All three break in phases 1 and 2 — update
-    them with the change, not after it.
+    <b>Test debt, as it was paid.</b> <code>window_size.rs</code> asserted the old 360 × 240 bounds and
+    <code>probe.rs</code> with <code>primary_controls_have_stable_ids</code> pinned the old control ids; all of them
+    were updated with the change rather than after it, and still pin something true.
+    <code>recording_boundary_is_four_thin_edges</code> went instead of being updated — it pinned four computed
+    rectangles, and there is only one <code>theme::FRAME</code> to pin now.
   </div>
 </body>
 </html>
