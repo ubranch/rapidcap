@@ -1,11 +1,8 @@
 //! Recording on macOS: AVFoundation into VideoToolbox.
-//!
-//! Pause and resume are a POSIX signal, which is the whole of what ntdll's
-//! NtSuspendProcess buys the Windows backend.
 
 use std::{
     path::{Path, PathBuf},
-    process::{Child, Command},
+    process::Command,
 };
 
 use core_graphics::display::CGDisplay;
@@ -23,26 +20,6 @@ pub(super) fn hide_console(_command: &mut Command) {}
 /// already the real binary, or a symlink the kernel resolves for us.
 pub(super) fn resolve_shim(executable: &Path) -> PathBuf {
     executable.to_owned()
-}
-
-pub(super) fn suspend(child: &Child) -> Result<(), RecordingError> {
-    signal(child, libc::SIGSTOP, "pause")
-}
-
-pub(super) fn resume(child: &Child) -> Result<(), RecordingError> {
-    signal(child, libc::SIGCONT, "resume")
-}
-
-fn signal(child: &Child, signal: libc::c_int, verb: &str) -> Result<(), RecordingError> {
-    // SAFETY: `kill` only reads the pid. The child is still owned by the caller,
-    // so the pid cannot have been reaped and reused underneath this call.
-    if unsafe { libc::kill(child.id() as libc::pid_t, signal) } != 0 {
-        return Err(RecordingError(format!(
-            "{verb} FFmpeg failed: {}",
-            std::io::Error::last_os_error()
-        )));
-    }
-    Ok(())
 }
 
 /// Which AVFoundation screen device FFmpeg is pointed at, and the crop within

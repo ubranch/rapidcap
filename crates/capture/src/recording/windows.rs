@@ -2,52 +2,22 @@
 
 use std::{
     fs,
-    os::windows::io::AsRawHandle,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Child, Command},
+    process::Command,
 };
 
-use windows::Win32::{
-    Foundation::HANDLE,
-    Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1},
-};
+use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
 
 use super::{RecordingError, recording_error};
 use crate::{CaptureKind, PhysicalRegion, Settings};
 
 pub(super) const FFMPEG_EXE: &str = "ffmpeg.exe";
 
-#[link(name = "ntdll")]
-unsafe extern "system" {
-    fn NtSuspendProcess(process: HANDLE) -> i32;
-    fn NtResumeProcess(process: HANDLE) -> i32;
-}
-
 /// FFmpeg is a console subsystem program, so without this a black window blinks
 /// up over whatever is being recorded, in the first frames of the recording.
 pub(super) fn hide_console(command: &mut Command) {
     command.creation_flags(0x0800_0000);
-}
-
-pub(super) fn suspend(child: &Child) -> Result<(), RecordingError> {
-    let status = unsafe { NtSuspendProcess(HANDLE(child.as_raw_handle())) };
-    if status < 0 {
-        return Err(RecordingError(format!(
-            "pause FFmpeg failed: NTSTATUS {status:#x}"
-        )));
-    }
-    Ok(())
-}
-
-pub(super) fn resume(child: &Child) -> Result<(), RecordingError> {
-    let status = unsafe { NtResumeProcess(HANDLE(child.as_raw_handle())) };
-    if status < 0 {
-        return Err(RecordingError(format!(
-            "resume FFmpeg failed: NTSTATUS {status:#x}"
-        )));
-    }
-    Ok(())
 }
 
 pub(super) fn resolve_shim(executable: &Path) -> PathBuf {
@@ -408,5 +378,62 @@ mod tests {
         let stream = String::from_utf8(probe.stdout).unwrap();
         assert!(probe.status.success(), "{stream}");
         assert!(stream.contains("gif"), "{stream}");
+    }
+
+    #[test]
+    #[ignore = "requires interactive desktop, NVENC and FFmpeg"]
+    fn a_paused_recording_is_missing_the_paused_seconds() {
+        // The bug this guards: pause used to suspend the FFmpeg process where
+        // it stood. `ddagrab` generates frames against the wall clock, so on
+        // resume it emitted a duplicate for every frame slot the pause had
+        // covered, and a paused recording came back running its full wall time
+        // with the picture frozen through the middle of it.
+        let temp = tempfile::tempdir().unwrap();
+        let paths = crate::AppPaths::from_roots(
+            temp.path().join("Documents"),
+            temp.path().join("Roaming"),
+            temp.path().join("Local"),
+        );
+        let mut session = RecordingSession::start(
+            CaptureKind::Video,
+            &crate::CaptureTarget::Region(PhysicalRegion {
+                x: 0,
+                y: 0,
+                width: 320,
+                height: 240,
+            }),
+            &Settings::default(),
+            &paths,
+        )
+        .unwrap();
+        std::thread::sleep(Duration::from_secs(2));
+        session.pause().unwrap();
+        std::thread::sleep(Duration::from_secs(4));
+        session.resume().unwrap();
+        std::thread::sleep(Duration::from_secs(2));
+        let output = session.stop().unwrap();
+
+        let probe = Command::new("ffprobe.exe")
+            .args([
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(&output)
+            .output()
+            .unwrap();
+        let text = String::from_utf8(probe.stdout).unwrap();
+        assert!(probe.status.success(), "{text}");
+        let seconds: f64 = text.trim().parse().unwrap();
+        // Four seconds of frames around a four second pause. Spawning a second
+        // segment costs a moment, so the floor is generous; the ceiling is what
+        // the assertion is for, and the broken behaviour sat above 8.
+        assert!(
+            (1.0..6.0).contains(&seconds),
+            "a 4s pause around 4s of frames produced {seconds}s of video"
+        );
     }
 }
