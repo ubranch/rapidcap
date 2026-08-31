@@ -58,21 +58,31 @@
 </head>
 <body>
   <h1>Keyboard &amp; focus</h1>
-  <p class="lede">RapidCap is a hotkey tool that happens to have a window. Everything reachable by mouse is reachable by keyboard, and the four things people actually do are reachable without opening the window at all.</p>
+  <p class="lede">RapidCap is a hotkey tool that happens to have a window. Everything reachable by mouse is reachable by keyboard, and the five things people actually do are reachable without opening the window at all.</p>
 
   <h2>Global hotkeys</h2>
   <table>
-    <tr><th>Action</th><th>Binding</th><th>Setting</th></tr>
-    <tr><td>Capture region</td><td><span class="kbd">Alt + Q</span></td><td><code>hotkeys.region</code></td></tr>
-    <tr><td>Capture window</td><td><span class="kbd">Alt + PrtSc</span></td><td><code>hotkeys.window</code></td></tr>
-    <tr><td>Record video · stop</td><td><span class="kbd">Alt + E</span> <span class="kbd">Shift + PrtSc</span></td><td><code>hotkeys.video</code></td></tr>
-    <tr><td>Record GIF · stop</td><td><span class="kbd">Ctrl + Shift + PrtSc</span></td><td><code>hotkeys.gif</code></td></tr>
+    <tr><th>Action</th><th>Windows</th><th>macOS</th><th>Command</th></tr>
+    <tr><td>Capture region</td><td><span class="kbd">Alt + E</span></td><td><span class="kbd">⌥E</span></td><td><code>CaptureRegion</code></td></tr>
+    <tr><td>Capture window</td><td><span class="kbd">Ctrl + Shift + W</span></td><td><span class="kbd">⇧⌘W</span></td><td><code>CaptureActiveWindow</code></td></tr>
+    <tr><td>Record video · stop</td><td><span class="kbd">Alt + Q</span></td><td><span class="kbd">⌥Q</span></td><td><code>ToggleVideo</code></td></tr>
+    <tr><td>Record GIF · stop</td><td><span class="kbd">Ctrl + Shift + G</span></td><td><span class="kbd">⇧⌘G</span></td><td><code>ToggleGif</code></td></tr>
+    <tr><td>Pause · resume</td><td><span class="kbd">Ctrl + Shift + P</span></td><td><span class="kbd">⇧⌘P</span></td><td><code>TogglePause</code></td></tr>
   </table>
+  <div class="note">
+    <b>These are not settings.</b> They are a fixed array — <code>hotkey_specs()</code> in
+    <code>platform/mod.rs</code>, five entries, one per <code>CaptureCommand</code>. The <code>hotkeys</code> field on
+    <code>Settings</code> is marked <code>Retired</code>: an old config that still carries it loads fine, and saving
+    never writes it back. Every shortcut pill on a mode card is derived from that same array, so the panel cannot
+    advertise a key the app never registered. <code>RapidCap --probe</code> prints the live list.
+  </div>
   <div class="note" style="border-color:var(--warn)">
-    <b>The GIF default collides.</b> <code>Ctrl+Shift+PrtSc</code> belongs to Windows Snipping Tool, so registration
-    loses and the key does nothing — silently, because <code>global-hotkey</code> failures are not surfaced. Either
-    rebind the default to <code>Alt+G</code> for symmetry with <code>Alt+Q</code> and <code>Alt+E</code>, or show the
-    clash state from the Settings card. Ideally both.
+    <b>Alt+Q and Alt+E are shared with ShareX.</b> They ship regardless, because those two were asked for by key
+    rather than by role. <code>RegisterHotKey</code> is first-come-first-served, so on a machine already running
+    ShareX one of them loses the race and does nothing at all. <code>PlatformRuntime</code> logs that at
+    <code>warn</code> and carries on starting — it surfaces nowhere a user would see it, and that is the part still
+    missing. The other three are primary + Shift + a mnemonic letter and are unclaimed by either OS, "primary" being
+    Ctrl on Windows and Command on macOS.
   </div>
 
   <h2>Focus ring</h2>

@@ -136,10 +136,11 @@
 
           <div class="sect">Hotkeys</div>
           <div class="card">
-            <div class="row"><span class="lbl">Capture region</span><span class="hk">Alt + Q</span></div>
-            <div class="row"><span class="lbl">Capture window</span><span class="hk">Alt + PrtSc</span></div>
-            <div class="row"><span class="lbl">Record video</span><span class="hk">Alt + E</span></div>
-            <div class="row tall"><span class="lbl">Record GIF<small>Taken by Windows Snipping Tool</small></span><span class="hk clash">Ctrl + Shift + PrtSc</span></div>
+            <div class="row tall"><span class="lbl">Capture region<small>Also bound by ShareX — first to start wins</small></span><span class="hk clash">Alt + E</span></div>
+            <div class="row"><span class="lbl">Capture window</span><span class="hk">Ctrl + Shift + W</span></div>
+            <div class="row"><span class="lbl">Record video</span><span class="hk">Alt + Q</span></div>
+            <div class="row"><span class="lbl">Record GIF</span><span class="hk">Ctrl + Shift + G</span></div>
+            <div class="row"><span class="lbl">Pause · resume</span><span class="hk">Ctrl + Shift + P</span></div>
           </div>
 
           <div class="sect">Storage</div>
@@ -173,10 +174,12 @@
     that file so that person can find it.
   </div>
   <div class="note" style="border-color:var(--warn)">
-    <b>Hotkey conflicts are the risk.</b> <code>Settings::default()</code> binds
-    <code>Ctrl+Shift+Print Screen</code> for GIF, which Windows Snipping Tool already owns, and
-    <code>global-hotkey</code> registration fails silently today. The field needs a clash state and a real
-    registration result to show it — the amber ring above is the design, not the behaviour.
+    <b>Hotkeys are not settings yet.</b> They are a fixed array in <code>platform/mod.rs</code>, and the
+    <code>hotkeys</code> field on <code>Settings</code> is <code>Retired</code> — it loads out of an old file and is
+    never written back. So the rows above are read-only twice over: nothing rebinds them, and nothing reports the
+    clash either. <code>RegisterHotKey</code> is first-come-first-served, <code>Alt+E</code> and <code>Alt+Q</code>
+    are shared with ShareX, and a lost race is logged at <code>warn</code> and nowhere else. The amber ring is the
+    design for that; the registration result it needs does not reach the UI.
   </div>
 </body>
 </html>
