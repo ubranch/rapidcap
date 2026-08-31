@@ -1,7 +1,9 @@
 #![cfg_attr(not(test), windows_subsystem = "windows")]
 
 mod controller;
+mod controls;
 mod icons;
+mod menu;
 mod motion;
 mod overlay;
 mod platform;

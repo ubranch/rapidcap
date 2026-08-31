@@ -42,6 +42,7 @@ pub enum Icon {
     Minimize,
     Close,
     Back,
+    Chevron,
     Check,
     // files
     Copy,
@@ -103,6 +104,7 @@ impl Icon {
             Self::Minimize => r#"<path d="M5 12h14"/>"#,
             Self::Close => r#"<path d="M6 6l12 12M18 6 6 18"/>"#,
             Self::Back => r#"<path d="M15 5l-7 7 7 7"/>"#,
+            Self::Chevron => r#"<path d="m6 9 6 6 6-6"/>"#,
             Self::Check => r#"<path d="m5 12 5 5 9-10"/>"#,
             Self::Copy => {
                 r#"<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>"#
@@ -159,6 +161,7 @@ impl Icon {
             Self::Minimize => "icons/minimize.svg",
             Self::Close => "icons/close.svg",
             Self::Back => "icons/back.svg",
+            Self::Chevron => "icons/chevron.svg",
             Self::Check => "icons/check.svg",
             Self::Copy => "icons/copy.svg",
             Self::Delete => "icons/delete.svg",
@@ -229,7 +232,7 @@ impl AssetSource for IconAssets {
 
 /// Every icon, in declaration order. The asset source and the tests both walk
 /// this, so a new variant that is not added here fails to resolve at runtime.
-pub const ALL_ICONS: [Icon; 28] = [
+pub const ALL_ICONS: [Icon; 29] = [
     Icon::Region,
     Icon::Window,
     Icon::Video,
@@ -251,6 +254,7 @@ pub const ALL_ICONS: [Icon; 28] = [
     Icon::Minimize,
     Icon::Close,
     Icon::Back,
+    Icon::Chevron,
     Icon::Check,
     Icon::Copy,
     Icon::Delete,
@@ -264,7 +268,7 @@ pub const ALL_ICONS: [Icon; 28] = [
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 28] = ALL_ICONS;
+    const ALL: [Icon; 29] = ALL_ICONS;
 
     #[test]
     fn every_icon_is_a_closed_svg_on_the_same_grid() {
