@@ -27,6 +27,13 @@ pub struct AppController {
     /// be the command a `finish_*` failure came from, and re-running one from
     /// the error bar would do something the user never asked for.
     last_command: Option<CaptureCommand>,
+    /// Commands whose global chord another app already owned when RapidCap
+    /// started. Empty until the platform runtime reports in, which happens
+    /// after the panel opens.
+    ///
+    /// Here rather than on the panel because the settings screen shows the same
+    /// clash on its own hotkey list, and two copies of one startup fact drift.
+    unavailable_hotkeys: Vec<CaptureCommand>,
 }
 
 impl AppController {
@@ -40,6 +47,7 @@ impl AppController {
             recording_since: None,
             error: None,
             last_command: None,
+            unavailable_hotkeys: Vec::new(),
         }
     }
 
@@ -49,6 +57,23 @@ impl AppController {
 
     pub fn settings(&self) -> &Settings {
         &self.settings
+    }
+
+    /// Told once at startup, after the platform runtime has tried to register
+    /// every chord. Before that every chord is assumed to have landed, which is
+    /// the truth on a machine with nothing else bound.
+    pub fn set_unavailable_hotkeys(
+        &mut self,
+        commands: Vec<CaptureCommand>,
+        cx: &mut Context<Self>,
+    ) {
+        self.unavailable_hotkeys = commands;
+        cx.notify();
+    }
+
+    /// Whether the OS handed this command's chord over.
+    pub fn hotkey_registered(&self, command: CaptureCommand) -> bool {
+        !self.unavailable_hotkeys.contains(&command)
     }
 
     pub fn paths(&self) -> &AppPaths {

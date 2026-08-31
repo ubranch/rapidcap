@@ -188,6 +188,14 @@ pub fn warn_ghost_hover() -> Hsla {
     rgba(0xe8a33d42).into()
 }
 
+/// The ring around a hotkey field whose chord another app owns. The design
+/// draws it at 55% rather than at [`warn`]'s full strength: the field is a
+/// recessed well, and a solid amber outline on it reads as an error to fix
+/// rather than a note about another app.
+pub fn warn_ring() -> Hsla {
+    rgba(0xe8a33d8c).into()
+}
+
 /// Error message text. 8.1:1 on [`warn_fill`].
 pub fn warn_text() -> Hsla {
     rgb(0xf0c07a).into()

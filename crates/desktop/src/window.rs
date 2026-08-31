@@ -245,10 +245,6 @@ pub struct MainWindow {
     drag_grab: Option<(i32, i32)>,
     /// The confirmation the footer is currently showing, if one is up.
     saved: Option<Saved>,
-    /// Commands whose global chord another app already owned when RapidCap
-    /// started. Empty until the platform runtime reports in, which happens
-    /// after this window opens.
-    unavailable: Vec<CaptureCommand>,
     /// The highlighted row of the audio menu, while it is down. `Some(None)` is
     /// open with nothing highlighted, which is what a click rather than an
     /// arrow key opens it as.
@@ -334,7 +330,6 @@ impl MainWindow {
             focus_handle,
             drag_grab: None,
             saved: None,
-            unavailable: Vec::new(),
             audio_menu: None,
             microphones: None,
             _controller_subscription: controller_subscription,
@@ -342,23 +337,11 @@ impl MainWindow {
         }
     }
 
-    /// Told once at startup, after `PlatformRuntime` has tried to register
-    /// every chord. Before that the panel assumes all five landed, which is the
-    /// truth on a machine with nothing else bound.
-    pub fn set_unavailable_hotkeys(
-        &mut self,
-        commands: Vec<CaptureCommand>,
-        cx: &mut Context<Self>,
-    ) {
-        self.unavailable = commands;
-        cx.notify();
-    }
-
     /// What a card should print under its name.
-    fn shortcut(&self, command: CaptureCommand) -> Shortcut {
+    fn shortcut(&self, command: CaptureCommand, cx: &App) -> Shortcut {
         Shortcut {
             label: shortcut_label(command).unwrap_or_default(),
-            registered: !self.unavailable.contains(&command),
+            registered: self.controller.read(cx).hotkey_registered(command),
         }
     }
 
@@ -763,7 +746,7 @@ impl Render for MainWindow {
                                     "RapidCapRegion",
                                     Icon::Region,
                                     region_label(target.as_ref()),
-                                    self.shortcut(CaptureCommand::CaptureRegion),
+                                    self.shortcut(CaptureCommand::CaptureRegion, cx),
                                     matches!(target, Some(CaptureTarget::Region(_))),
                                     false,
                                 )
@@ -783,7 +766,7 @@ impl Render for MainWindow {
                                     "RapidCapWindow",
                                     Icon::Window,
                                     window_label(target.as_ref()),
-                                    self.shortcut(CaptureCommand::CaptureActiveWindow),
+                                    self.shortcut(CaptureCommand::CaptureActiveWindow, cx),
                                     matches!(target, Some(CaptureTarget::Window { .. })),
                                     false,
                                 )
@@ -813,7 +796,7 @@ impl Render for MainWindow {
                                         Icon::Video
                                     },
                                     video_label.to_string(),
-                                    self.shortcut(CaptureCommand::ToggleVideo),
+                                    self.shortcut(CaptureCommand::ToggleVideo, cx),
                                     false,
                                     recording_video,
                                 )
@@ -831,7 +814,7 @@ impl Render for MainWindow {
                                     "RapidCapGif",
                                     if recording_gif { Icon::Stop } else { Icon::Gif },
                                     gif_label.to_string(),
-                                    self.shortcut(CaptureCommand::ToggleGif),
+                                    self.shortcut(CaptureCommand::ToggleGif, cx),
                                     false,
                                     recording_gif,
                                 )
@@ -2406,17 +2389,17 @@ mod tests {
         let view = window.root(&mut cx).unwrap();
 
         // Before the runtime reports, every chord is assumed to be ours.
-        view.read_with(&cx, |view, _| {
-            assert!(view.shortcut(CaptureCommand::CaptureRegion).registered);
+        view.read_with(&cx, |view, cx| {
+            assert!(view.shortcut(CaptureCommand::CaptureRegion, cx).registered);
         });
 
-        view.update(&mut cx, |view, cx| {
-            view.set_unavailable_hotkeys(vec![CaptureCommand::CaptureRegion], cx);
+        controller.update(&mut cx, |controller, cx| {
+            controller.set_unavailable_hotkeys(vec![CaptureCommand::CaptureRegion], cx);
         });
 
-        view.read_with(&cx, |view, _| {
-            let lost = view.shortcut(CaptureCommand::CaptureRegion);
-            let kept = view.shortcut(CaptureCommand::ToggleVideo);
+        view.read_with(&cx, |view, cx| {
+            let lost = view.shortcut(CaptureCommand::CaptureRegion, cx);
+            let kept = view.shortcut(CaptureCommand::ToggleVideo, cx);
             assert!(!lost.registered);
             assert!(kept.registered);
             // The chord still prints - the user needs to know which key it is

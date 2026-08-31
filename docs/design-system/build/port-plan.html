@@ -102,7 +102,7 @@
     <tr><td>Audio device menu behind the chip — needs <code>cpal</code> device enumeration</td><td class="file">crates/capture/src/audio.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Form controls: toggle, select, stepper, path field, hotkey field</td><td class="file">crates/desktop/src/controls.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Settings view — 6 sections, <code>SettingsStore::save</code> on every change</td><td class="file">crates/desktop/src/settings_view.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Surface <code>global-hotkey</code> registration failures — the card’s shortcut pill turns amber and reads <code>Alt+E · taken</code>, and the dead chord is dropped from <code>aria-keyshortcuts</code>. The settings screen’s own clash row still needs building</td><td class="file">platform/mod.rs · <code>unavailable_hotkeys</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Surface <code>global-hotkey</code> registration failures — the card’s shortcut pill turns amber and reads <code>Alt+E · taken</code>, and the dead chord is dropped from <code>aria-keyshortcuts</code>. The settings screen’s hotkey list carries the same clash, as an amber ring and a second line under the command name</td><td class="file">platform/mod.rs · <code>unavailable_hotkeys</code></td><td><span class="tag t-done">done</span></td></tr>
   </table>
   <div class="gate"><b>Done when:</b> changing frame rate in the UI survives a restart, and a hotkey that fails to register says so.</div>
 

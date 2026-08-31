@@ -379,11 +379,16 @@ pub fn ghost_button(
 /// A hotkey field. Recessed like a path, because it displays a binding rather
 /// than being the thing you press to fire it.
 ///
-/// Read-only for now: `Settings::hotkeys` is retired and the shortcuts are
+/// `clash` means the OS never handed this chord over, and the field swaps the
+/// recess for an amber ring - not both, because the design draws them as one
+/// `box-shadow` and the second declaration replaces the first. The row beside
+/// it says the same thing in words, since colour is not one.
+///
+/// Read-only either way: `Settings::hotkeys` is retired and the shortcuts are
 /// registered from constants, so there is nothing here to capture into. The
-/// accent capturing ring and the amber clash ring the design system draws
-/// arrive with the field that can be edited, not before it.
-pub fn hotkey_field(binding: impl Into<SharedString>) -> gpui::Div {
+/// accent capturing ring the design system draws arrives with the field that
+/// can be edited, not before it.
+pub fn hotkey_field(binding: impl Into<SharedString>, clash: bool) -> gpui::Div {
     div()
         .flex_none()
         .h(theme::u(CONTROL_H))
@@ -392,10 +397,20 @@ pub fn hotkey_field(binding: impl Into<SharedString>) -> gpui::Div {
         .items_center()
         .rounded(theme::u(theme::RADIUS_PILL))
         .bg(theme::bg_well())
-        .shadow(theme::recessed())
         .font_family(MONO)
         .text_size(theme::u(theme::TEXT_MICRO))
-        .text_color(theme::text_label())
+        .map(|field| {
+            if clash {
+                field
+                    .text_color(theme::warn_text())
+                    .border_1()
+                    .border_color(theme::warn_ring())
+            } else {
+                field
+                    .text_color(theme::text_label())
+                    .shadow(theme::recessed())
+            }
+        })
         .child(binding.into())
 }
 

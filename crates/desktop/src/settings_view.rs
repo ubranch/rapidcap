@@ -611,16 +611,24 @@ impl SettingsView {
         }))
     }
 
-    fn hotkey_rows(&self) -> Vec<gpui::AnyElement> {
+    /// The five chords, and which of them the OS refused.
+    ///
+    /// `RegisterHotKey` is first-come-first-served, so a chord another running
+    /// app claimed first simply fails for RapidCap. The panel's mode cards say
+    /// so already, but only four commands have a card and this list is where
+    /// someone comes to read their hotkeys.
+    fn hotkey_rows(&self, cx: &Context<Self>) -> Vec<gpui::AnyElement> {
+        let controller = self.controller.read(cx);
         hotkey_specs()
             .into_iter()
             .map(|spec| {
+                let clash = !controller.hotkey_registered(spec.command());
                 controls::row(
                     command_id(spec.command()),
                     command_name(spec.command()),
-                    None,
+                    clash.then(|| "Another app bound this first - first to start wins".into()),
                 )
-                .child(controls::hotkey_field(spec.label()))
+                .child(controls::hotkey_field(spec.label(), clash))
                 .into_any_element()
             })
             .collect()
@@ -797,7 +805,7 @@ impl Render for SettingsView {
                         self.select_row(Select::AudioBitrate, cx),
                     ],
             ))
-            .child(self.section("Hotkeys", self.hotkey_rows()))
+            .child(self.section("Hotkeys", self.hotkey_rows(cx)))
             .child(self.section(
                 "Storage",
                 vec![
