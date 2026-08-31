@@ -28,7 +28,7 @@ use anyhow::Context as _;
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained};
 use objc2_app_kit::{
     NSApplication, NSBackingStoreType, NSEvent, NSScreen, NSView, NSWindow, NSWindowButton,
-    NSWindowCollectionBehavior, NSWindowLevel, NSWindowStyleMask,
+    NSWindowCollectionBehavior, NSWindowLevel, NSWindowSharingType, NSWindowStyleMask,
 };
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CGRect};
 use objc2_core_graphics::{
@@ -186,6 +186,28 @@ pub fn show_main_window() {
     window.makeKeyAndOrderFront(None);
 }
 
+/// Keeps the recording chrome out of the recording.
+///
+/// The direct counterpart of the Windows side's `WDA_EXCLUDEFROMCAPTURE`:
+/// AppKit's own words for `NSWindowSharingNone` are "the content cannot be
+/// captured". The recorder is FFmpeg reading an `avfoundation` screen device,
+/// which is a whole display rather than a window list, so this is the only
+/// lever - there is nothing to pass a per-window filter to.
+///
+/// AppKit warns that a non-sharing window drops out of "a number of system
+/// services". Both windows this is used on are chrome that nothing else has
+/// any business reading: a borderless frame that ignores mouse events, and the
+/// HUD that floats over the region for the length of the take.
+pub fn exclude_from_capture(handle: isize) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let Some(window) = view_window(handle, mtm) else {
+        return;
+    };
+    window.setSharingType(NSWindowSharingType::None);
+}
+
 /// Moves an arbitrary GPUI window, given the `NSView` GPUI handed out for it.
 ///
 /// The overlay uses this to cover one monitor exactly, in capture coordinates,
@@ -237,6 +259,10 @@ fn frame_window(mtm: MainThreadMarker) -> &'static NSWindow {
             // The frame is decoration, not a target: clicks belong to whatever
             // is being recorded underneath it.
             window.setIgnoresMouseEvents(true);
+            // Out of the recording, like the HUD. This window is built here
+            // rather than by GPUI, so it never passes through
+            // `exclude_from_capture` the way the HUD does.
+            window.setSharingType(NSWindowSharingType::None);
             window.setLevel(FLOATING);
             // On every Space, so switching desktops mid-recording does not
             // leave the border behind on the old one.
