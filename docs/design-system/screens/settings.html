@@ -176,10 +176,11 @@
   <div class="note" style="border-color:var(--warn)">
     <b>Hotkeys are not settings yet.</b> They are a fixed array in <code>platform/mod.rs</code>, and the
     <code>hotkeys</code> field on <code>Settings</code> is <code>Retired</code> — it loads out of an old file and is
-    never written back. So the rows above are read-only twice over: nothing rebinds them, and nothing reports the
-    clash either. <code>RegisterHotKey</code> is first-come-first-served, <code>Alt+E</code> and <code>Alt+Q</code>
-    are shared with ShareX, and a lost race is logged at <code>warn</code> and nowhere else. The amber ring is the
-    design for that; the registration result it needs does not reach the UI.
+    never written back. So the rows above are read-only: nothing here rebinds them. The clash <i>is</i> reported now,
+    just not on this screen — <code>RegisterHotKey</code> is first-come-first-served, <code>Alt+E</code> and
+    <code>Alt+Q</code> are shared with ShareX, and the chord that loses the race turns its mode-card pill amber and
+    reads <code>Alt+E · taken</code>. The amber ring below is the same treatment, waiting on the screen that would
+    carry it.
   </div>
 </body>
 </html>

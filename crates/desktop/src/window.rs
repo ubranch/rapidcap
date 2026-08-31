@@ -85,6 +85,10 @@ pub struct MainWindow {
     drag_grab: Option<(i32, i32)>,
     /// The confirmation the footer is currently showing, if one is up.
     saved: Option<Saved>,
+    /// Commands whose global chord another app already owned when RapidCap
+    /// started. Empty until the platform runtime reports in, which happens
+    /// after this window opens.
+    unavailable: Vec<CaptureCommand>,
     _controller_subscription: Subscription,
     _event_subscription: Subscription,
 }
@@ -135,8 +139,29 @@ impl MainWindow {
             focus_handle,
             drag_grab: None,
             saved: None,
+            unavailable: Vec::new(),
             _controller_subscription: controller_subscription,
             _event_subscription: event_subscription,
+        }
+    }
+
+    /// Told once at startup, after `PlatformRuntime` has tried to register
+    /// every chord. Before that the panel assumes all five landed, which is the
+    /// truth on a machine with nothing else bound.
+    pub fn set_unavailable_hotkeys(
+        &mut self,
+        commands: Vec<CaptureCommand>,
+        cx: &mut Context<Self>,
+    ) {
+        self.unavailable = commands;
+        cx.notify();
+    }
+
+    /// What a card should print under its name.
+    fn shortcut(&self, command: CaptureCommand) -> Shortcut {
+        Shortcut {
+            label: shortcut_label(command).unwrap_or_default(),
+            registered: !self.unavailable.contains(&command),
         }
     }
 
@@ -260,8 +285,7 @@ impl Render for MainWindow {
                                     "RapidCapRegion",
                                     Icon::Region,
                                     region_label(target.as_ref()),
-                                    shortcut_label(CaptureCommand::CaptureRegion)
-                                        .unwrap_or_default(),
+                                    self.shortcut(CaptureCommand::CaptureRegion),
                                     matches!(target, Some(CaptureTarget::Region(_))),
                                     false,
                                 )
@@ -278,8 +302,7 @@ impl Render for MainWindow {
                                     "RapidCapWindow",
                                     Icon::Window,
                                     window_label(target.as_ref()),
-                                    shortcut_label(CaptureCommand::CaptureActiveWindow)
-                                        .unwrap_or_default(),
+                                    self.shortcut(CaptureCommand::CaptureActiveWindow),
                                     matches!(target, Some(CaptureTarget::Window { .. })),
                                     false,
                                 )
@@ -305,7 +328,7 @@ impl Render for MainWindow {
                                         Icon::Video
                                     },
                                     video_label.to_string(),
-                                    shortcut_label(CaptureCommand::ToggleVideo).unwrap_or_default(),
+                                    self.shortcut(CaptureCommand::ToggleVideo),
                                     false,
                                     recording_video,
                                 )
@@ -320,7 +343,7 @@ impl Render for MainWindow {
                                     "RapidCapGif",
                                     if recording_gif { Icon::Stop } else { Icon::Gif },
                                     gif_label.to_string(),
-                                    shortcut_label(CaptureCommand::ToggleGif).unwrap_or_default(),
+                                    self.shortcut(CaptureCommand::ToggleGif),
                                     false,
                                     recording_gif,
                                 )
@@ -729,6 +752,30 @@ fn badge(label: String) -> impl IntoElement {
         .child(label)
 }
 
+/// A command's global chord, and whether the OS actually handed it over.
+///
+/// `RegisterHotKey` is first-come-first-served, so a chord that ShareX - or any
+/// other running app - claimed first simply fails for RapidCap. The card keeps
+/// working, because it is a button and not a key handler, but printing the
+/// chord in plain grey beside it promises a key that will never fire.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Shortcut {
+    label: String,
+    registered: bool,
+}
+
+impl Shortcut {
+    /// `Alt+E` when the chord is ours, `Alt+E · taken` when it is not.
+    /// Amber alone would not say what is wrong, and colour is not a word.
+    fn text(&self) -> String {
+        if self.registered {
+            self.label.clone()
+        } else {
+            format!("{} · taken", self.label)
+        }
+    }
+}
+
 /// A capture target button. `armed` marks the current selection, `recording`
 /// turns the card red — the card is the state indicator, there is no badge.
 #[allow(clippy::too_many_arguments)]
@@ -738,10 +785,17 @@ fn mode_card(
     context: &'static str,
     icon: Icon,
     label: String,
-    shortcut: String,
+    shortcut: Shortcut,
     armed: bool,
     recording: bool,
 ) -> gpui::Stateful<gpui::Div> {
+    // A chord another app owns must not be announced. A screen reader that
+    // reads it out is offering the user a key that does nothing.
+    let announced = if shortcut.registered {
+        format!("Enter Space {}", shortcut.label)
+    } else {
+        "Enter Space".to_string()
+    };
     let content = if recording {
         theme::rec()
     } else {
@@ -755,7 +809,7 @@ fn mode_card(
         .tab_stop(true)
         .role(Role::Button)
         .aria_label(label.clone())
-        .aria_keyshortcuts(format!("Enter Space {shortcut}"))
+        .aria_keyshortcuts(announced)
         .flex_1()
         .relative()
         .overflow_hidden()
@@ -807,7 +861,7 @@ fn mode_card(
 /// Left-aligned under the name rather than floating in the card's top right
 /// corner: `Ctrl+Shift+W` came within two pixels of the icon up there, and a
 /// longer binding would have run straight through it.
-fn shortcut_pill(shortcut: String) -> gpui::Div {
+fn shortcut_pill(shortcut: Shortcut) -> gpui::Div {
     div()
         .flex_none()
         // Pulled left by its own padding so the shortcut text lines up with the
@@ -823,7 +877,14 @@ fn shortcut_pill(shortcut: String) -> gpui::Div {
         .text_size(theme::u(theme::TEXT_MICRO))
         .font_weight(FontWeight::MEDIUM)
         .text_color(theme::text_muted())
-        .child(shortcut)
+        // Amber ring and amber text, the pair the settings mock draws for a
+        // clashing binding. Applied after the muted default so it wins.
+        .when(!shortcut.registered, |pill| {
+            pill.border_1()
+                .border_color(theme::warn())
+                .text_color(theme::warn_text())
+        })
+        .child(shortcut.text())
 }
 
 /// A raised pill. Raised because it is pressable — see `status_well` for the
@@ -1355,6 +1416,62 @@ mod tests {
         );
         assert!(long.ends_with('…'));
         assert_eq!(error_summary("first line\nsecond line"), "first line");
+    }
+
+    #[test]
+    fn a_chord_another_app_owns_says_so_in_words() {
+        // Amber is the signal, but amber is not a word: a user who cannot pick
+        // the colour out still has to learn the key is dead.
+        let ours = Shortcut {
+            label: "Alt+E".to_string(),
+            registered: true,
+        };
+        let theirs = Shortcut {
+            registered: false,
+            ..ours.clone()
+        };
+        assert_eq!(ours.text(), "Alt+E");
+        assert_eq!(theirs.text(), "Alt+E · taken");
+    }
+
+    #[gpui::test]
+    fn a_clash_marks_only_the_card_that_lost_its_chord(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| {
+            AppController::new(
+                Settings::default(),
+                AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+            )
+        });
+        let window = cx.update(|cx| {
+            let controller = controller.clone();
+            cx.open_window(Default::default(), |window, cx| {
+                cx.new(|cx| MainWindow::new(window, cx, controller))
+            })
+            .unwrap()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let view = window.root(&mut cx).unwrap();
+
+        // Before the runtime reports, every chord is assumed to be ours.
+        view.read_with(&cx, |view, _| {
+            assert!(view.shortcut(CaptureCommand::CaptureRegion).registered);
+        });
+
+        view.update(&mut cx, |view, cx| {
+            view.set_unavailable_hotkeys(vec![CaptureCommand::CaptureRegion], cx);
+        });
+
+        view.read_with(&cx, |view, _| {
+            let lost = view.shortcut(CaptureCommand::CaptureRegion);
+            let kept = view.shortcut(CaptureCommand::ToggleVideo);
+            assert!(!lost.registered);
+            assert!(kept.registered);
+            // The chord still prints - the user needs to know which key it is
+            // that another app took.
+            assert!(lost.text().starts_with(&lost.label));
+            assert_ne!(lost.text(), lost.label);
+            assert_eq!(kept.text(), kept.label);
+        });
     }
 
     #[gpui::test]

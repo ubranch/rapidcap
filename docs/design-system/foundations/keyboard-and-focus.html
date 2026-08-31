@@ -79,10 +79,12 @@
   <div class="note" style="border-color:var(--warn)">
     <b>Alt+Q and Alt+E are shared with ShareX.</b> They ship regardless, because those two were asked for by key
     rather than by role. <code>RegisterHotKey</code> is first-come-first-served, so on a machine already running
-    ShareX one of them loses the race and does nothing at all. <code>PlatformRuntime</code> logs that at
-    <code>warn</code> and carries on starting — it surfaces nowhere a user would see it, and that is the part still
-    missing. The other three are primary + Shift + a mnemonic letter and are unclaimed by either OS, "primary" being
-    Ctrl on Windows and Command on macOS.
+    ShareX one of them loses the race and does nothing at all. <code>PlatformRuntime</code> collects every chord it
+    could not register and hands the list to the panel, which turns that card’s pill amber and prints
+    <code>Alt+E · taken</code> — the word rides along because a colour is not a word. The dead chord also drops out of
+    the card’s <code>aria-keyshortcuts</code>, so a screen reader stops offering a key that does nothing. The other
+    three are primary + Shift + a mnemonic letter and are unclaimed by either OS, "primary" being Ctrl on Windows and
+    Command on macOS.
   </div>
 
   <h2>Focus ring</h2>

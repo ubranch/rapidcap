@@ -115,8 +115,10 @@ pub fn shortcut_label(command: CaptureCommand) -> Option<String> {
 /// Alt+Q and Alt+E are the two the user asked for by name, so they are the two
 /// that ship, even though ShareX uses them too. `RegisterHotKey` is
 /// first-come-first-served, so on a machine already running ShareX one of them
-/// will lose the race and fail to register - `PlatformRuntime` logs that rather
-/// than failing to start, and the panel's buttons still work.
+/// will lose the race and fail to register. Startup carries on without it - the
+/// panel's buttons never needed the chord - and the command lands in
+/// [`PlatformRuntime::unavailable_hotkeys`], which is what stops the panel from
+/// printing a key that will never fire.
 ///
 /// The remaining three have no requested binding, so they stay on
 /// primary+Shift+letter, mnemonic per command and unclaimed by either OS.
@@ -160,6 +162,11 @@ pub enum PlatformEvent {
 pub struct PlatformRuntime {
     receiver: Receiver<PlatformEvent>,
     _hotkeys: GlobalHotKeyManager,
+    /// The commands whose chord `RegisterHotKey` refused, because some other
+    /// running app claimed it first. Startup carries on without them - the
+    /// panel's buttons do not need the chord - but the panel has to stop
+    /// printing a key that will never fire.
+    unavailable: Vec<CaptureCommand>,
     tray: TrayIcon,
     tray_state: Cell<Option<TrayState>>,
 }
@@ -177,9 +184,11 @@ impl PlatformRuntime {
         let specs = hotkey_specs();
         let hotkeys: Vec<_> = specs.iter().copied().map(HotkeySpec::hotkey).collect();
         let manager = GlobalHotKeyManager::new().context("create global hotkey manager")?;
-        for hotkey in &hotkeys {
+        let mut unavailable = Vec::new();
+        for (spec, hotkey) in specs.iter().zip(&hotkeys) {
             if let Err(error) = manager.register(*hotkey) {
                 tracing::warn!(?hotkey, %error, "global hotkey unavailable");
+                unavailable.push(spec.command);
             }
         }
 
@@ -242,6 +251,7 @@ impl PlatformRuntime {
         Ok(Self {
             receiver,
             _hotkeys: manager,
+            unavailable,
             tray,
             tray_state: Cell::new(Some(TrayState::Idle)),
         })
@@ -249,6 +259,11 @@ impl PlatformRuntime {
 
     pub fn receiver(&self) -> Receiver<PlatformEvent> {
         self.receiver.clone()
+    }
+
+    /// The commands whose chord another app already owned at startup.
+    pub fn unavailable_hotkeys(&self) -> &[CaptureCommand] {
+        &self.unavailable
     }
 
     /// Push the current capture state onto the tray icon and its tooltip.

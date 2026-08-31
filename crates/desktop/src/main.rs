@@ -306,7 +306,16 @@ fn main() -> anyhow::Result<()> {
             }
         };
         let events = runtime.receiver();
+        // Read before the runtime moves into the global. A chord another app
+        // owns fails silently at the OS level, so the panel is the only place
+        // the user can find out - and it opened before this ran.
+        let unavailable = runtime.unavailable_hotkeys().to_vec();
         cx.set_global(runtime);
+        if !unavailable.is_empty() {
+            let _ = main_window.update(cx, |view, _window, cx| {
+                view.set_unavailable_hotkeys(unavailable, cx)
+            });
+        }
         // The tray is the only RapidCap surface on screen while the panel is
         // minimised and the HUD sits over some other part of the display, so it
         // has to carry the capture state rather than stay a static badge.
