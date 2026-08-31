@@ -74,6 +74,7 @@ impl Default for Settings {
             screenshot: ScreenshotSettings {
                 png_to_jpeg_threshold_bytes: 2_097_152,
                 jpeg_quality: 90,
+                copy_to_clipboard: true,
             },
             video: VideoSettings {
                 fps: 30,
@@ -234,6 +235,22 @@ impl std::error::Error for SettingsError {}
 pub struct ScreenshotSettings {
     pub png_to_jpeg_threshold_bytes: usize,
     pub jpeg_quality: u8,
+    /// Whether a screenshot is put on the clipboard as well as saved.
+    ///
+    /// Screenshots only, which is why it lives under `screenshot`. A finished
+    /// recording puts a file reference on the clipboard rather than a bitmap,
+    /// and that costs nothing to leave there.
+    ///
+    /// Added after schema version 1 shipped, so it tolerates its own absence
+    /// the same way `audio.enabled` does: back then every screenshot was
+    /// copied, and the default reproduces that rather than quietly turning it
+    /// off for everyone who already had the app.
+    #[serde(default = "copy_to_clipboard_default")]
+    pub copy_to_clipboard: bool,
+}
+
+fn copy_to_clipboard_default() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

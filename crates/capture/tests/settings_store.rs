@@ -109,6 +109,23 @@ fn a_settings_file_written_before_audio_existed_still_loads() {
 }
 
 #[test]
+fn a_settings_file_written_before_the_clipboard_toggle_still_loads() {
+    // Same deal as the audio field above: every screenshot went to the
+    // clipboard before this key existed, so its absence has to keep meaning
+    // that rather than silently switching the copy off on upgrade.
+    let (temp, store) = store();
+    let mut value: serde_json::Value =
+        serde_json::from_str(&serde_json::to_string(&Settings::default()).unwrap()).unwrap();
+    value["screenshot"]
+        .as_object_mut()
+        .unwrap()
+        .remove("copy_to_clipboard");
+    write(&temp, &value.to_string());
+
+    assert!(store.load().unwrap().screenshot.copy_to_clipboard);
+}
+
+#[test]
 fn an_out_of_range_jpeg_quality_is_refused_at_both_ends() {
     for quality in [0_u8, 101, 255] {
         let (temp, store) = store();

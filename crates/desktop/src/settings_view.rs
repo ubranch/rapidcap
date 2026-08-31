@@ -4,10 +4,9 @@
 //! furniture. One column that scrolls puts every setting one gesture away and
 //! costs nothing to build.
 //!
-//! Every row here writes a key that something reads. Two rows the design system
-//! draws are not built, and both are missing for the same reason: **copy to
-//! clipboard** and **hide panel while capturing** have no key on `Settings`,
-//! and neither behaviour exists to switch off.
+//! Every row here writes a key that something reads. One row the design system
+//! draws is not built: **hide panel while capturing** has no key on `Settings`
+//! and no behaviour to switch off.
 //!
 //! The `Change` beside the capture folder is an `Open` instead: `capture_root`
 //! lives on `AppPaths`, which is discovered at startup rather than saved, so
@@ -723,6 +722,26 @@ impl Render for SettingsView {
                                     ),
                             )
                             .into_any_element(),
+                        controls::row(
+                            "settings-clipboard",
+                            "Copy to clipboard",
+                            Some(
+                                "Screenshots only - recordings are always saved to disk".into(),
+                            ),
+                        )
+                        .child(
+                            controls::toggle(
+                                "settings-clipboard-toggle",
+                                "Copy to clipboard",
+                                settings.screenshot.copy_to_clipboard,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.controller.update(cx, |controller, cx| {
+                                    controller.toggle_copy_to_clipboard(cx)
+                                });
+                            })),
+                        )
+                        .into_any_element(),
                     ],
             ))
             .child(self.section(

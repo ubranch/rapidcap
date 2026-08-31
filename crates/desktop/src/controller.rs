@@ -175,6 +175,19 @@ impl AppController {
         self.edit_settings(|settings| settings.countdown_seconds = seconds, cx);
     }
 
+    /// Whether a screenshot also lands on the clipboard.
+    ///
+    /// Recordings are unaffected: they put a file reference there, not a
+    /// bitmap, and this is the screenshot's setting.
+    pub fn toggle_copy_to_clipboard(&mut self, cx: &mut Context<Self>) {
+        self.edit_settings(
+            |settings| {
+                settings.screenshot.copy_to_clipboard = !settings.screenshot.copy_to_clipboard
+            },
+            cx,
+        );
+    }
+
     /// Mute or unmute the soundtrack on video recordings.
     ///
     /// Takes effect on the next recording, not the running one: FFmpeg's inputs

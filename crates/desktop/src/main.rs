@@ -204,13 +204,17 @@ fn main() -> anyhow::Result<()> {
                     let task = cx.background_executor().spawn(async move {
                         std::thread::sleep(Duration::from_millis(40));
                         let saved = capture_and_save(&target, &settings, &paths)?;
-                        let copied = match write_clipboard(&saved) {
-                            Ok(()) => true,
-                            Err(error) => {
-                                tracing::warn!(%error, path = %saved.path.display(), "clipboard write failed after screenshot save");
-                                false
-                            }
-                        };
+                        // Off means the file is the whole result, and the
+                        // well reads "Saved" rather than "Copied" - which is
+                        // what a `false` here already produces.
+                        let copied = settings.screenshot.copy_to_clipboard
+                            && match write_clipboard(&saved) {
+                                Ok(()) => true,
+                                Err(error) => {
+                                    tracing::warn!(%error, path = %saved.path.display(), "clipboard write failed after screenshot save");
+                                    false
+                                }
+                            };
                         Ok((saved, copied))
                     });
                     cx.spawn(async move |cx| {
