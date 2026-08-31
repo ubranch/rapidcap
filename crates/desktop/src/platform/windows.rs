@@ -49,7 +49,7 @@ use windows::{
                 CreateWindowExW, DefWindowProcW, FindWindowW, GW_HWNDNEXT, GWL_STYLE,
                 GetClientRect, GetCursorPos, GetSystemMetrics, GetTopWindow, GetWindow,
                 GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, HWND_NOTOPMOST,
-                HWND_TOPMOST, IsIconic, IsWindowVisible, LWA_ALPHA, RegisterClassW,
+                HWND_TOPMOST, IsIconic, IsWindowVisible, LWA_ALPHA, RegisterClassW, SM_CXSMICON,
                 SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
                 SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE,
                 SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow,
@@ -663,6 +663,26 @@ mod tests {
 pub fn text_scale() -> f32 {
     static SCALE: OnceLock<f32> = OnceLock::new();
     *SCALE.get_or_init(|| read_text_scale_percent().map_or(1.0, scale_from_percent))
+}
+
+/// The square the tray will draw the icon in, in physical pixels.
+///
+/// `SM_CXSMICON` is DPI-scaled, so this is 16, 20, 24 or 32 at 100%, 125%, 150%
+/// and 200% - the four sizes the mark has to survive at. Handing the icon over
+/// already that size beats handing over one 32px bitmap and letting the shell
+/// resample it.
+///
+/// Not read once and cached: the taskbar can move to a monitor at a different
+/// scale, and this is one syscall per state change.
+pub fn tray_icon_size() -> u32 {
+    // SAFETY: no arguments, no handles, no out-parameters.
+    match unsafe { GetSystemMetrics(SM_CXSMICON) } {
+        size if size > 0 => size as u32,
+        // Documented to return 0 only on a metric that does not exist, which
+        // this one does. Guarded because the alternative is a zero-byte buffer
+        // and an icon that fails to build.
+        _ => crate::tray::GRID,
+    }
 }
 
 fn scale_from_percent(percent: u32) -> f32 {

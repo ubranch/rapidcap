@@ -596,3 +596,12 @@ pub fn open_path(path: &Path) -> anyhow::Result<()> {
 pub fn text_scale() -> f32 {
     1.0
 }
+
+/// The square the menu bar will draw the icon in, in pixels.
+///
+/// AppKit fits a status item image to the bar height itself, so unlike Windows
+/// there is no metric to ask and nothing to gain from a smaller raster: the
+/// grid the mark is designed on is what ships.
+pub fn tray_icon_size() -> u32 {
+    crate::tray::GRID
+}

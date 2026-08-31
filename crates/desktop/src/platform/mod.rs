@@ -37,14 +37,14 @@ pub use macos::{
     SingleInstance, drag_main_window, exclude_from_capture, hide_main_window, hide_recording_frame,
     lock_window_size, monitor_containing, monitor_under_cursor, open_path, place_main_window,
     place_window, remember_main_window, show_main_window, show_recording_frame, text_scale,
-    virtual_screen, window_drag_grab, window_target_at,
+    tray_icon_size, virtual_screen, window_drag_grab, window_target_at,
 };
 #[cfg(windows)]
 pub use windows::{
     SingleInstance, drag_main_window, exclude_from_capture, hide_main_window, hide_recording_frame,
     lock_window_size, monitor_containing, monitor_under_cursor, open_path, place_main_window,
     place_window, remember_main_window, show_main_window, show_recording_frame, text_scale,
-    virtual_screen, window_drag_grab, window_target_at,
+    tray_icon_size, virtual_screen, window_drag_grab, window_target_at,
 };
 
 const APP_ID: &str = "com.inspire.rapidcap";
@@ -324,9 +324,14 @@ pub struct PlatformRuntime {
 
 impl Global for PlatformRuntime {}
 
-/// `tray_icon` wants an owned buffer; the rasteriser hands one over.
-fn tray_pixels(state: TrayState) -> Vec<u8> {
-    tray::rgba(state)
+/// The icon, rasterised at whatever size this OS says it will draw it.
+///
+/// Built per state change rather than once at startup, so a DPI change is
+/// picked up by the next repaint. A live `WM_DPICHANGED` re-raster would catch
+/// it sooner, and is not worth a window procedure for a 32x32 square.
+fn tray_icon(state: TrayState) -> anyhow::Result<Icon> {
+    let size = tray_icon_size();
+    Ok(Icon::from_rgba(tray::rgba(state, size), size, size)?)
 }
 
 impl PlatformRuntime {
@@ -389,11 +394,7 @@ impl PlatformRuntime {
             .with_tooltip("RapidCap")
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(false)
-            .with_icon(Icon::from_rgba(
-                tray_pixels(TrayState::Idle),
-                tray::SIZE,
-                tray::SIZE,
-            )?)
+            .with_icon(tray_icon(TrayState::Idle)?)
             .build()?;
 
         Ok(Self {
@@ -423,7 +424,7 @@ impl PlatformRuntime {
     pub fn show_capture_state(&self, state: &CaptureState) {
         let next = TrayState::from_capture(state);
         if self.tray_state.get() != Some(next) {
-            match Icon::from_rgba(tray_pixels(next), tray::SIZE, tray::SIZE) {
+            match tray_icon(next) {
                 Ok(icon) => {
                     if let Err(error) = self.tray.set_icon(Some(icon)) {
                         tracing::warn!(%error, "update tray icon");

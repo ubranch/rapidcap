@@ -157,7 +157,7 @@
     <tr><th>Now (<code>tray.rs</code> · <code>platform/mod.rs</code>)</th><th>This spec</th></tr>
     <tr><td class="good">Ring mark with five state variants, rasterised in <code>tray.rs</code> and pushed on every transition</td><td>Done</td></tr>
     <tr><td class="good">Tooltip follows the state — "Recording video", "Paused GIF", "Ready", "Capture failed"</td><td>Done</td></tr>
-    <tr><td class="bad">One 32px raster, <code>tray::SIZE</code></td><td>16, 20, 24 and 32px, so Windows picks by DPI instead of resampling one bitmap</td></tr>
+    <tr><td class="good">Rasterised at the size the shell asks for — <code>tray_icon_size()</code> reads <code>SM_CXSMICON</code>, which is DPI-scaled and so returns exactly 16, 20, 24 or 32. The mark is authored on a fixed 32-unit grid (<code>tray::GRID</code>) and scaled into it</td><td>Done, by one raster at the right size rather than four to choose from — the crate takes a single bitmap, so offering it four would mean picking one anyway</td></tr>
     <tr><td class="good">Header, capture commands with their chords, contextual Pause and Stop — <code>tray_menu</code></td><td>Done, except the two-line header: a native item is one line, so it borrows the tooltip’s wording</td></tr>
     <tr><td class="good">Items swap on <code>CaptureState</code> — <code>menu_actions</code> offers only what the state machine in <code>state.rs</code> would accept, and nothing at all while Selecting, Countdown or Finalizing</td><td>Done</td></tr>
   </table>
