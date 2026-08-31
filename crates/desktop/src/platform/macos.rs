@@ -332,6 +332,23 @@ pub fn show_recording_frame(region: &PhysicalRegion, thickness: u32) {
     ) else {
         return;
     };
+    // Around the region, not on it. `NSWindowSharingType::None` is documented
+    // to keep a window out of captures and the HUD does stay out, but the
+    // frame came back in every take: FFmpeg reads a whole display rather than
+    // a window list, and that path composites the border in regardless. Since
+    // the layer draws its border inside the window, growing the window by the
+    // border width puts every painted pixel in the band *outside* the recorded
+    // rectangle, where no capture backend can pick it up. The Windows sibling
+    // keeps its frame on the region, because `WDA_EXCLUDEFROMCAPTURE` there
+    // genuinely excludes it.
+    let inset = f64::from(thickness);
+    let frame = NSRect::new(
+        NSPoint::new(frame.origin.x - inset, frame.origin.y - inset),
+        NSSize::new(
+            frame.size.width + inset * 2.0,
+            frame.size.height + inset * 2.0,
+        ),
+    );
     window.setFrame_display(frame, false);
     // The hollow middle is a layer border rather than a cut-out shape: it is
     // the effect the Windows sibling gets from `SetWindowRgn` with `RGN_DIFF`,
