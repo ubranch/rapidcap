@@ -158,10 +158,13 @@ pub fn select(
         .accessibility_id(id)
         .focusable()
         .tab_stop(true)
+        // Named, so the arrow keys can be bound to the pill and nowhere else:
+        // Down on a settings screen that is not a menu should scroll it.
+        .key_context("RapidCapSelect")
         .role(Role::ComboBox)
         .aria_label(label)
         .aria_expanded(open)
-        .aria_keyshortcuts("Enter Space Down")
+        .aria_keyshortcuts("Enter Space Up Down")
         .flex_none()
         .h(theme::u(CONTROL_H))
         .pl(theme::u(11.0))

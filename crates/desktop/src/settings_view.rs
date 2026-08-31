@@ -26,6 +26,7 @@ use rapidcap_capture::{CaptureCommand, Settings};
 
 use crate::controller::AppController;
 use crate::platform::{hotkey_specs, open_path};
+use crate::window::{SelectConfirmAction, SelectNextAction, SelectPrevAction};
 use crate::{controls, menu, theme};
 
 /// Frame rates offered for a video recording.
@@ -327,10 +328,47 @@ impl SettingsView {
         self.open = match self.open {
             Some((open, _)) if open == select => None,
             // Opens on the row it is already set to, so the first arrow press
-            // steps from the current value rather than from the top.
-            _ => Some((select, select.current(self.controller.read(cx).settings()))),
+            // steps from the current value rather than from the top. By entry
+            // rather than by choice: they line up on this screen, and would
+            // stop lining up the day one of these menus grew a header.
+            _ => {
+                let entries = select.entries(self.controller.read(cx).settings());
+                Some((select, menu::selected(&entries)))
+            }
         };
         cx.notify();
+    }
+
+    /// Down and Up on a select.
+    ///
+    /// Closed, either one opens it - that is what the pill's
+    /// `aria_keyshortcuts` has been promising, and what every combo box on
+    /// both platforms does. Open, they walk the rows, wrapping at both ends
+    /// and stepping over anything that cannot be chosen.
+    fn menu_step(&mut self, select: Select, delta: isize, cx: &mut Context<Self>) {
+        let entries = select.entries(self.controller.read(cx).settings());
+        let Some((open, highlighted)) = self.open.filter(|(open, _)| *open == select) else {
+            self.toggle(select, cx);
+            return;
+        };
+        self.open = Some((open, menu::step(&entries, highlighted, delta)));
+        cx.notify();
+    }
+
+    /// Enter and Space on a select.
+    ///
+    /// Closed, they open it. Open on a row, they take that row. Open on
+    /// nothing - which only an empty menu can be - they shut it, because there
+    /// is nothing there to take.
+    fn menu_confirm(&mut self, select: Select, cx: &mut Context<Self>) {
+        match self.open {
+            Some((open, Some(index))) if open == select => self.choose(select, index, cx),
+            Some((open, None)) if open == select => {
+                self.open = None;
+                cx.notify();
+            }
+            _ => self.toggle(select, cx),
+        }
     }
 
     fn choose(&mut self, select: Select, index: usize, cx: &mut Context<Self>) {
@@ -396,6 +434,15 @@ impl SettingsView {
                             select.value(&settings),
                             open.is_some(),
                         )
+                        .on_action(cx.listener(move |this, _: &SelectNextAction, _, cx| {
+                            this.menu_step(select, 1, cx)
+                        }))
+                        .on_action(cx.listener(move |this, _: &SelectPrevAction, _, cx| {
+                            this.menu_step(select, -1, cx)
+                        }))
+                        .on_action(cx.listener(move |this, _: &SelectConfirmAction, _, cx| {
+                            this.menu_confirm(select, cx)
+                        }))
                         .on_click(cx.listener(move |this, _, _, cx| this.toggle(select, cx))),
                     )
                     .children(open.map(|highlighted| {
@@ -757,6 +804,89 @@ mod tests {
 
         assert!(view.update(cx, |view, cx| view.dismiss(cx)));
         assert!(view.read_with(cx, |view, _| view.open.is_none()));
+    }
+
+    #[gpui::test]
+    fn the_arrows_walk_a_menu_and_enter_takes_the_row_they_are_on(cx: &mut gpui::TestAppContext) {
+        let controller = cx.new(|_| {
+            AppController::new(
+                Settings::default(),
+                rapidcap_capture::AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+            )
+        });
+        let view = cx.new(|cx| SettingsView::new(cx, controller.clone()));
+        let entries = Select::VideoFps.entries(&Settings::default());
+        let default = menu::selected(&entries).unwrap();
+
+        // Closed, Down opens rather than stepping: there is nothing to step
+        // through yet, and a first press that skips the current value would
+        // make the row under the pointer disagree with the pill above it.
+        view.update(cx, |view, cx| view.menu_step(Select::VideoFps, 1, cx));
+        assert_eq!(
+            view.read_with(cx, |view, _| view.open),
+            Some((Select::VideoFps, Some(default)))
+        );
+
+        view.update(cx, |view, cx| view.menu_step(Select::VideoFps, 1, cx));
+        assert_eq!(
+            view.read_with(cx, |view, _| view.open),
+            Some((Select::VideoFps, Some(default + 1)))
+        );
+
+        // Off the bottom and back to the top, which is the half of `step` that
+        // a menu of four rows makes reachable in two presses.
+        for _ in 0..entries.len() {
+            view.update(cx, |view, cx| view.menu_step(Select::VideoFps, 1, cx));
+        }
+        assert_eq!(
+            view.read_with(cx, |view, _| view.open),
+            Some((Select::VideoFps, Some(default + 1)))
+        );
+
+        view.update(cx, |view, cx| view.menu_step(Select::VideoFps, -1, cx));
+        view.update(cx, |view, cx| view.menu_confirm(Select::VideoFps, cx));
+        assert_eq!(view.read_with(cx, |view, _| view.open), None);
+        assert_eq!(
+            controller.read_with(cx, |controller, _| controller.settings().video.fps),
+            VIDEO_FPS[default],
+            "the row Enter was on, written"
+        );
+
+        // Enter on a closed select opens it, which is what the pill's
+        // `aria_keyshortcuts` has claimed since the screen was built.
+        view.update(cx, |view, cx| view.menu_confirm(Select::Quality, cx));
+        assert!(view.read_with(cx, |view, _| matches!(
+            view.open,
+            Some((Select::Quality, _))
+        )));
+
+        // And a menu is only ever open on one select: arrowing into another
+        // pill moves the menu rather than opening a second one over it.
+        view.update(cx, |view, cx| view.menu_step(Select::GifFps, -1, cx));
+        assert!(view.read_with(cx, |view, _| matches!(view.open, Some((Select::GifFps, _)))));
+    }
+
+    /// The keys the handlers above are hung on.
+    ///
+    /// Without these four lines every one of them is dead code, which is what
+    /// they were: `menu::step` was written, tested, and reachable from nothing.
+    #[test]
+    fn a_select_is_bound_to_the_keys_it_advertises() {
+        let bindings = crate::window::key_bindings();
+        for key in ["up", "down", "enter", "space"] {
+            assert!(
+                bindings.iter().any(|binding| {
+                    binding
+                        .keystrokes()
+                        .iter()
+                        .any(|stroke| stroke.inner().unparse() == key)
+                        && binding.predicate().is_some_and(|predicate| {
+                            predicate.to_string().contains("RapidCapSelect")
+                        })
+                }),
+                "{key} does nothing on a select"
+            );
+        }
     }
 
     #[gpui::test]

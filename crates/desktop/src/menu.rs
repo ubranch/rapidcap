@@ -271,7 +271,12 @@ fn item(spec: &Item, highlighted: bool) -> gpui::Stateful<gpui::Div> {
             // keyboard highlight therefore has to be the same fill applied
             // directly, not a second hover rule.
             .hover(|style| style.bg(theme::bg_hover()))
-            .when(highlighted, |row| row.bg(theme::bg_hover()));
+            // Focus stays on the pill that opened the menu, so the highlighted
+            // row has to claim it: without this a screen reader announces the
+            // combo box again on every arrow press and never the row.
+            .when(highlighted, |row| {
+                row.bg(theme::bg_hover()).aria_active_descendant()
+            });
     } else {
         row = row.opacity(DISABLED);
     }
