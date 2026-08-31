@@ -7,7 +7,9 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rapidcap_capture::{CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget};
+use rapidcap_capture::{
+    CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget, SavedOutput,
+};
 
 use crate::controller::AppController;
 use crate::icons::Icon;
@@ -55,13 +57,34 @@ const SAVED_LABEL_MAX: usize = 16;
 /// extension, plus the guard that separates two captures of the same second.
 const SAVED_LABEL_TAIL: usize = 8;
 
+/// What the footer shows for the six seconds after a capture lands.
+///
+/// The summary is built once, when the event arrives, rather than on every
+/// render: it stats the file, and the render path runs on every frame.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Saved {
+    path: PathBuf,
+    /// Replaces the state text in the status well. `00:42 · 12.4 MB` for a
+    /// recording, `Copied` for a screenshot.
+    summary: String,
+}
+
+impl Saved {
+    fn new(output: &SavedOutput) -> Self {
+        Self {
+            path: output.path.clone(),
+            summary: saved_summary(output),
+        }
+    }
+}
+
 pub struct MainWindow {
     controller: Entity<AppController>,
     focus_handle: FocusHandle,
     /// Where the cursor grabbed the panel, while a titlebar drag is in flight.
     drag_grab: Option<(i32, i32)>,
-    /// The file the saved chip is currently offering, if one is up.
-    saved: Option<PathBuf>,
+    /// The confirmation the footer is currently showing, if one is up.
+    saved: Option<Saved>,
     _controller_subscription: Subscription,
     _event_subscription: Subscription,
 }
@@ -86,19 +109,20 @@ impl MainWindow {
             false
         });
         let event_subscription = cx.subscribe(&controller, |this, _, event: &CaptureEvent, cx| {
-            let CaptureEvent::OutputSaved(path) = event else {
+            let CaptureEvent::OutputSaved(output) = event else {
                 return;
             };
-            this.saved = Some(path.clone());
+            this.saved = Some(Saved::new(output));
             cx.notify();
-            let path = path.clone();
+            let path = output.path.clone();
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(SAVED_CHIP).await;
                 let _ = this.update(cx, |this, cx| {
                     // A capture that saved inside the six seconds owns the
                     // chip now, and has its own timer running. Only the one
                     // whose file is still showing may take it down.
-                    if this.saved.as_deref() == Some(path.as_path()) {
+                    if this.saved.as_ref().map(|saved| saved.path.as_path()) == Some(path.as_path())
+                    {
                         this.saved = None;
                         cx.notify();
                     }
@@ -154,12 +178,12 @@ impl MainWindow {
     /// It has done its job once it has been pressed, and leaving it up for the
     /// rest of the six seconds invites a second click on a file already open.
     fn open_saved(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = self.saved.take() else {
+        let Some(saved) = self.saved.take() else {
             return;
         };
         cx.notify();
-        if let Err(error) = open_path(&path) {
-            tracing::error!(%error, path = %path.display(), "open saved capture");
+        if let Err(error) = open_path(&saved.path) {
+            tracing::error!(%error, path = %saved.path.display(), "open saved capture");
         }
     }
 
@@ -186,7 +210,13 @@ impl Render for MainWindow {
         let error = controller.error().map(str::to_owned);
         let saved = self.saved.clone();
 
-        let status = status_text(&state, target.as_ref());
+        // Idle is what the controller returns to the moment a capture lands, so
+        // the well would read "Ready" over the top of the chip that just
+        // appeared. For as long as the chip is up, the well belongs to it.
+        let status = match &saved {
+            Some(saved) => saved.summary.clone(),
+            None => status_text(&state, target.as_ref()),
+        };
         let dot = status_dot(&state, target.is_some());
         let video_label = recording_label(&state, CaptureKind::Video);
         let gif_label = recording_label(&state, CaptureKind::Gif);
@@ -336,13 +366,13 @@ impl Render for MainWindow {
                             // chip's place rather than adding a slot, so the
                             // footer never reflows under the pointer.
                             .child(match &saved {
-                                Some(path) => chip(
+                                Some(saved) => chip(
                                     CONTROL_IDS[4],
                                     "rapidcap.open-saved",
                                     "RapidCapSaved",
                                     Icon::Saved,
-                                    saved_label(path),
-                                    format!("Saved — open {}", path.display()),
+                                    saved_label(&saved.path),
+                                    format!("Saved — open {}", saved.path.display()),
                                     None,
                                 )
                                 .border_color(theme::accent())
@@ -1055,6 +1085,66 @@ fn saved_label(path: &Path) -> String {
     format!("{head}…{tail}")
 }
 
+/// What the status well reads while the chip is up.
+///
+/// A recording gets its length and its size, the two things checked before a
+/// clip is sent anywhere. A screenshot has no length, so it reports the
+/// clipboard instead - that is the part of a screenshot a user acts on next.
+/// A file that cannot be stat'd reports only what is still known rather than
+/// inventing a size.
+fn saved_summary(output: &SavedOutput) -> String {
+    let size = std::fs::metadata(&output.path)
+        .map(|meta| meta.len())
+        .ok()
+        .map(file_size);
+    match (output.recorded, size) {
+        (Some(recorded), Some(size)) => format!("{} · {size}", clock(recorded)),
+        (Some(recorded), None) => clock(recorded),
+        (None, _) if output.copied => "Copied".to_string(),
+        (None, Some(size)) => format!("Saved · {size}"),
+        (None, None) => "Saved".to_string(),
+    }
+}
+
+/// `00:42`, and `1:02:07` once a recording passes an hour. Minutes and seconds
+/// are always two digits so the well does not reflow while it is being read.
+fn clock(elapsed: Duration) -> String {
+    let seconds = elapsed.as_secs();
+    let (hours, minutes, seconds) = (seconds / 3600, (seconds % 3600) / 60, seconds % 60);
+    if hours == 0 {
+        format!("{minutes:02}:{seconds:02}")
+    } else {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    }
+}
+
+/// `12.4 MB`, in the units and to the precision Explorer uses, so the number
+/// matches what the user sees when they go looking for the file.
+///
+/// Three significant digits: `1.00 KB`, `12.4 MB`, `123 MB`. That keeps the
+/// well a near-constant width without dropping the digit that distinguishes a
+/// clip worth sending from one that is not.
+fn file_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut size = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while size >= 1024.0 && unit + 1 < UNITS.len() {
+        size /= 1024.0;
+        unit += 1;
+    }
+    let decimals = if size < 10.0 {
+        2
+    } else if size < 100.0 {
+        1
+    } else {
+        0
+    };
+    format!("{size:.decimals$} {}", UNITS[unit])
+}
+
 fn recording_label(state: &CaptureState, kind: CaptureKind) -> &'static str {
     match state {
         CaptureState::Countdown(active, _) if *active == kind => {
@@ -1159,6 +1249,10 @@ mod tests {
 
     use super::*;
     use crate::controller::AppController;
+
+    fn saved_path(view: &MainWindow) -> Option<PathBuf> {
+        view.saved.as_ref().map(|saved| saved.path.clone())
+    }
 
     #[test]
     fn primary_controls_have_stable_ids() {
@@ -1325,6 +1419,70 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_recording_reports_its_length_and_size() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("Screen_2026-08-27_14-32-05_Zq3M.mp4");
+        std::fs::write(&path, vec![0_u8; 13_002_342]).unwrap();
+
+        assert_eq!(
+            saved_summary(&SavedOutput {
+                path,
+                recorded: Some(Duration::from_secs(42)),
+                copied: true,
+            }),
+            "00:42 · 12.4 MB"
+        );
+    }
+
+    #[test]
+    fn a_screenshot_reports_the_clipboard_instead() {
+        let output = |copied| SavedOutput {
+            path: PathBuf::from("C:/nowhere/Screen_2026-08-27_14-32-05_a7Kq.png"),
+            recorded: None,
+            copied,
+        };
+        assert_eq!(saved_summary(&output(true)), "Copied");
+        // Nothing to stat and nothing on the clipboard, so the well says only
+        // the one thing still known to be true.
+        assert_eq!(saved_summary(&output(false)), "Saved");
+    }
+
+    #[test]
+    fn a_recording_whose_file_vanished_still_reports_its_length() {
+        assert_eq!(
+            saved_summary(&SavedOutput {
+                path: PathBuf::from("C:/nowhere/gone.mp4"),
+                recorded: Some(Duration::from_secs(3727)),
+                copied: false,
+            }),
+            "1:02:07"
+        );
+    }
+
+    #[test]
+    fn the_clock_pads_to_a_stable_width() {
+        assert_eq!(clock(Duration::ZERO), "00:00");
+        assert_eq!(clock(Duration::from_secs(9)), "00:09");
+        assert_eq!(clock(Duration::from_secs(600)), "10:00");
+        assert_eq!(clock(Duration::from_secs(3599)), "59:59");
+        // The hour is the one field that may widen, because padding it would
+        // make every short recording read like a long one.
+        assert_eq!(clock(Duration::from_secs(3600)), "1:00:00");
+    }
+
+    #[test]
+    fn file_sizes_read_the_way_explorer_writes_them() {
+        assert_eq!(file_size(0), "0 B");
+        assert_eq!(file_size(1023), "1023 B");
+        assert_eq!(file_size(1024), "1.00 KB");
+        assert_eq!(file_size(13_002_342), "12.4 MB");
+        // Three digits throughout, so the decimals give way rather than the
+        // number growing wider.
+        assert_eq!(file_size(104_857_600), "100 MB");
+        assert_eq!(file_size(3_221_225_472), "3.00 GB");
+    }
+
     #[gpui::test]
     fn a_saved_capture_holds_the_chip_for_six_seconds(cx: &mut TestAppContext) {
         let controller = cx.new(|_| {
@@ -1342,7 +1500,7 @@ mod tests {
         });
         let mut cx = VisualTestContext::from_window(window.into(), cx);
         let view = window.root(&mut cx).unwrap();
-        assert_eq!(view.read_with(&cx, |view, _| view.saved.clone()), None);
+        assert_eq!(view.read_with(&cx, |view, _| saved_path(view)), None);
 
         let path = PathBuf::from("C:/Documents/RapidCap/Screen_9EN.png");
         controller.update(&mut cx, |controller, cx| {
@@ -1353,12 +1511,13 @@ mod tests {
                     width: 1,
                     height: 1,
                 }),
+                true,
                 cx,
             );
         });
         cx.run_until_parked();
         assert_eq!(
-            view.read_with(&cx, |view, _| view.saved.clone()),
+            view.read_with(&cx, |view, _| saved_path(view)),
             Some(path),
             "a save left no chip behind"
         );
@@ -1367,7 +1526,7 @@ mod tests {
             .advance_clock(SAVED_CHIP + Duration::from_secs(1));
         cx.run_until_parked();
         assert_eq!(
-            view.read_with(&cx, |view, _| view.saved.clone()),
+            view.read_with(&cx, |view, _| saved_path(view)),
             None,
             "the chip outlived its timer"
         );

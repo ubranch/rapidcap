@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 use gpui::{Context, EventEmitter};
 use rapidcap_capture::{
     AppPaths, CaptureCommand, CaptureEvent, CaptureKind, CaptureState, CaptureTarget,
-    RecordingError, SavedCapture, ScreenshotError, Settings, SettingsStore, StateError,
+    RecordingError, SavedCapture, SavedOutput, ScreenshotError, Settings, SettingsStore,
+    StateError,
 };
 
 pub struct AppController {
@@ -79,19 +80,30 @@ impl AppController {
         }
     }
 
+    /// `copied` says whether the file also reached the clipboard. The write
+    /// happens on the background thread that finished the recording, so its
+    /// outcome has to be carried in - the controller cannot ask afterwards.
     pub fn finish_recording(
         &mut self,
         result: Result<PathBuf, RecordingError>,
+        copied: bool,
         cx: &mut Context<Self>,
     ) {
         self.target = None;
+        // Read before the reset: this is the only moment the finished length is
+        // still known, and the status well is about to report it.
+        let recorded = Some(self.recording_elapsed());
         self.recorded = Duration::ZERO;
         self.recording_since = None;
         match result {
             Ok(path) => {
                 self.state = CaptureState::Idle;
                 self.error = None;
-                cx.emit(CaptureEvent::OutputSaved(path));
+                cx.emit(CaptureEvent::OutputSaved(SavedOutput {
+                    path,
+                    recorded,
+                    copied,
+                }));
             }
             Err(error) => {
                 tracing::error!(%error, "recording failed");
@@ -107,6 +119,7 @@ impl AppController {
     pub fn finish_screenshot(
         &mut self,
         result: Result<SavedCapture, ScreenshotError>,
+        copied: bool,
         cx: &mut Context<Self>,
     ) {
         self.target = None;
@@ -114,7 +127,13 @@ impl AppController {
             Ok(saved) => {
                 self.state = CaptureState::Idle;
                 self.error = None;
-                cx.emit(CaptureEvent::OutputSaved(saved.path));
+                cx.emit(CaptureEvent::OutputSaved(SavedOutput {
+                    path: saved.path,
+                    // A screenshot is an instant, so there is no duration to
+                    // report and the well shows the clipboard result instead.
+                    recorded: None,
+                    copied,
+                }));
             }
             Err(error) => {
                 tracing::error!(%error, "screenshot failed");
@@ -417,7 +436,7 @@ mod tests {
             controller.set_error_for_test("disk full");
         });
         controller.update(cx, |controller, cx| {
-            controller.finish_recording(Ok(PathBuf::from("C:/out.mp4")), cx);
+            controller.finish_recording(Ok(PathBuf::from("C:/out.mp4")), true, cx);
         });
         assert!(
             controller.read_with(cx, |controller, _| controller.error().is_none()),

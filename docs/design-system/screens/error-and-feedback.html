@@ -165,13 +165,20 @@
     and the extension and collision guard at the back, and the tooltip still carries the whole path.
   </div>
   <div class="note">
-    <b>The chip ships; the well does not.</b> <code>MainWindow</code> subscribes to
-    <code>CaptureEvent::OutputSaved</code>, holds the path for <code>SAVED_CHIP</code> — 6s — and gives the slot back
-    to the folder chip when the timer fires or the chip is pressed. It takes that slot rather than adding one, so the
-    footer never reflows under the pointer, and a second save inside the six seconds hands the chip straight on
-    instead of letting the first timer clear it. Two pieces above are still drawn only: the expiry pops rather than
-    fading, and <code>Copied</code> · <code>00:42 · 12.4 MB</code> never reach the well — <code>SavedCapture</code>
-    carries pixels and a path, not a file size, and the recording's elapsed time stops at the controller.
+    <b>Both halves ship.</b> <code>MainWindow</code> subscribes to <code>CaptureEvent::OutputSaved</code>, holds the
+    capture for <code>SAVED_CHIP</code> — 6s — and gives the slot back to the folder chip when the timer fires or the
+    chip is pressed. It takes that slot rather than adding one, so the footer never reflows under the pointer, and a
+    second save inside the six seconds hands the chip straight on instead of letting the first timer clear it. The
+    well belongs to the chip for those six seconds, because the controller is already back to <code>Idle</code> and
+    would otherwise read "Ready" over the top of a confirmation that just appeared. Only the fade is missing: the
+    chip pops in and out.
+  </div>
+  <div class="note">
+    <b>The event carries what the well needs.</b> <code>OutputSaved</code> takes a <code>SavedOutput</code> now:
+    the path, the recorded length — <code>None</code> for a screenshot, which is what tells the two apart — and
+    whether the clipboard write succeeded. The size is a <code>metadata</code> call made once when the event lands,
+    not on every frame. A clipboard failure does not fail the capture, so it travels as a flag rather than as an
+    error, and it is what turns the screenshot well into <code>Copied</code> or leaves it at <code>Saved</code>.
   </div>
 
   <h2>Selecting — panel behind the overlay</h2>

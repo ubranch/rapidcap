@@ -1,4 +1,4 @@
-use std::{fmt, path::PathBuf};
+use std::{fmt, path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -104,11 +104,25 @@ impl fmt::Display for StateError {
 
 impl std::error::Error for StateError {}
 
+/// A capture that reached disk.
+///
+/// `recorded` is the elapsed time of a video or GIF and `None` for a
+/// screenshot, which is what tells the two apart afterwards - a screenshot has
+/// no duration to report and a recording always does.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SavedOutput {
+    pub path: PathBuf,
+    pub recorded: Option<Duration>,
+    /// Whether the capture also reached the clipboard. A failed clipboard write
+    /// does not fail the capture - the file is still saved - so it travels as a
+    /// flag rather than as an error.
+    pub copied: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CaptureEvent {
     StateChanged(CaptureState),
-    OutputSaved(PathBuf),
-    ClipboardFailed(String),
+    OutputSaved(SavedOutput),
     Failed(String),
 }
 

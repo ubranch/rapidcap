@@ -164,15 +164,22 @@ fn main() -> anyhow::Result<()> {
                     let task = cx.background_executor().spawn(async move {
                         std::thread::sleep(Duration::from_millis(40));
                         let saved = capture_and_save(&target, &settings, &paths)?;
-                        if let Err(error) = write_clipboard(&saved) {
-                            tracing::warn!(%error, path = %saved.path.display(), "clipboard write failed after screenshot save");
-                        }
-                        Ok(saved)
+                        let copied = match write_clipboard(&saved) {
+                            Ok(()) => true,
+                            Err(error) => {
+                                tracing::warn!(%error, path = %saved.path.display(), "clipboard write failed after screenshot save");
+                                false
+                            }
+                        };
+                        Ok((saved, copied))
                     });
                     cx.spawn(async move |cx| {
-                        let result = task.await;
+                        let (result, copied) = match task.await {
+                            Ok((saved, copied)) => (Ok(saved), copied),
+                            Err(error) => (Err(error), false),
+                        };
                         controller.update(cx, |controller, cx| {
-                            controller.finish_screenshot(result, cx)
+                            controller.finish_screenshot(result, copied, cx)
                         });
                         // Opening the overlay minimised the panel, and
                         // `activate_window` only raises and focuses - it cannot
@@ -242,7 +249,7 @@ fn main() -> anyhow::Result<()> {
                             }),
                             Ok(Err(error)) => {
                                 controller.update(cx, |controller, cx| {
-                                    controller.finish_recording(Err(error), cx)
+                                    controller.finish_recording(Err(error), false, cx)
                                 });
                                 hide_recording_frame();
                                 close_recording_hud(&mut recording_hud.borrow_mut(), cx);
@@ -262,14 +269,19 @@ fn main() -> anyhow::Result<()> {
                         // A finished recording belongs on the clipboard for the
                         // same reason a screenshot does: the next thing you do
                         // with it is paste it somewhere.
-                        if let Ok(path) = &result
-                            && let Err(error) = write_clipboard_file(path)
-                        {
-                            tracing::warn!(%error, path = %path.display(), "clipboard write failed after recording save");
-                        }
+                        let copied = match &result {
+                            Ok(path) => match write_clipboard_file(path) {
+                                Ok(()) => true,
+                                Err(error) => {
+                                    tracing::warn!(%error, path = %path.display(), "clipboard write failed after recording save");
+                                    false
+                                }
+                            },
+                            Err(_) => false,
+                        };
                         recording_stop.lock().unwrap().take();
                         controller.update(cx, |controller, cx| {
-                            controller.finish_recording(result, cx)
+                            controller.finish_recording(result, copied, cx)
                         });
                         hide_recording_frame();
                         close_recording_hud(&mut recording_hud.borrow_mut(), cx);
