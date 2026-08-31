@@ -68,6 +68,21 @@ impl CaptureState {
             state => Err(StateError::InvalidTransition(state)),
         }
     }
+
+    /// Whether quitting right now would destroy a capture.
+    ///
+    /// `Recording` and `Paused` have an encoder holding an open part file,
+    /// `Finalizing` is still writing the real one, and `Countdown` is a take
+    /// the user has already committed to. `Selecting` only has an overlay on
+    /// screen and `Error` has nothing at all, so both are safe to quit from —
+    /// which matters, because refusing to exit from the error state leaves the
+    /// app with no way out.
+    pub fn blocks_exit(&self) -> bool {
+        matches!(
+            self,
+            Self::Countdown(_, _) | Self::Recording(_) | Self::Paused(_) | Self::Finalizing(_)
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -95,4 +110,29 @@ pub enum CaptureEvent {
     OutputSaved(PathBuf),
     ClipboardFailed(String),
     Failed(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_states_holding_capture_data_block_exit() {
+        for state in [
+            CaptureState::Countdown(CaptureKind::Video, 3),
+            CaptureState::Recording(CaptureKind::Video),
+            CaptureState::Paused(CaptureKind::Gif),
+            CaptureState::Finalizing(CaptureKind::Video),
+        ] {
+            assert!(state.blocks_exit(), "{state:?} should block exit");
+        }
+
+        for state in [
+            CaptureState::Idle,
+            CaptureState::Selecting(CaptureKind::RegionScreenshot),
+            CaptureState::Error("disk full".into()),
+        ] {
+            assert!(!state.blocks_exit(), "{state:?} should not block exit");
+        }
+    }
 }

@@ -120,7 +120,7 @@
   <table style="margin-top:16px">
     <tr><th>Problem</th><th>Fix</th></tr>
     <tr><td class="bad">Hit box was the 17px glyph itself — no padding, no hover surface</td><td class="good">34 × 30 buttons that fill the height of the bar, with a <code>#2A2A2A</code> hover fill</td></tr>
-    <tr><td class="bad">Close sat 14px from Minimize, same weight, same colour — misclicks quit the app</td><td class="good">Colour carries the distinction: close hovers <code>#C92A2A</code>, minimize hovers the neutral <code>#2A2A2A</code>. The gap between them is the bar's own 8px, not a special case</td></tr>
+    <tr><td class="bad">Close sat 14px from Minimize, same weight, same colour — misclicks quit the app</td><td class="good">Colour carries the distinction: close hovers <code>#C92A2A</code>, minimize hovers the neutral <code>#2A2A2A</code>. The gap between them is the bar's own 8px, not a special case. A misclick no longer costs a take either — while a capture is running, close minimises to tray, and it only exits once nothing is in flight</td></tr>
     <tr><td class="bad">Six undifferentiated icons, two of them duplicating body controls</td><td class="good">All six dropped. The bar holds minimize and close only — capture actions, the output folder and settings live in the panel body, where they can be labelled</td></tr>
     <tr><td class="bad">Orphan <code>?</code> on the left, nothing to grab, no window identity</td><td class="good">Mark and wordmark on the left, and the whole strip minus the two buttons is drag surface</td></tr>
     <tr><td class="bad">Icons at <code>#7A7A7A</code> on <code>#1C1C1C</code> — 2.9:1, unreadable at rest</td><td class="good"><code>#8A8A8A</code> at rest (3.6:1), <code>#FCFCFC</code> on hover</td></tr>

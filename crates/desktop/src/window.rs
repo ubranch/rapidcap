@@ -59,8 +59,9 @@ impl MainWindow {
         // to stand in for "put it back in the tray", but it is a no-op on
         // Windows - the panel stayed put and the app had no way out at all. The
         // tray route is the minimise button, which really does hide the window.
-        window.on_window_should_close(cx, |_window, cx| {
-            cx.quit();
+        let close_controller = controller.clone();
+        window.on_window_should_close(cx, move |_window, cx| {
+            close_on_exit_request(&close_controller, cx);
             false
         });
         Self {
@@ -478,8 +479,11 @@ impl MainWindow {
                         .on_click(|_, _, _| hide_main_window()),
                     )
                     .child(
-                        window_button("titlebar-close", "Close", Icon::Close, true)
-                            .on_click(cx.listener(|_, _, _, cx| cx.quit())),
+                        window_button("titlebar-close", "Close", Icon::Close, true).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                close_on_exit_request(&this.controller, cx);
+                            }),
+                        ),
                     ),
             )
     }
@@ -848,6 +852,23 @@ fn window_button(
         // One `hover` call per element: GPUI panics on a second.
         .hover(move |style| style.bg(hover_bg).text_color(theme::text_primary()))
         .child(icon.element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()))
+}
+
+/// The one place that decides what Alt+F4 and the close button do.
+///
+/// Both used to call `cx.quit()` outright, which killed a running recording
+/// mid-take and left the encoder's part file behind — the tray's Exit item has
+/// always refused to quit under a live capture, and these two disagreed with
+/// it. Under a live capture, close now does what the tray does when the panel
+/// is in the way: hides it. The recording keeps running and the tray icon keeps
+/// carrying its state, so there is still a way to stop the take and then a way
+/// out.
+fn close_on_exit_request(controller: &Entity<AppController>, cx: &mut App) {
+    if controller.read(cx).state().blocks_exit() {
+        hide_main_window();
+    } else {
+        cx.quit();
+    }
 }
 
 /// Written strings, one per state. Never `format!("{state:?}")` — a user should

@@ -330,10 +330,13 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                     PlatformEvent::Exit => {
-                        let idle = controller.read_with(cx, |controller, _| {
-                            matches!(controller.state(), CaptureState::Idle)
-                        });
-                        if idle {
+                        // Same rule as the panel's close button, from the same
+                        // predicate: a live capture holds the app open, an error
+                        // does not. Guarding on `Idle` instead meant a failed
+                        // capture made Exit do nothing at all.
+                        let blocked = controller
+                            .read_with(cx, |controller, _| controller.state().blocks_exit());
+                        if !blocked {
                             cx.update(|cx| cx.quit());
                         }
                     }
