@@ -38,9 +38,10 @@ const KNOB: f32 = 16.0;
 const KNOB_INSET: f32 = 3.0;
 
 const STEP_BTN: f32 = 30.0;
-/// The value column in a stepper. Wide enough for `Off`, `10 s` and `100`
-/// without the buttons moving between them.
-const STEP_VALUE_W: f32 = 54.0;
+/// The value column in a stepper, at the design's `min-width`. Wide enough for
+/// `Off` and `5 s` - every label [`crate::settings_view::countdown_label`] can
+/// produce - without the buttons moving between them.
+const STEP_VALUE_W: f32 = 52.0;
 const STEP_DISABLED: f32 = 0.35;
 
 const ACTION_H: f32 = 24.0;
