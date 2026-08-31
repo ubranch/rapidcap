@@ -60,12 +60,6 @@ pub fn border_card() -> Hsla {
     rgb(0x333333).into()
 }
 
-/// The HUD's hairline, between the status pill and the transport buttons. Was
-/// the split-button divider too, until the split button came off the mode cards.
-pub fn border_divider() -> Hsla {
-    rgb(0x444444).into()
-}
-
 // ---------------------------------------------------------------- text
 
 /// Wordmark, logo mark, hovered icons.
@@ -205,9 +199,19 @@ pub fn overlay_float() -> Hsla {
     rgba(0x1c1c1ceb).into()
 }
 
-/// HUD background. The card tone at 97%.
+/// HUD background.
+///
+/// Nearly opaque on Windows, where the pill sits directly on whatever is being
+/// recorded and a translucent fill leaves the bar unreadable over a bright
+/// desktop. macOS puts frosted glass behind it - see `blur_behind` - so the
+/// tint there is thin enough for the blur to come through; a 97% fill over
+/// frosted glass is just a 97% fill.
 pub fn hud_bg() -> Hsla {
-    rgba(0x1c1c1cf7).into()
+    if cfg!(target_os = "macos") {
+        rgba(0x1c1c1cb3).into()
+    } else {
+        rgba(0x1c1c1cf7).into()
+    }
 }
 
 // ---------------------------------------------------------------- metrics
@@ -369,7 +373,6 @@ mod tests {
             ("bg_track", bg_track()),
             ("bg_pill_off", bg_pill_off()),
             ("border_card", border_card()),
-            ("border_divider", border_divider()),
             ("text_primary", text_primary()),
             ("text_label", text_label()),
             ("text_muted", text_muted()),

@@ -412,9 +412,12 @@ impl Render for RecordingHud {
             self.countdown_since.elapsed().as_secs() as u8,
             self.controller.read(cx).recording_elapsed().as_secs(),
         );
-        // Long recordings stop feeling watched: after three quiet seconds the bar
-        // drops to 55% and comes back on hover. Only while something is running -
-        // a countdown is asking a question and has to stay legible.
+        // Long recordings stop feeling watched: after three quiet seconds the
+        // contents drop to 55% and come back on hover. Only while something is
+        // running - a countdown is asking a question and has to stay legible.
+        // The fill and the border are deliberately not part of it: dimming the
+        // whole pill took the background with it, and what was left over a
+        // bright desktop was three outlines floating on nothing.
         let faded = matches!(state, CaptureState::Recording(_) | CaptureState::Paused(_))
             && self.pointer_seen.elapsed() >= HUD_FADE_AFTER;
         self.has_faded |= faded;
@@ -447,8 +450,6 @@ impl Render for RecordingHud {
                     .w(theme::u(theme::HUD_W))
                     .flex()
                     .items_center()
-                    .gap(theme::u(4.0))
-                    .p(theme::u(4.0))
                     .rounded(theme::u(theme::RADIUS_PILL))
                     .border_2()
                     .border_color(theme::border_card())
@@ -456,76 +457,84 @@ impl Render for RecordingHud {
                     .shadow(theme::floating())
                     .text_color(theme::text_primary())
                     .child(
+                        // Everything the idle fade applies to, in one element.
+                        // The padding and the gap live here rather than on the
+                        // pill so the row still measures the same.
                         div()
-                            .id("recording-hud-status")
-                            .accessibility_id("rapidcap.hud-status")
-                            .role(Role::Status)
-                            .aria_label(status.clone())
-                            // Takes whatever the fixed-width pill has left over,
-                            // and clips rather than pushes: a long window title
-                            // must not be able to move the buttons.
-                            .flex_1()
-                            .min_w(theme::u(0.0))
-                            .overflow_hidden()
+                            .size_full()
                             .flex()
                             .items_center()
-                            // Centred inside that leftover space. The pill is a
-                            // fixed width so the buttons cannot slide out from
-                            // under the pointer mid-recording, which left a
-                            // running clock - `00:27`, five glyphs - stranded
-                            // against the left edge with the rest of the bar
-                            // empty. A countdown line fills the space and
-                            // ellipsises, so centring is a no-op there.
-                            .justify_center()
-                            .gap(theme::u(7.0))
-                            // Symmetric, or the centre sits 2px left of it.
-                            .px(theme::u(8.0))
-                            .text_size(theme::u(13.0))
-                            .text_ellipsis()
-                            .child(motion::status_dot("hud-pulse", 8.0, dot, pulsing))
-                            .child(status),
-                    )
-                    .child(
-                        div()
-                            .w(theme::u(theme::BORDER))
-                            .h(theme::u(18.0))
-                            .flex_none()
-                            .bg(theme::border_divider()),
-                    )
-                    // Both buttons exist in every state. Dropping the pause
-                    // button during the countdown used to slide the stop button
-                    // sideways at the exact moment the pointer was heading for
-                    // it; it greys out instead.
-                    .child(
-                        hud_button(
-                            "rapidcap.hud-pause",
-                            pause_label,
-                            pause_icon,
-                            false,
-                            can_pause,
-                        )
-                        .when(can_pause, |button| {
-                            button.on_click(cx.listener(|this, _, _, cx| this.toggle_pause(cx)))
-                        }),
-                    )
-                    .child(
-                        hud_button(
-                            "rapidcap.hud-stop",
-                            if can_pause { "Stop" } else { "Cancel" },
-                            Icon::Stop,
-                            true,
-                            true,
-                        )
-                        .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
-                    )
-                    // Linear, because eased opacity reads as a flicker. The id
-                    // carries `faded`: `with_animation` restarts when its id
-                    // changes, and that restart is the only thing that runs the
-                    // fade back up when the pointer returns.
-                    .with_animation(
-                        ("hud-fade", faded as usize),
-                        Animation::new(motion::HUD_FADE),
-                        move |pill, delta| pill.opacity(fade_from + (fade_to - fade_from) * delta),
+                            .gap(theme::u(4.0))
+                            .p(theme::u(4.0))
+                            .child(
+                                div()
+                                    .id("recording-hud-status")
+                                    .accessibility_id("rapidcap.hud-status")
+                                    .role(Role::Status)
+                                    .aria_label(status.clone())
+                                    // Takes whatever the fixed-width pill has left over,
+                                    // and clips rather than pushes: a long window title
+                                    // must not be able to move the buttons.
+                                    .flex_1()
+                                    .min_w(theme::u(0.0))
+                                    .overflow_hidden()
+                                    .flex()
+                                    .items_center()
+                                    // Centred inside that leftover space. The pill is a
+                                    // fixed width so the buttons cannot slide out from
+                                    // under the pointer mid-recording, which left a
+                                    // running clock - `00:27`, five glyphs - stranded
+                                    // against the left edge with the rest of the bar
+                                    // empty. A countdown line fills the space and
+                                    // ellipsises, so centring is a no-op there.
+                                    .justify_center()
+                                    .gap(theme::u(7.0))
+                                    // Symmetric, or the centre sits 2px left of it.
+                                    .px(theme::u(8.0))
+                                    .text_size(theme::u(13.0))
+                                    .text_ellipsis()
+                                    .child(motion::status_dot("hud-pulse", 8.0, dot, pulsing))
+                                    .child(status),
+                            )
+                            // Both buttons exist in every state. Dropping the pause
+                            // button during the countdown used to slide the stop button
+                            // sideways at the exact moment the pointer was heading for
+                            // it; it greys out instead.
+                            .child(
+                                hud_button(
+                                    "rapidcap.hud-pause",
+                                    pause_label,
+                                    pause_icon,
+                                    false,
+                                    can_pause,
+                                )
+                                .when(can_pause, |button| {
+                                    button.on_click(
+                                        cx.listener(|this, _, _, cx| this.toggle_pause(cx)),
+                                    )
+                                }),
+                            )
+                            .child(
+                                hud_button(
+                                    "rapidcap.hud-stop",
+                                    if can_pause { "Stop" } else { "Cancel" },
+                                    Icon::Stop,
+                                    true,
+                                    true,
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
+                            )
+                            // Linear, because eased opacity reads as a flicker. The id
+                            // carries `faded`: `with_animation` restarts when its id
+                            // changes, and that restart is the only thing that runs the
+                            // fade back up when the pointer returns.
+                            .with_animation(
+                                ("hud-fade", faded as usize),
+                                Animation::new(motion::HUD_FADE),
+                                move |row, delta| {
+                                    row.opacity(fade_from + (fade_to - fade_from) * delta)
+                                },
+                            ),
                     ),
             )
     }
@@ -641,12 +650,9 @@ fn hud_button(
         .items_center()
         .justify_center()
         .rounded(theme::u(theme::RADIUS_PILL))
-        .border_2()
-        .border_color(if danger {
-            theme::danger_hover()
-        } else {
-            theme::border_card()
-        })
+        // No border. Two outlined circles inside an outlined 36px pill read as
+        // three stacked rings rather than as buttons; the stop button carries
+        // its fill and the pause button its hover fill, which is enough.
         .bg(rest_bg)
         .text_color(colour)
         .when(enabled, |button| {
@@ -729,6 +735,16 @@ pub fn open_recording_hud(
         // without this it is in the file. The region overlay does not need the
         // same treatment: it is gone before the recorder starts.
         exclude_from_capture(hwnd);
+        // Windows has no equivalent for one rectangle inside a window - the
+        // DWM backdrops apply to a whole window - so the pill stays opaque
+        // there and this is macOS only.
+        #[cfg(target_os = "macos")]
+        crate::platform::blur_behind(
+            hwnd,
+            theme::scaled(theme::HUD_W),
+            theme::scaled(theme::HUD_H),
+            theme::scaled(theme::pill_radius(theme::HUD_H)),
+        );
     }
     Ok(handle)
 }

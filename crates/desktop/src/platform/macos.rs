@@ -29,8 +29,10 @@ use std::{
 use anyhow::Context as _;
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained};
 use objc2_app_kit::{
-    NSApplication, NSBackingStoreType, NSColor, NSScreen, NSView, NSWindow, NSWindowButton,
-    NSWindowCollectionBehavior, NSWindowLevel, NSWindowSharingType, NSWindowStyleMask,
+    NSApplication, NSBackingStoreType, NSColor, NSScreen, NSView, NSVisualEffectBlendingMode,
+    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindow, NSWindowButton,
+    NSWindowCollectionBehavior, NSWindowLevel, NSWindowOrderingMode, NSWindowSharingType,
+    NSWindowStyleMask,
 };
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CGPoint, CGRect};
 use objc2_core_graphics::{
@@ -265,6 +267,59 @@ pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
     // window, and a full-screen overlay has nothing to cast one onto anyway.
     window.setHasShadow(false);
     window.setFrame_display(frame, true);
+}
+
+/// Frosted glass behind a centred rectangle of a GPUI window.
+///
+/// The HUD needs it. Its pill is nearly transparent on macOS so the desktop
+/// shows through, and over a bright one - the Dock, a white document - that
+/// left a bar nobody could read. GPUI has `WindowBackgroundAppearance::Blurred`
+/// already, but that blurs the whole window, and the HUD's window is a
+/// letterbox wider and taller than the pill: the result is a blurred rectangle
+/// with a pill floating in the middle of it. An `NSVisualEffectView` sized to
+/// the pill and rounded to the same radius blurs exactly what is behind the
+/// pill and nothing else.
+///
+/// Sizes are in points, which is what AppKit lays out in and what GPUI calls
+/// logical pixels, so no `display_scale` conversion applies here.
+pub fn blur_behind(handle: isize, width: f32, height: f32, radius: f32) {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let Some(window) = view_window(handle, mtm) else {
+        return;
+    };
+    let Some(content) = window.contentView() else {
+        return;
+    };
+    let bounds = content.bounds();
+    let (width, height) = (f64::from(width), f64::from(height));
+    // Centred, because the pill is: GPUI centres it in the letterbox with a
+    // flex container, and this view has to land under it rather than beside it.
+    let frame = NSRect::new(
+        NSPoint::new(
+            (bounds.size.width - width) / 2.0,
+            (bounds.size.height - height) / 2.0,
+        ),
+        NSSize::new(width, height),
+    );
+    let view = NSVisualEffectView::initWithFrame(NSVisualEffectView::alloc(mtm), frame);
+    view.setMaterial(NSVisualEffectMaterial::HUDWindow);
+    // Behind, not within: the blur has to sample the screen under the window,
+    // not the transparent nothing GPUI paints into it.
+    view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+    // Not `FollowsWindowActiveState`. The HUD is up while the user works in
+    // some other app, which is exactly when AppKit would call it inactive and
+    // flatten the blur to grey.
+    view.setState(NSVisualEffectState::Active);
+    view.setWantsLayer(true);
+    if let Some(layer) = view.layer() {
+        layer.setCornerRadius(f64::from(radius));
+        layer.setMasksToBounds(true);
+    }
+    // `None` for the sibling means "below everything", which is where the blur
+    // belongs: under whatever GPUI paints into the window.
+    content.addSubview_positioned_relativeTo(&view, NSWindowOrderingMode::Below, None);
 }
 
 /// The recording frame: one borderless window, hollow so the recorded content
