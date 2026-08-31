@@ -162,10 +162,11 @@ Write-Host "Tokens"
 $cardTop = if ($bands.Count -ge 1) { $bands[0].Top } else { $bodyTop }
 Check "titlebar #1C1C1C" ((Hex ([int]($W / 2)) ($top + (Du 15))) -eq '#1C1C1C') ("got " + (Hex ([int]($W / 2)) ($top + (Du 15))))
 Check "body #111111" ((Hex (Du 6) ($bodyTop + (Du 20))) -eq '#111111') ("got " + (Hex (Du 6) ($bodyTop + (Du 20))))
-Check "card border #202020" ((Hex $col $cardTop) -eq '#202020') ("got " + (Hex $col $cardTop))
-# Sampled at x=60: the highlight is inset by the corner radius, so x=30 sits in
-# the curve on the pill and would read the fill.
-Check "card top highlight #414141" ((Hex (Du 60) ($cardTop + 1)) -eq '#414141') ("got " + (Hex (Du 60) ($cardTop + 1)))
+# #333333, not the #202020 this used to expect. #202020 is 1.1:1 on the
+# #1C1C1C fill - a border nobody could see, which is why it was carried by a
+# #414141 highlight along the top edge only. Both are gone; see
+# docs/design-system/foundations/type-and-space.html.
+Check "card border #333333" ((Hex $col $cardTop) -eq '#333333') ("got " + (Hex $col $cardTop))
 Check "card fill #1C1C1C" ((Hex $col ($cardTop + (Du 20))) -eq '#1C1C1C') ("got " + (Hex $col ($cardTop + (Du 20))))
 
 # The Video card is one undivided surface now that the frame rate control is
@@ -198,8 +199,10 @@ Check "active countdown slot ring #3478F6" $foundAccent "no accent pixel in the 
 #
 # GPUI's overflow_hidden is a rectangular content mask - it does not follow a
 # corner radius. Anything absolutely positioned inside a rounded parent has to
-# clear the curve itself, or it draws across the outside of the shape. These
-# are the two places where that has already gone wrong once.
+# clear the curve itself, or it draws across the outside of the shape. The top
+# highlight was where that went wrong; it is gone, and what replaced it is a
+# border on all four sides. So the check is now that every side is there - a
+# missing edge is the failure a one-sided treatment used to hide.
 
 Write-Host ""
 Write-Host "Artifacts"
@@ -212,14 +215,14 @@ if ($bands.Count -ge 3) {
   for ($x = $chipL; $x -lt $W - (Du 6); $x++) { if ((Hex $x $chipMid) -eq '#111111') { $chipR = $x - 1; break } }
   Check "footer chip found" ($chipL -gt 0 -and $chipR -gt $chipL) "measured x $chipL..$chipR"
 
-  # A pill's radius is half its height, so its top edge only goes flat 18px in.
-  $hl = @()
-  for ($x = 0; $x -lt $W; $x++) { if ((Hex $x ($chipTop + 1)) -eq '#414141') { $hl += $x } }
-  Check "chip highlight is drawn" ($hl.Count -gt 0) "no #414141 on the chip top row"
-  if ($hl.Count -gt 0) {
-    Check "chip highlight clears the left cap" (($hl[0] - $chipL) -ge (Du 17)) ("highlight starts " + [Math]::Round((Lg ($hl[0] - $chipL)), 1) + " design px into a chip whose cap is 18px wide - it is cutting across the curve")
-    Check "chip highlight clears the right cap" (($chipR - $hl[-1]) -ge (Du 17)) ("highlight ends " + [Math]::Round((Lg ($chipR - $hl[-1])), 1) + " design px short of the right cap")
-  }
+  # A pill's radius is half its height, so top and bottom are only flat in the
+  # middle - sampled at the centre, which is the one column on both that is.
+  $chipC = [int](($chipL + $chipR) / 2)
+  $chipBottom = $chipTop + $bands[2].Height - 1
+  Check "chip border left #333333" ((Hex $chipL $chipMid) -eq '#333333') ("got " + (Hex $chipL $chipMid))
+  Check "chip border right #333333" ((Hex $chipR $chipMid) -eq '#333333') ("got " + (Hex $chipR $chipMid))
+  Check "chip border top #333333" ((Hex $chipC $chipTop) -eq '#333333') ("got " + (Hex $chipC $chipTop))
+  Check "chip border bottom #333333" ((Hex $chipC $chipBottom) -eq '#333333') ("got " + (Hex $chipC $chipBottom))
 }
 
 Write-Host ""
