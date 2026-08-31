@@ -60,7 +60,8 @@ pub fn border_card() -> Hsla {
     rgb(0x333333).into()
 }
 
-/// Split-button hairline.
+/// The HUD's hairline, between the status pill and the transport buttons. Was
+/// the split-button divider too, until the split button came off the mode cards.
 pub fn border_divider() -> Hsla {
     rgb(0x444444).into()
 }

@@ -6,9 +6,9 @@
 <title>RapidCap · Cards, rows &amp; controls</title>
 <style>
   :root {
-    --bg-body:#111111; --bg-card:#1C1C1C; --bg-chevron:#323232; --bg-track:#282828;
+    --bg-body:#111111; --bg-card:#1C1C1C; --bg-track:#282828;
     --bg-pill:#282828; --bg-pill-off:#3A3A3A; --bg-hover:#242424;
-    --border-card:#333333; --border-divider:#444444;
+    --border-card:#333333;
     --text-primary:#FCFCFC; --text-label:#DDDDDD; --text-badge:#E2E2E2; --text-muted:#7A7A7A;
     --accent:#3478F6; --rec:#FF2D2D; --danger:#C92A2A;
     --gap:9px; --radius:8px;
@@ -36,10 +36,6 @@
   }
   .card .main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
   .card .lbl { font-size:13px; font-weight:500; line-height:1; }
-  /* absolute, not in flow: main must centre on the whole card */
-  .card .chev { position:absolute; right:0; top:0; bottom:0; width:34px;
-                background:var(--bg-chevron); border-left:1px solid var(--border-divider);
-                display:flex; align-items:center; justify-content:center; }
   .card.hover { background:var(--bg-hover); }
   .card.press { transform:scale(.985); }
   .card.active { border-color:var(--accent); background:rgba(52,120,246,.16); }
@@ -84,7 +80,6 @@
              font-family:var(--font); font-size:13px; line-height:1; flex:none; }
   .hud-btn.danger { background:var(--danger); border-color:var(--danger); }
   .hud .dot { width:9px; height:9px; border-radius:50%; background:var(--rec); flex:none; }
-  .scan { font-family:"Cascadia Mono",Consolas,monospace; font-size:11px; color:var(--text-muted); line-height:1.7; }
 </style>
 </head>
 <body>
@@ -101,22 +96,19 @@
     <div><h3>Disabled</h3><div class="card disabled"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14"/></svg><div class="lbl">GIF</div></div></div></div>
   </div>
 
-  <h2>Split button — Video &amp; GIF only</h2>
-  <div class="cols">
-    <div><h3>Rest</h3><div class="card"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="6" width="13" height="12" rx="2"/><path d="m21.5 8-6 4 6 4z"/></svg><div class="lbl">Video</div></div><div class="chev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div></div></div>
-    <div><h3>Chevron hover</h3><div class="card"><div class="main"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14"/></svg><div class="lbl">GIF</div></div><div class="chev" style="background:#3C3C3C"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg></div></div></div>
-    <div><h3>Horizontal scan</h3><div class="scan">
-      main pane &nbsp;#1C1C1C&nbsp; 0..148<br>
-      divider &nbsp;&nbsp;&nbsp;#444444&nbsp; 148..149<br>
-      chevron &nbsp;&nbsp;&nbsp;#323232&nbsp; 149..183
-    </div></div>
+  <div class="note">
+    <b>There is no split button.</b> Video and GIF used to carry a 34px chevron pane on the right, lighter than the
+    card at <code>#323232</code>, divided off with a <code>#444444</code> hairline, and it opened an FPS menu. The pane
+    rendered and opened nothing for as long as it existed, so it came off — the four cards are now one shape, whole and
+    identical. <code>scripts/verify-design.ps1</code> scans the Video card's row for that hairline and fails if a
+    <code>#444444</code> pixel comes back, so it cannot quietly return.
   </div>
   <div class="note">
-    <b>The chevron does not push the label.</b> It is absolutely positioned on the right edge, outside the flow, so the
-    icon and label centre on the full card width. In flow it stole 34px from the centring box and split cards sat
-    visibly left of unsplit ones — a 17px drift, plainly readable against the Region and Window cards above them.
+    <b>The frame rates moved to the header.</b> They are fixed — 60 for video, 15 for GIF, both read from
+    <code>Settings</code> — so stating them is all the panel ever needed to do. One badge carries both, written
+    <code>60 / 15 FPS</code>. Two badges do not fit: the gap to the countdown track measures 60px and a second badge
+    needs 66px with its own gap.
   </div>
-  <div class="note">The chevron pane is <b>lighter than the card</b>, not the same fill. It opens the FPS menu — <code>60</code> for video, <code>15</code> for GIF, both read from <code>Settings</code>. Region and Window carry no chevron: their target is picked on the overlay, not in a menu.</div>
 
   <h2>Footer — 376 × 36, chips + status</h2>
   <div class="stack">

@@ -60,7 +60,7 @@
     <tr><th>Work</th><th>Files</th><th></th></tr>
     <tr><td>Window 360 × 240 → <b>400 × 288</b>, fixed size, <code>appears_transparent</code> — <code>titlebar: None</code> hides the system bar on paper but produces a window that never becomes visible on Windows</td><td class="file">window.rs:288-300</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Custom titlebar: 30px bar, drag region, minimize and close at 34 × 30, no app actions, close reaches the corner</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Mode grid: 4 cards at 64px, icon over label, chevron pane <b>absolutely positioned</b> so labels centre on the card</td><td class="file">window.rs:113-260</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>Mode grid: 4 cards at 64px, icon over label, each card one whole target — no chevron pane</td><td class="file">window.rs:113-260</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Footer: two chips plus the recessed status well, replacing the button row</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Header: 34px mark, 22px wordmark, FPS badge, countdown segmented control</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Map <code>CaptureState</code> to real strings — kills <code>format!("{other:?}")</code></td><td class="file">window.rs:145-152</td><td><span class="tag t-bug">bug</span></td></tr>
@@ -98,7 +98,7 @@
   <table>
     <tr><th>Work</th><th>Files</th><th></th></tr>
     <tr><td>Menu primitive — 212px, 32px items, tick column, group headers, empty state</td><td class="file">crates/desktop/src/menu.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>FPS menus behind both chevrons, writing <code>video.*</code> and <code>gif.*</code></td><td class="file">window.rs · menu.rs</td><td><span class="tag t-new">new</span></td></tr>
+    <tr><td>FPS menus, writing <code>video.*</code> and <code>gif.*</code> — <b>needs a trigger designed first</b>, the chevrons that were going to open them are gone and the rates are a read-only header badge</td><td class="file">window.rs · menu.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Audio device menu behind the chip — needs <code>cpal</code> device enumeration</td><td class="file">crates/capture/src/audio.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Form controls: toggle, select, stepper, path field, hotkey field</td><td class="file">crates/desktop/src/controls.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Settings view — 6 sections, <code>SettingsStore::save</code> on every change</td><td class="file">crates/desktop/src/settings_view.rs</td><td><span class="tag t-new">new</span></td></tr>

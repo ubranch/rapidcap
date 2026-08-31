@@ -71,7 +71,6 @@
     <tr><td>Panel</td><td><code>400 × ~300</code></td><td>Width is fixed. Long names truncate, never wrap.</td></tr>
     <tr><td>Titlebar</td><td><code>400 × 30</code></td><td>No bottom border — the tone step separates it. A 9px leading inset before the mark</td></tr>
     <tr><td>Mode card</td><td><code>flex 1 × 64</code></td><td>2 × 2 grid, ~183px each at 400 panel width</td></tr>
-    <tr><td>Chevron pane</td><td><code>34px</code> wide</td><td>Full card height, 1px divider on its left</td></tr>
     <tr><td>Footer</td><td><code>376 × 36</code></td><td>Chips left, status text right, <code>6px</code> gap</td></tr>
     <tr><td>Chip</td><td><code>36px</code> tall</td><td>Raised: border + top highlight. Capped at <code>152px</code></td></tr>
     <tr><td>Status well</td><td><code>28px</code> tall</td><td>Recessed: no border, <code>inset 0 1px 3px rgba(0,0,0,.55)</code></td></tr>
@@ -84,7 +83,7 @@
   <h2>Touch targets</h2>
   <table>
     <tr><th>Control</th><th>Hit box</th><th>Note</th></tr>
-    <tr><td>Mode card</td><td><code>~183 × 64</code></td><td>Whole card; chevron pane is a separate <code>34 × 64</code> target</td></tr>
+    <tr><td>Mode card</td><td><code>~183 × 64</code></td><td>Whole card, one target — the 34px chevron pane that used to split it is gone</td></tr>
     <tr><td>Footer chip</td><td><code>36px</code> tall</td><td>Free-standing pill, never shares an edge</td></tr>
     <tr><td>HUD icon button</td><td><code>28 × 28</code></td><td>Circular, inside a 36px pill — tooltip carries the label</td></tr>
     <tr><td>Window control</td><td><code>34 × 30</code></td><td>The full height of the bar, square hover fill at <code>#2A2A2A</code>. Close reaches the corner</td></tr>
