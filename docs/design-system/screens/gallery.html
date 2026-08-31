@@ -128,32 +128,32 @@
                   <button class="ha del" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12"/></svg></button>
                 </div>
               </div>
-              <div class="meta"><div class="fname">Screen_9EN.png</div><div class="when">2 min ago</div></div>
+              <div class="meta"><div class="fname">Screen_2026-08-27_14-32-05_a7Kq.png</div><div class="when">2 min ago</div></div>
             </div>
 
             <div class="item">
               <div class="thumb c"><span class="kind">MP4</span><span class="dur">00:42</span></div>
-              <div class="meta"><div class="fname">Screen_JI2.mp4</div><div class="when">18 min ago</div></div>
+              <div class="meta"><div class="fname">Screen_2026-08-27_14-14-40_Zq3M.mp4</div><div class="when">18 min ago</div></div>
             </div>
 
             <div class="item">
               <div class="thumb d"><span class="kind">GIF</span><span class="dur">00:08</span></div>
-              <div class="meta"><div class="fname">Screen_XuT.gif</div><div class="when">1 h ago</div></div>
+              <div class="meta"><div class="fname">Telegram_2026-08-27_13-31-02_Lm8v.gif</div><div class="when">1 h ago</div></div>
             </div>
 
             <div class="item">
               <div class="thumb"><span class="kind">JPG</span></div>
-              <div class="meta"><div class="fname">Screen_cFA.jpg</div><div class="when">Yesterday</div></div>
+              <div class="meta"><div class="fname">Code_2026-08-26_18-07-55_qR4t.jpg</div><div class="when">Yesterday</div></div>
             </div>
 
             <div class="item">
               <div class="thumb b"><span class="kind">PNG</span></div>
-              <div class="meta"><div class="fname">Screen_yey.png</div><div class="when">Yesterday</div></div>
+              <div class="meta"><div class="fname">explorer_2026-08-26_11-52-19_Kd6w.png</div><div class="when">Yesterday</div></div>
             </div>
 
             <div class="item">
               <div class="thumb c"><span class="kind">MP4</span><span class="dur">02:15</span></div>
-              <div class="meta"><div class="fname">Screen_PPB.mp4</div><div class="when">26 Aug</div></div>
+              <div class="meta"><div class="fname">Screen_2026-08-26_09-40-33_Yb1n.mp4</div><div class="when">26 Aug</div></div>
             </div>
           </div>
         </div>
@@ -195,6 +195,13 @@
     <b>The gallery is a view of the folder, not a database.</b> It lists <code>AppPaths.capture_root</code> sorted by
     modified time. Delete moves to the Recycle Bin. Nothing is indexed, nothing needs migrating, and a file dropped
     into that folder by hand shows up like any other — which is the behaviour a capture tool should have.
+  </div>
+  <div class="note">
+    <b>Tile names trim from the middle, not the end.</b> A name is
+    <code>{process}_{YYYY-MM-DD_HH-mm-ss}_{guard}</code> now, and the tiles above use
+    <code>text-overflow:ellipsis</code>, which cuts the tail and takes the extension with it — every tile would end in
+    a date. The saved chip already solved this in <code>saved_label</code>: keep the process name at the front and the
+    extension at the back. Port that, do not port the CSS.
   </div>
   <div class="note">
     <b>Filters come from the extension</b>, so they cost nothing: <code>.png</code>/<code>.jpg</code> are Images,

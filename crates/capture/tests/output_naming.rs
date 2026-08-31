@@ -9,7 +9,7 @@ use std::path::Path;
 
 use rapidcap_capture::{OutputNamer, save_screenshot};
 
-const SUFFIX: &str = "0123456789";
+const STAMP: &str = "2026-08-27_14-32-05_a7Kq";
 
 /// 16x16 opaque grey - small enough to stay under any sane PNG threshold.
 fn pixels() -> Vec<u8> {
@@ -17,21 +17,22 @@ fn pixels() -> Vec<u8> {
 }
 
 fn stem(process_name: &str) -> String {
-    OutputNamer::for_test(SUFFIX)
-        .unwrap()
-        .file_stem(process_name)
+    OutputNamer::for_test(STAMP).file_stem(process_name)
 }
 
 #[test]
-fn dotted_process_name_keeps_its_random_suffix() {
-    assert_eq!(stem("Microsoft.Photos"), "Microsoft.Photos_0123456789");
+fn dotted_process_name_keeps_its_stamp() {
+    assert_eq!(
+        stem("Microsoft.Photos"),
+        "Microsoft.Photos_2026-08-27_14-32-05_a7Kq"
+    );
 }
 
 #[test]
 fn a_dotted_process_name_does_not_collapse_the_saved_file_name() {
     // `Path::with_extension` replaces everything after the *last* dot, and in
-    // `Microsoft.Photos_0123456789` that is `Photos_0123456789`. Saving through
-    // it produced `Microsoft.png`: the suffix vanished and every capture of the
+    // `Microsoft.Photos_<stamp>` that is the whole stamp. Saving through it
+    // produced `Microsoft.png`: the stamp vanished and every capture of the
     // Photos app overwrote the one before it.
     let temp = tempfile::tempdir().unwrap();
     let base = temp.path().join(stem("Microsoft.Photos"));
@@ -40,7 +41,7 @@ fn a_dotted_process_name_does_not_collapse_the_saved_file_name() {
 
     assert_eq!(
         saved.file_name().unwrap(),
-        "Microsoft.Photos_0123456789.png",
+        "Microsoft.Photos_2026-08-27_14-32-05_a7Kq.png",
         "the whole stem has to survive, dots and all"
     );
 }
@@ -52,7 +53,9 @@ fn two_captures_of_a_dotted_process_do_not_overwrite_each_other() {
         &pixels(),
         16,
         16,
-        &temp.path().join("Microsoft.Photos_0123456789"),
+        &temp
+            .path()
+            .join("Microsoft.Photos_2026-08-27_14-32-05_a7Kq"),
         2_097_152,
         90,
     )
@@ -61,7 +64,9 @@ fn two_captures_of_a_dotted_process_do_not_overwrite_each_other() {
         &pixels(),
         16,
         16,
-        &temp.path().join("Microsoft.Photos_9876543210"),
+        &temp
+            .path()
+            .join("Microsoft.Photos_2026-08-27_14-32-05_Zq3M"),
         2_097_152,
         90,
     )
@@ -74,18 +79,23 @@ fn two_captures_of_a_dotted_process_do_not_overwrite_each_other() {
 #[test]
 fn a_dotted_process_name_survives_the_jpeg_branch_too() {
     let temp = tempfile::tempdir().unwrap();
-    let base = temp.path().join("python3.13_0123456789");
+    let base = temp.path().join("python3.13_2026-08-27_14-32-05_a7Kq");
 
     // Threshold of 1 byte forces the JPEG path.
     let saved = save_screenshot(&pixels(), 16, 16, &base, 1, 90).unwrap();
 
-    assert_eq!(saved.file_name().unwrap(), "python3.13_0123456789.jpg");
+    assert_eq!(
+        saved.file_name().unwrap(),
+        "python3.13_2026-08-27_14-32-05_a7Kq.jpg"
+    );
 }
 
 #[test]
 fn the_temporary_file_is_cleaned_up_for_dotted_names() {
     let temp = tempfile::tempdir().unwrap();
-    let base = temp.path().join("Microsoft.CmdPal.UI_0123456789");
+    let base = temp
+        .path()
+        .join("Microsoft.CmdPal.UI_2026-08-27_14-32-05_a7Kq");
 
     save_screenshot(&pixels(), 16, 16, &base, 2_097_152, 90).unwrap();
 

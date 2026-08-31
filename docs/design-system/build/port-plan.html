@@ -116,7 +116,7 @@
     <tr><td>Tab order, arrow keys in the segmented control, <code>Home</code> / <code>End</code>, every Esc route</td><td class="file">window.rs:92-99 · menu.rs</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Focus-visible spacer on filled controls</td><td class="file">theme.rs · controls.rs</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Three animations only: recording pulse, HUD idle fade, saved chip expiry</td><td class="file">window.rs · overlay.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>File names gain a timestamp: <code>{process}_{YYYY-MM-DD_HH-mm-ss}</code></td><td class="file">naming.rs:34-48</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>File names gain a timestamp: <code>{process}_{YYYY-MM-DD_HH-mm-ss}_{guard}</code></td><td class="file">naming.rs</td><td><span class="tag t-done">done</span></td></tr>
   </table>
   <div class="gate"><b>Done when:</b> the whole product is reachable with the keyboard alone, and <code>Esc</code> during a recording does nothing.</div>
 
@@ -130,7 +130,7 @@
     <tr><td>Other monitors stay bright and live while the overlay is modal</td><td class="file">overlay.rs:209</td><td>2</td></tr>
     <tr><td>GIF hotkey default collides with Windows Snipping Tool</td><td class="file">platform/mod.rs:118</td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>A hotkey that loses <code>RegisterHotKey</code> to another app fails silently — <code>warn</code> log, nothing on screen</td><td class="file">platform/mod.rs:180-184</td><td>4</td></tr>
-    <tr><td>File names are unsortable and unsearchable — random 10-character suffix</td><td class="file">naming.rs:12-18</td><td>5</td></tr>
+    <tr><td>File names were unsortable and unsearchable — random 10-character suffix</td><td class="file">naming.rs · <code>at</code></td><td><span class="tag t-done">fixed</span></td></tr>
   </table>
 
   <div class="note">

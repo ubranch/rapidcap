@@ -46,6 +46,15 @@ pub const CONTROL_IDS: [&str; 6] = [
 /// worse than no confirmation at all.
 const SAVED_CHIP: Duration = Duration::from_secs(6);
 
+/// Characters the saved chip can show. 152px of chip, less its padding, icon
+/// and border, leaves about 100px of text, and 12px medium runs near six
+/// pixels a character.
+const SAVED_LABEL_MAX: usize = 16;
+
+/// How much of the tail a trim keeps. `a7Kq.png` is exactly this long: the
+/// extension, plus the guard that separates two captures of the same second.
+const SAVED_LABEL_TAIL: usize = 8;
+
 pub struct MainWindow {
     controller: Entity<AppController>,
     focus_handle: FocusHandle,
@@ -1022,10 +1031,28 @@ fn folder_label(path: &str) -> String {
 /// The filename, for the saved chip. Falls back to the whole path rather than
 /// to an empty chip: a path with no final component is not a file we saved, so
 /// showing it is more use than showing nothing.
+///
+/// Names carry a timestamp now, which does not fit a 152px chip. The chip is
+/// `overflow_hidden`, so an untrimmed name is clipped mid-character and loses
+/// its extension - the one part that says what was captured. Trim from the
+/// middle instead: the process name survives at the front, the extension and
+/// the collision guard at the back, and the tooltip still carries the whole
+/// path.
 fn saved_label(path: &Path) -> String {
-    path.file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string())
+    let Some(name) = path.file_name() else {
+        return path.display().to_string();
+    };
+    let name = name.to_string_lossy();
+    let count = name.chars().count();
+    if count <= SAVED_LABEL_MAX {
+        return name.into_owned();
+    }
+    let head: String = name
+        .chars()
+        .take(SAVED_LABEL_MAX - 1 - SAVED_LABEL_TAIL)
+        .collect();
+    let tail: String = name.chars().skip(count - SAVED_LABEL_TAIL).collect();
+    format!("{head}…{tail}")
 }
 
 fn recording_label(state: &CaptureState, kind: CaptureKind) -> &'static str {
@@ -1274,6 +1301,28 @@ mod tests {
         assert_eq!(saved_label(Path::new("Screen_JI2.mp4")), "Screen_JI2.mp4");
         // No final component, so there is nothing to shorten to.
         assert_eq!(saved_label(Path::new("C:\\")), "C:\\");
+    }
+
+    #[test]
+    fn a_timestamped_name_is_trimmed_from_the_middle() {
+        // The process name and the extension identify the capture, so both ends
+        // survive and the timestamp is what gives way.
+        assert_eq!(
+            saved_label(Path::new("Screen_2026-08-27_14-32-05_a7Kq.png")),
+            "Screen_…a7Kq.png"
+        );
+        assert_eq!(
+            saved_label(Path::new(
+                "C:/Captures/2026-08/Microsoft.Photos_2026-08-27_14-32-05_a7Kq.png"
+            )),
+            "Microso…a7Kq.png"
+        );
+        assert_eq!(
+            saved_label(Path::new("Screen_2026-08-27_14-32-05_a7Kq.png"))
+                .chars()
+                .count(),
+            SAVED_LABEL_MAX
+        );
     }
 
     #[gpui::test]

@@ -85,7 +85,7 @@ impl RecordingSession {
         } else {
             "gif"
         };
-        let stem = OutputNamer::random().file_stem("Screen");
+        let stem = OutputNamer::at(now).file_stem("Screen");
         let mut session = Self {
             child: None,
             kind,

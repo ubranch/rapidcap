@@ -96,19 +96,20 @@
   </div>
 
   <h2>File names</h2>
-  <p class="lede">Today: <code>{process}_{10 random alphanumerics}</code> from <code>OutputNamer</code>, falling back to <code>Screen</code> when the process name is empty. Real output: <code>Screen_9ENJ4BwCIG.png</code>, <code>Telegram_XDdde2nqvu.png</code>, <code>explorer_RtscSVLXL9.png</code>.</p>
+  <p class="lede"><code>{process}_{YYYY-MM-DD_HH-mm-ss}_{4 random alphanumerics}</code> from <code>OutputNamer::at</code>, falling back to <code>Screen</code> when the process name is empty. Real output: <code>Screen_2026-08-27_14-32-05_a7Kq.png</code>, <code>Telegram_2026-08-27_14-33-11_Zq3M.png</code>.</p>
   <table>
-    <tr><th>Property</th><th>Now</th><th>Should be</th></tr>
-    <tr><td>Sorts by name in the right order</td><td class="bad">No — random suffix</td><td class="good">Yes, timestamp leads</td></tr>
-    <tr><td>Findable a week later</td><td class="bad">No — nothing is searchable</td><td class="good">Date and source app both in the name</td></tr>
-    <tr><td>Collision-safe</td><td class="good">Yes</td><td class="good">Yes, seconds plus a short suffix</td></tr>
-    <tr><td>Safe on Windows</td><td class="good">Yes — illegal characters mapped to <code>_</code></td><td class="good">Unchanged</td></tr>
+    <tr><th>Property</th><th>Now</th></tr>
+    <tr><td>Sorts by name in the right order</td><td class="good">Yes — the timestamp leads and every field is zero-padded</td></tr>
+    <tr><td>Findable a week later</td><td class="good">Yes — the date and the source app are both in the name</td></tr>
+    <tr><td>Collision-safe</td><td class="good">Yes — seconds, plus four characters for two captures inside one</td></tr>
+    <tr><td>Safe on Windows</td><td class="good">Yes — illegal characters mapped to <code>_</code>, and the time uses <code>-</code> because <code>:</code> is not legal</td></tr>
   </table>
   <div class="note">
-    <b>Proposal:</b> <code>{process}_{YYYY-MM-DD_HH-mm-ss}.{ext}</code> — <code>Telegram_2026-08-27_14-32-05.png</code>.
-    Same sanitising, same fallback to <code>Screen</code>, one extra field. It sorts chronologically in Explorer with no
-    effort, and "the screenshot I took on Tuesday" becomes findable. Keep a 4-character random suffix only if two
-    captures can land in the same second.
+    <b>The four trailing characters are the collision guard.</b> Two captures of one window can land in the same
+    second, and without a guard the second silently overwrites the first. Four alphanumerics is one chance in fourteen
+    million of a clash between those two, and it costs five characters at the end of the name where nothing reads.
+    <code>OutputNamer::at</code> takes the capture time the caller already computed for the <code>YYYY-MM</code>
+    folder, so the folder and the filename cannot disagree about when a capture happened.
   </div>
 
   <h2>Tooltips</h2>

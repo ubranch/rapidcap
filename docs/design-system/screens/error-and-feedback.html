@@ -135,7 +135,7 @@
     <div>
       <div class="footer">
         <button class="chip off"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="m17 10 4 4m0-4-4 4"/></svg></span><span class="txt">No audio</span></button>
-        <button class="chip saved"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span class="txt">Screen_9EN.png</span></button>
+        <button class="chip saved"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span class="txt">Screen_…a7Kq.png</span></button>
         <span class="grow"></span>
         <span class="status"><span class="sdot on"></span>Copied</span>
       </div>
@@ -145,7 +145,7 @@
     <div>
       <div class="footer">
         <button class="chip on"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M17 9.5a3.5 3.5 0 0 1 0 5"/></svg></span></button>
-        <button class="chip saved"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span class="txt">Screen_JI2.mp4</span></button>
+        <button class="chip saved"><span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><span class="txt">Screen_…Zq3M.mp4</span></button>
         <span class="grow"></span>
         <span class="status"><span class="sdot on"></span>00:42 · 12.4 MB</span>
       </div>
@@ -157,6 +157,12 @@
     <b>The confirmation is a control, not a toast.</b> A toast that floats over the desktop is one more thing to
     dismiss; a chip in the footer is already where the user's eye is, is clickable, and expires on its own. Saving is
     the moment the product earns trust, and it used to pass in silence.
+  </div>
+  <div class="note">
+    <b>The label is trimmed from the middle.</b> File names carry a timestamp, and a whole one does not fit 152px of
+    chip. The chip is <code>overflow_hidden</code>, so an untrimmed name would be cut mid-character and lose its
+    extension — the one part that says what was captured. <code>saved_label</code> keeps the process name at the front
+    and the extension and collision guard at the back, and the tooltip still carries the whole path.
   </div>
   <div class="note">
     <b>The chip ships; the well does not.</b> <code>MainWindow</code> subscribes to

@@ -24,7 +24,7 @@ pub use wgc::capture_screenshot;
 pub use clipboard::{ClipboardError, write_clipboard, write_clipboard_file};
 pub use geometry::{CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, RawFrame};
 pub use image_file::{ImageFileError, save_screenshot};
-pub use naming::{NamingError, OutputNamer};
+pub use naming::OutputNamer;
 pub use recording::{RecordingError, RecordingSession};
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
@@ -73,24 +73,6 @@ mod tests {
         assert_eq!(settings.audio.bitrate, 128_000);
         assert_eq!(settings.gif.fps, 15);
         assert_eq!(settings.countdown_seconds, 5);
-    }
-
-    #[test]
-    fn output_namer_accepts_injected_suffix() {
-        assert_eq!(
-            OutputNamer::for_test("0000000000")
-                .unwrap()
-                .file_stem("Code"),
-            "Code_0000000000"
-        );
-    }
-
-    #[test]
-    fn output_namer_random_suffix_has_expected_shape() {
-        let stem = OutputNamer::random().file_stem("Screen");
-        let suffix = stem.strip_prefix("Screen_").unwrap();
-        assert_eq!(suffix.len(), 10);
-        assert!(suffix.bytes().all(|byte| byte.is_ascii_alphanumeric()));
     }
 
     #[test]

@@ -42,7 +42,7 @@ pub fn capture_and_save(
         now.year(),
         now.month(),
         process_name,
-        &OutputNamer::random(),
+        &OutputNamer::at(now),
     );
     let path = save_screenshot(
         &frame.rgba,
@@ -85,14 +85,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn output_base_uses_year_month_process_and_suffix() {
+    fn output_base_uses_year_month_process_and_stamp() {
         let base = output_base(
             Path::new("C:/Captures"),
             2026,
             8,
             "Code",
-            &OutputNamer::for_test("0123456789").unwrap(),
+            &OutputNamer::for_test("2026-08-27_14-32-05_a7Kq"),
         );
-        assert_eq!(base, Path::new("C:/Captures/2026-08/Code_0123456789"));
+        assert_eq!(
+            base,
+            Path::new("C:/Captures/2026-08/Code_2026-08-27_14-32-05_a7Kq")
+        );
     }
 }
