@@ -27,7 +27,9 @@ pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::OutputNamer;
 pub use recording::{RecordingError, RecordingSession, ffmpeg_path, microphones};
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
-pub use settings::{AppPaths, Settings, SettingsError, SettingsStore};
+pub use settings::{
+    AppPaths, DITHERS, PALETTE_STATS_MODES, Settings, SettingsError, SettingsStore,
+};
 pub use state::{
     CaptureCommand, CaptureEvent, CaptureFailure, CaptureKind, CaptureState, SavedOutput,
     StateError,

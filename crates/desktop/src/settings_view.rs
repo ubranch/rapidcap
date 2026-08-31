@@ -4,15 +4,10 @@
 //! furniture. One column that scrolls puts every setting one gesture away and
 //! costs nothing to build.
 //!
-//! Every row here writes a key that something reads. Three rows the design
-//! system draws are not built, and each one is missing for the same reason:
-//!
-//! * **GIF dithering** - `gif.dither` and `gif.palette_stats_mode` have no
-//!   consumer anywhere in the workspace. The recorder writes GIFs without a
-//!   `palettegen` pass at all, and `recording/windows.rs` asserts as much. A
-//!   select over a key nothing reads is a control that lies.
-//! * **Copy to clipboard** and **hide panel while capturing** - neither has a
-//!   key on `Settings`, and neither behaviour exists to switch off.
+//! Every row here writes a key that something reads. Two rows the design system
+//! draws are not built, and both are missing for the same reason: **copy to
+//! clipboard** and **hide panel while capturing** have no key on `Settings`,
+//! and neither behaviour exists to switch off.
 //!
 //! The `Change` beside the capture folder is an `Open` instead: `capture_root`
 //! lives on `AppPaths`, which is discovered at startup rather than saved, so
@@ -92,6 +87,45 @@ const QUALITY: [Quality; 3] = [
 /// track to; a settings row has 30px and a label beside it.
 const COUNTDOWN: [u8; 3] = AppController::COUNTDOWN_CHOICES;
 
+/// The dithers, in FFmpeg's spelling, with what to call each one and what it
+/// costs. The order is the one `DITHERS` validates against, so a file the
+/// loader accepts is always a choice this select can tick.
+///
+/// The blurb finishes the sentence the label starts, which is how the design
+/// draws it: "Sierra 2-4A keeps gradients smooth at 256 colours".
+const GIF_DITHER: [(&str, &str, &str); 6] = [
+    (
+        "sierra2_4a",
+        "Sierra 2-4A",
+        "keeps gradients smooth at 256 colours",
+    ),
+    (
+        "sierra2",
+        "Sierra 2",
+        "diffuses over a wider kernel, slower and a little softer",
+    ),
+    (
+        "floyd_steinberg",
+        "Floyd-Steinberg",
+        "is the classic kernel, slightly grainier than Sierra",
+    ),
+    (
+        "heckbert",
+        "Heckbert",
+        "uses the smallest kernel, so the grain is coarser",
+    ),
+    (
+        "bayer",
+        "Bayer",
+        "lays down a fixed pattern instead of diffusing, and compresses smaller",
+    ),
+    (
+        "none",
+        "None",
+        "maps straight onto the palette, which bands every gradient",
+    ),
+];
+
 /// Every select on the screen.
 ///
 /// One enum rather than five little widgets, because the difference between
@@ -102,6 +136,7 @@ pub enum Select {
     VideoFps,
     Quality,
     GifFps,
+    GifDither,
     AudioBitrate,
     JpegThreshold,
 }
@@ -112,6 +147,7 @@ impl Select {
             Self::VideoFps => "settings-video-fps",
             Self::Quality => "settings-quality",
             Self::GifFps => "settings-gif-fps",
+            Self::GifDither => "settings-gif-dither",
             Self::AudioBitrate => "settings-audio-bitrate",
             Self::JpegThreshold => "settings-jpeg-threshold",
         }
@@ -125,6 +161,7 @@ impl Select {
             Self::VideoFps => "settings-video-fps-row",
             Self::Quality => "settings-quality-row",
             Self::GifFps => "settings-gif-fps-row",
+            Self::GifDither => "settings-gif-dither-row",
             Self::AudioBitrate => "settings-audio-bitrate-row",
             Self::JpegThreshold => "settings-jpeg-threshold-row",
         }
@@ -138,6 +175,7 @@ impl Select {
             Self::VideoFps => "settings-video-fps-menu",
             Self::Quality => "settings-quality-menu",
             Self::GifFps => "settings-gif-fps-menu",
+            Self::GifDither => "settings-gif-dither-menu",
             Self::AudioBitrate => "settings-audio-bitrate-menu",
             Self::JpegThreshold => "settings-jpeg-threshold-menu",
         }
@@ -148,6 +186,7 @@ impl Select {
             Self::VideoFps => "Video frame rate",
             Self::Quality => "Video quality",
             Self::GifFps => "GIF frame rate",
+            Self::GifDither => "Dithering",
             Self::AudioBitrate => "Audio bitrate",
             Self::JpegThreshold => "Convert large PNGs to JPEG",
         }
@@ -159,6 +198,7 @@ impl Select {
             Self::VideoFps => VIDEO_FPS.len(),
             Self::Quality => QUALITY.len(),
             Self::GifFps => GIF_FPS.len(),
+            Self::GifDither => GIF_DITHER.len(),
             Self::AudioBitrate => AUDIO_BITRATE.len(),
             Self::JpegThreshold => JPEG_THRESHOLD.len(),
         }
@@ -174,6 +214,9 @@ impl Select {
                 .iter()
                 .position(|quality| quality.bitrate == settings.video.bitrate),
             Self::GifFps => GIF_FPS.iter().position(|fps| *fps == settings.gif.fps),
+            Self::GifDither => GIF_DITHER
+                .iter()
+                .position(|(name, ..)| *name == settings.gif.dither),
             Self::AudioBitrate => AUDIO_BITRATE
                 .iter()
                 .position(|rate| *rate == settings.audio.bitrate),
@@ -189,6 +232,7 @@ impl Select {
             Self::VideoFps => format!("{} FPS", VIDEO_FPS[index]).into(),
             Self::Quality => QUALITY[index].name.into(),
             Self::GifFps => format!("{} FPS", GIF_FPS[index]).into(),
+            Self::GifDither => GIF_DITHER[index].1.into(),
             Self::AudioBitrate => format!("{} kbps", AUDIO_BITRATE[index] / 1_000).into(),
             Self::JpegThreshold => format!("Above {}", megabytes(JPEG_THRESHOLD[index])).into(),
         }
@@ -215,6 +259,24 @@ impl Select {
         }
     }
 
+    /// The second line under the label, which makes the row tall.
+    ///
+    /// Only dithering has one. The others are a number in a unit the label
+    /// already names, and a row that restates its own value in smaller grey
+    /// text is a row that has nothing to say.
+    ///
+    /// Nothing when the file holds a name that is not on the list: there is no
+    /// blurb to show for a value this screen does not know.
+    fn sub(self, settings: &Settings) -> Option<SharedString> {
+        match self {
+            Self::GifDither => self.current(settings).map(|index| {
+                let (_, name, blurb) = GIF_DITHER[index];
+                format!("{name} {blurb}").into()
+            }),
+            _ => None,
+        }
+    }
+
     /// What the closed pill reads.
     fn value(self, settings: &Settings) -> SharedString {
         match self.current(settings) {
@@ -226,6 +288,7 @@ impl Select {
                 Self::VideoFps => format!("{} FPS", settings.video.fps).into(),
                 Self::Quality => format!("{} Mbps", settings.video.bitrate / 1_000_000).into(),
                 Self::GifFps => format!("{} FPS", settings.gif.fps).into(),
+                Self::GifDither => settings.gif.dither.clone().into(),
                 Self::AudioBitrate => format!("{} kbps", settings.audio.bitrate / 1_000).into(),
                 Self::JpegThreshold => format!(
                     "Above {}",
@@ -262,6 +325,7 @@ impl Select {
                 settings.video.tune = quality.tune.to_string();
             }
             Self::GifFps => settings.gif.fps = GIF_FPS[index],
+            Self::GifDither => settings.gif.dither = GIF_DITHER[index].0.to_string(),
             Self::AudioBitrate => settings.audio.bitrate = AUDIO_BITRATE[index],
             Self::JpegThreshold => {
                 settings.screenshot.png_to_jpeg_threshold_bytes = JPEG_THRESHOLD[index]
@@ -456,7 +520,7 @@ impl SettingsView {
             _ => None,
         };
         let entries = select.entries(&settings);
-        controls::row(select.row_id(), select.label(), None)
+        controls::row(select.row_id(), select.label(), select.sub(&settings))
             .child(
                 div()
                     .relative()
@@ -668,7 +732,13 @@ impl Render for SettingsView {
                     self.select_row(Select::Quality, cx),
                 ],
             ))
-            .child(self.section("GIF", vec![self.select_row(Select::GifFps, cx)]))
+            .child(self.section(
+                "GIF",
+                vec![
+                    self.select_row(Select::GifFps, cx),
+                    self.select_row(Select::GifDither, cx),
+                ],
+            ))
             .child(self.section(
                 "Audio",
                 vec![
@@ -776,6 +846,35 @@ fn folder_tail(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rapidcap_capture::DITHERS;
+
+    #[test]
+    fn the_dither_menu_offers_exactly_what_the_loader_accepts() {
+        // Two lists of FFmpeg spellings in two crates. If they drift, a file
+        // the loader accepts shows up here as an unticked select, or a choice
+        // made here is refused on the next load.
+        let offered: Vec<&str> = GIF_DITHER.iter().map(|(name, ..)| *name).collect();
+        assert_eq!(offered, DITHERS);
+    }
+
+    #[test]
+    fn the_dither_row_explains_the_choice_that_is_set() {
+        let mut settings = Settings::default();
+        assert_eq!(
+            Select::GifDither.sub(&settings),
+            Some("Sierra 2-4A keeps gradients smooth at 256 colours".into())
+        );
+
+        Select::GifDither.choose(4, &mut settings);
+        assert_eq!(settings.gif.dither, "bayer");
+        assert_eq!(Select::GifDither.value(&settings), "Bayer");
+
+        // A hand-edited name the screen does not know: the pill shows it back
+        // rather than rounding it, and the row has no blurb to offer.
+        settings.gif.dither = "sierra3".into();
+        assert_eq!(Select::GifDither.value(&settings), "sierra3");
+        assert_eq!(Select::GifDither.sub(&settings), None);
+    }
 
     #[test]
     fn every_select_offers_its_own_default_back() {
@@ -787,6 +886,7 @@ mod tests {
             Select::VideoFps,
             Select::Quality,
             Select::GifFps,
+            Select::GifDither,
             Select::AudioBitrate,
             Select::JpegThreshold,
         ] {
