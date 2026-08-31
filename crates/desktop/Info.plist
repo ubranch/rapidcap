@@ -13,6 +13,10 @@
 	<string>RapidCap</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Resources/rapidcap.icns. The extension is left off because that is the
+	     form the key has always taken and Finder appends it either way. -->
+	<key>CFBundleIconFile</key>
+	<string>rapidcap</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>

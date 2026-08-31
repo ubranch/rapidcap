@@ -106,6 +106,69 @@ foreach ($image in $images) {
 foreach ($image in $images) { $bw.Write($image.Data) }
 $bw.Flush()
 
-$target = Join-Path (Split-Path -Parent $PSScriptRoot) 'crates/desktop/assets/rapidcap.ico'
+$assets = Join-Path (Split-Path -Parent $PSScriptRoot) 'crates/desktop/assets'
+$target = Join-Path $assets 'rapidcap.ico'
 [System.IO.File]::WriteAllBytes($target, $out.ToArray())
 Write-Output "$target  $($out.Length) bytes  $($images.Count) sizes"
+
+# --- rapidcap.icns -----------------------------------------------------------
+#
+# The same mark again, on Apple's icon grid: an 824pt body centred in a 1024pt
+# canvas. Windows icons are drawn edge to edge and the shell insets them; macOS
+# expects the margin to be part of the artwork, and an edge-to-edge icon simply
+# looks a size too big next to everything else in the Dock.
+
+function New-MacMark([int] $s) {
+    $body = [int][Math]::Round($s * 824.0 / 1024.0)
+    $mark = New-Mark $body
+    $bmp = New-Object System.Drawing.Bitmap($s, $s, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.Clear([System.Drawing.Color]::Transparent)
+    # Drawn at its native size rather than scaled, so the ring keeps the edge
+    # New-Mark antialiased for it.
+    $g.DrawImageUnscaled($mark, [int](($s - $body) / 2), [int](($s - $body) / 2))
+    $g.Dispose()
+    $mark.Dispose()
+    $bmp
+}
+
+# Every slot macOS looks in, from the menu bar to a 5K Dock. The @2x types are
+# the same pixels as the 1x type of that size - ic13 is 256 and so is ic08 - so
+# the renders are cached and only the four-character type code differs.
+$slots = @(
+    @{ Tag = 'icp4'; Size = 16 }, @{ Tag = 'icp5'; Size = 32 }
+    @{ Tag = 'ic11'; Size = 32 }, @{ Tag = 'ic12'; Size = 64 }
+    @{ Tag = 'ic07'; Size = 128 }, @{ Tag = 'ic13'; Size = 256 }
+    @{ Tag = 'ic08'; Size = 256 }, @{ Tag = 'ic14'; Size = 512 }
+    @{ Tag = 'ic09'; Size = 512 }, @{ Tag = 'ic10'; Size = 1024 }
+)
+
+$renders = @{}
+$body = New-Object System.IO.MemoryStream
+$bw = New-Object System.IO.BinaryWriter($body)
+foreach ($slot in $slots) {
+    if (-not $renders.ContainsKey($slot.Size)) {
+        $bmp = New-MacMark $slot.Size
+        $ms = New-Object System.IO.MemoryStream
+        $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bmp.Dispose()
+        $renders[$slot.Size] = $ms.ToArray()
+    }
+    $data = $renders[$slot.Size]
+    $bw.Write([System.Text.Encoding]::ASCII.GetBytes($slot.Tag))
+    # Big-endian, and it counts the eight header bytes as well as the payload.
+    $bw.Write([System.Buffers.Binary.BinaryPrimitives]::ReverseEndianness([int32]($data.Length + 8)))
+    $bw.Write($data)
+}
+$bw.Flush()
+
+$icns = New-Object System.IO.MemoryStream
+$bw = New-Object System.IO.BinaryWriter($icns)
+$bw.Write([System.Text.Encoding]::ASCII.GetBytes('icns'))
+$bw.Write([System.Buffers.Binary.BinaryPrimitives]::ReverseEndianness([int32]($body.Length + 8)))
+$bw.Write($body.ToArray())
+$bw.Flush()
+
+$target = Join-Path $assets 'rapidcap.icns'
+[System.IO.File]::WriteAllBytes($target, $icns.ToArray())
+Write-Output "$target  $($icns.Length) bytes  $($slots.Count) slots"

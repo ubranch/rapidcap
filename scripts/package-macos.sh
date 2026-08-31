@@ -21,10 +21,11 @@ rustup run 1.97.1 cargo build -p rapidcap-desktop --release --locked
 
 app="$repo/dist/RapidCap.app"
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
 cp "$target/release/RapidCap" "$app/Contents/MacOS/RapidCap"
 cp "$repo/crates/desktop/Info.plist" "$app/Contents/Info.plist"
+cp "$repo/crates/desktop/assets/rapidcap.icns" "$app/Contents/Resources/rapidcap.icns"
 
 # `-` is the ad-hoc identity. Signing has to come after everything is in place,
 # because the signature covers the whole bundle.
