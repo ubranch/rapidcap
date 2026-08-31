@@ -98,6 +98,26 @@ impl Default for Settings {
     }
 }
 
+/// `palettegen`'s `stats_mode`, in FFmpeg's spelling.
+///
+/// `full` and `diff` produce one palette for the whole recording and buffer
+/// every frame to do it; `single` gives each frame its own and streams.
+pub const PALETTE_STATS_MODES: [&str; 3] = ["full", "diff", "single"];
+
+/// `paletteuse`'s `dither`, in FFmpeg's spelling.
+///
+/// The error-diffusion kernels FFmpeg has shipped since 2.6, so a settings file
+/// written here loads against whatever build the machine has. `bayer` is the
+/// ordered one, and `none` is the flat quantiser.
+pub const DITHERS: [&str; 6] = [
+    "sierra2_4a",
+    "sierra2",
+    "floyd_steinberg",
+    "heckbert",
+    "bayer",
+    "none",
+];
+
 impl Settings {
     fn validate(&self) -> Result<(), SettingsError> {
         if self.schema_version != SETTINGS_SCHEMA_VERSION {
@@ -134,6 +154,21 @@ impl Settings {
             return Err(SettingsError::Invalid(
                 "encoder preset and tune must be named".into(),
             ));
+        }
+        // Both go straight into a filtergraph. A name FFmpeg does not know
+        // fails the graph at spawn, which is the moment a take is lost, so an
+        // unknown one is rejected at load like the encoder settings above.
+        if !PALETTE_STATS_MODES.contains(&self.gif.palette_stats_mode.as_str()) {
+            return Err(SettingsError::Invalid(format!(
+                "gif.palette_stats_mode must be one of {}",
+                PALETTE_STATS_MODES.join(", ")
+            )));
+        }
+        if !DITHERS.contains(&self.gif.dither.as_str()) {
+            return Err(SettingsError::Invalid(format!(
+                "gif.dither must be one of {}",
+                DITHERS.join(", ")
+            )));
         }
         Ok(())
     }
@@ -431,6 +466,39 @@ mod tests {
         assert!(
             !written.contains("hotkeys"),
             "hotkeys were written back: {written}"
+        );
+    }
+
+    #[test]
+    fn the_shipped_defaults_are_names_ffmpeg_knows() {
+        Settings::default()
+            .validate()
+            .expect("the defaults must pass their own validation");
+    }
+
+    #[test]
+    fn a_dither_ffmpeg_does_not_know_is_refused_at_load() {
+        let mut settings = Settings::default();
+        settings.gif.dither = "sierra2_4b".into();
+        let error = settings
+            .validate()
+            .expect_err("an unknown dither has to fail before a take depends on it");
+        assert!(
+            error.to_string().contains("gif.dither"),
+            "the message has to name the key: {error}"
+        );
+    }
+
+    #[test]
+    fn an_unknown_palette_stats_mode_is_refused_at_load() {
+        let mut settings = Settings::default();
+        settings.gif.palette_stats_mode = "average".into();
+        let error = settings
+            .validate()
+            .expect_err("an unknown stats mode has to fail before a take depends on it");
+        assert!(
+            error.to_string().contains("gif.palette_stats_mode"),
+            "the message has to name the key: {error}"
         );
     }
 }

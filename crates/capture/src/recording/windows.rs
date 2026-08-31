@@ -229,12 +229,13 @@ pub(super) fn ffmpeg_args(
         source.output_idx, source.width, source.height, source.x, source.y
     );
     if kind == CaptureKind::Gif {
-        // ponytail: direct GIF streams safely; full palette generation requires a second pass.
         // GIF has no GPU encoder, so this is the one path that still pays for a
         // readback into system memory.
         chain.push_str(",hwdownload,format=bgra");
+        chain.push_str(&super::gif_palette_chain(settings));
+    } else {
+        chain.push_str("[v]");
     }
-    chain.push_str("[v]");
     // Two sources are mixed into one track rather than muxed as two. A player
     // that shows only the first stream would play system audio with the
     // narration missing, which is the one combination the user asking for both
@@ -484,8 +485,60 @@ Error opening input file dummy."#;
         let joined = args.join(" ");
         // Decimated at the source, not after a readback of frames nobody keeps.
         assert!(joined.contains("framerate=15"), "{joined}");
-        assert!(joined.contains(",hwdownload,format=bgra[v]"), "{joined}");
-        assert!(!joined.contains("palettegen"));
+        assert!(joined.contains(",hwdownload,format=bgra,split"), "{joined}");
+        // The 256 colours are chosen from the footage and the frames are
+        // diffused onto them, or a recorded gradient arrives banded.
+        assert!(
+            joined.contains(
+                "palettegen=stats_mode=full[pal];[pu][pal]paletteuse=dither=sierra2_4a[v]"
+            ),
+            "{joined}"
+        );
+        // One palette for the whole stream, so `new` stays off: with it,
+        // paletteuse reads the next frame of video as a palette.
+        assert!(!joined.contains("new=1"), "{joined}");
+    }
+
+    #[test]
+    fn a_per_frame_palette_tells_paletteuse_to_expect_one() {
+        let mut settings = Settings::default();
+        settings.gif.palette_stats_mode = "single".into();
+        let args = ffmpeg_args(
+            CaptureKind::Gif,
+            &CaptureSource {
+                output_idx: 0,
+                x: 0,
+                y: 0,
+                width: 320,
+                height: 200,
+            },
+            &settings,
+            Path::new("out.part.gif"),
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("palettegen=stats_mode=single"), "{joined}");
+        assert!(
+            joined.contains("paletteuse=dither=sierra2_4a:new=1[v]"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn a_video_is_not_put_through_the_palette_pass() {
+        let args = ffmpeg_args(
+            CaptureKind::Video,
+            &CaptureSource {
+                output_idx: 0,
+                x: 0,
+                y: 0,
+                width: 320,
+                height: 200,
+            },
+            &Settings::default(),
+            Path::new("out.part.mp4"),
+        );
+        let joined = args.join(" ");
+        assert!(!joined.contains("palettegen"), "{joined}");
     }
 
     #[test]

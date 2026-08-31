@@ -297,6 +297,32 @@ pub fn microphones() -> Result<Vec<String>, RecordingError> {
     platform::microphones()
 }
 
+/// The palette half of a GIF filtergraph, appended to whatever produced the
+/// frames and ending in the `[v]` the caller maps.
+///
+/// GIF holds 256 colours. Without this FFmpeg's encoder picks them with a
+/// fixed heuristic and no error diffusion, which is what banded every gradient
+/// in a recorded window. `palettegen` chooses the 256 from the footage and
+/// `paletteuse` maps the frames onto them with the dither the settings name.
+///
+/// `stats_mode=single` gives every frame its own palette, so `paletteuse` is
+/// told to expect a new one each time. The other two modes emit one palette for
+/// the whole stream, and passing `new=1` there would make it read the second
+/// frame of video as a palette.
+///
+/// ponytail: `full` and `diff` buffer every frame until end of stream, because
+/// a palette for the whole recording cannot be chosen before the recording
+/// ends - a minute of 1080p at 15fps is several gigabytes of RAM. `single`
+/// streams instead, at the cost of a palette that shifts between frames.
+fn gif_palette_chain(settings: &Settings) -> String {
+    let mode = &settings.gif.palette_stats_mode;
+    let dither = &settings.gif.dither;
+    let new = if mode == "single" { ":new=1" } else { "" };
+    format!(
+        ",split[pg][pu];[pg]palettegen=stats_mode={mode}[pal];[pu][pal]paletteuse=dither={dither}{new}[v]"
+    )
+}
+
 pub fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
     let bundled = std::env::current_exe()
         .map_err(recording_error)?

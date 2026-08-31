@@ -193,15 +193,16 @@ pub(super) fn ffmpeg_args(
         "-i".into(),
         format!("{}:", source.device_index),
     ];
-    args.extend([
-        "-filter_complex".into(),
-        format!(
-            "[0:v]crop={}:{}:{}:{}[v]",
-            source.width, source.height, source.x, source.y
-        ),
-        "-map".into(),
-        "[v]".into(),
-    ]);
+    let mut chain = format!(
+        "[0:v]crop={}:{}:{}:{}",
+        source.width, source.height, source.x, source.y
+    );
+    if kind == CaptureKind::Gif {
+        chain.push_str(&super::gif_palette_chain(settings));
+    } else {
+        chain.push_str("[v]");
+    }
+    args.extend(["-filter_complex".into(), chain, "-map".into(), "[v]".into()]);
     if kind == CaptureKind::Video {
         args.extend([
             "-c:v".into(),
@@ -265,6 +266,28 @@ mod tests {
         let joined = args.join(" ");
         assert!(joined.contains(&format!("-framerate {}", settings.gif.fps)));
         assert!(!joined.contains("-c:v"));
+        // Same palette pass as the Windows recorder, from the same builder: a
+        // GIF that banded on one platform and not the other would be a bug
+        // nobody could see without both machines.
+        assert!(
+            joined.contains(
+                "palettegen=stats_mode=full[pal];[pu][pal]paletteuse=dither=sierra2_4a[v]"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn a_video_keeps_the_plain_crop() {
+        let joined = ffmpeg_args(
+            CaptureKind::Video,
+            &source(),
+            &Settings::default(),
+            Path::new("out.part.mp4"),
+        )
+        .join(" ");
+        assert!(joined.contains("[0:v]crop=800:600:12:34[v]"), "{joined}");
+        assert!(!joined.contains("palettegen"), "{joined}");
     }
 
     #[test]
