@@ -288,6 +288,15 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 /// Public because the gallery needs it too: an MP4's first frame and its length
 /// both come out of one `ffmpeg` call, and there is no second copy of this
 /// search worth keeping in sync with this one.
+/// Every microphone this machine will let a recording mix in.
+///
+/// Runs FFmpeg, so it belongs on a background thread rather than in the middle
+/// of a frame. An empty list is a machine with no microphone; an error is a
+/// machine whose devices could not be asked.
+pub fn microphones() -> Result<Vec<String>, RecordingError> {
+    platform::microphones()
+}
+
 pub fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
     let bundled = std::env::current_exe()
         .map_err(recording_error)?

@@ -83,6 +83,7 @@ impl Default for Settings {
             },
             audio: AudioSettings {
                 enabled: true,
+                microphone: None,
                 bitrate: 128_000,
                 channels: 2,
             },
@@ -221,6 +222,18 @@ pub struct AudioSettings {
     /// new one.
     #[serde(default = "audio_enabled_default")]
     pub enabled: bool,
+    /// The microphone to mix in, by the name DirectShow opens it under.
+    ///
+    /// `None` is no microphone at all, which is the default and what every
+    /// settings file written before this field existed means. Stored by name
+    /// rather than by index because indices are assigned in enumeration order
+    /// and a headset unplugged between two runs renumbers everything behind it.
+    ///
+    /// A name that no longer resolves is not corrected here: the recorder is
+    /// the only thing that can tell, and it says so rather than silently
+    /// recording from whatever took the slot.
+    #[serde(default)]
+    pub microphone: Option<String>,
     pub bitrate: u32,
     pub channels: u16,
 }

@@ -14,6 +14,16 @@ use crate::{CaptureKind, PhysicalRegion, Settings};
 
 pub(super) const FFMPEG_EXE: &str = "ffmpeg.exe";
 
+/// The one DirectShow device that hears what the speakers are playing.
+///
+/// Windows has no loopback capture endpoint of its own that FFmpeg can open, so
+/// system audio comes through this virtual driver or not at all. It follows
+/// whatever the default playback device is, which is why the menu offers system
+/// audio as on or off rather than as a list: there is nothing here to choose
+/// between, and offering the speakers by name would offer devices FFmpeg cannot
+/// open.
+pub(super) const LOOPBACK: &str = "virtual-audio-capturer";
+
 /// Nothing beyond `PATH`: a Windows process inherits the machine and user
 /// `PATH` however it was started, so there is no launcher-specific gap to fill.
 pub(super) const EXTRA_SEARCH_DIRS: &[&str] = &[];
@@ -111,6 +121,54 @@ impl CaptureSource {
     }
 }
 
+/// Every microphone DirectShow will open, by the name it opens under.
+///
+/// `-list_devices` writes its table to stderr and then exits non-zero, because
+/// listing is a side effect of failing to open the dummy input it was given.
+/// That exit code is expected; only a listing that cannot be run at all is an
+/// error, and an empty one is a machine with no microphone rather than a fault.
+///
+/// The loopback is filtered out. It is a device in this table like any other,
+/// but it is system audio, which the menu offers separately and as a switch.
+pub(super) fn microphones() -> Result<Vec<String>, RecordingError> {
+    let mut command = Command::new(super::ffmpeg_path()?);
+    command.args([
+        "-hide_banner",
+        "-f",
+        "dshow",
+        "-list_devices",
+        "true",
+        "-i",
+        "dummy",
+    ]);
+    hide_console(&mut command);
+    let listing = command
+        .output()
+        .map_err(|error| RecordingError(format!("list DirectShow devices failed: {error}")))?;
+    Ok(parse_devices(&String::from_utf8_lossy(&listing.stderr)))
+}
+
+/// The audio device names out of an FFmpeg `-list_devices` table.
+///
+/// Split out so it can be tested against a real listing without a real FFmpeg.
+/// Every line that names a device is `... "Name" (audio)` or `(video)`, and the
+/// `Alternative name` line under each one is the unique moniker, which is not
+/// what `-i audio=` wants and is thrown away. A device name may legitimately
+/// contain quotes, so the name runs from the first quote to the last one before
+/// the kind rather than to the next quote after the first.
+fn parse_devices(listing: &str) -> Vec<String> {
+    listing
+        .lines()
+        .filter_map(|line| {
+            let head = line.strip_suffix(" (audio)")?;
+            let start = head.find('"')? + 1;
+            let end = head.rfind('"')?;
+            (start <= end).then(|| head[start..end].to_string())
+        })
+        .filter(|name| name != LOOPBACK)
+        .collect()
+}
+
 pub(super) fn ffmpeg_args(
     kind: CaptureKind,
     source: &CaptureSource,
@@ -129,14 +187,25 @@ pub(super) fn ffmpeg_args(
         "-init_hw_device".into(),
         "d3d11va=dx".into(),
     ];
-    // The soundtrack is a real input, so it has to be declared before the
-    // filtergraph and its codec after the output options. Both halves are
-    // skipped together: half an audio pipeline makes FFmpeg map a stream that
-    // does not exist. Skipping it is also the only recourse when
-    // `virtual-audio-capturer` is not installed, which otherwise fails the
-    // whole recording on an input the user never asked for.
-    let with_audio = kind == CaptureKind::Video && settings.audio.enabled;
-    if with_audio {
+    // A soundtrack is one or two real inputs, so they have to be declared
+    // before the filtergraph and their codec after the output options. Every
+    // part is skipped together: half an audio pipeline makes FFmpeg map a
+    // stream that does not exist. Skipping it is also the only recourse when
+    // the loopback driver is not installed, which otherwise fails the whole
+    // recording on an input the user never asked for.
+    //
+    // Loopback first when both are on, so the input indices are stable: a
+    // microphone-only recording has its microphone at 0, and a recording with
+    // system audio has it at 1.
+    let mut sources: Vec<&str> = Vec::new();
+    if kind == CaptureKind::Video {
+        if settings.audio.enabled {
+            sources.push(LOOPBACK);
+        }
+        sources.extend(settings.audio.microphone.as_deref());
+    }
+    let with_audio = !sources.is_empty();
+    for source in &sources {
         args.extend([
             "-f".into(),
             "dshow".into(),
@@ -145,7 +214,7 @@ pub(super) fn ffmpeg_args(
             "-audio_buffer_size".into(),
             "80".into(),
             "-i".into(),
-            "audio=virtual-audio-capturer".into(),
+            format!("audio={source}"),
         ]);
     }
     // DDA decimates at the source, so a GIF never captures the 15 frames per
@@ -166,11 +235,32 @@ pub(super) fn ffmpeg_args(
         chain.push_str(",hwdownload,format=bgra");
     }
     chain.push_str("[v]");
+    // Two sources are mixed into one track rather than muxed as two. A player
+    // that shows only the first stream would play system audio with the
+    // narration missing, which is the one combination the user asking for both
+    // cannot have meant. `duration=longest` because dshow inputs do not start
+    // in the same millisecond and the shorter one must not cut the take.
+    if sources.len() > 1 {
+        let inputs: String = (0..sources.len())
+            .map(|index| format!("[{index}:a]"))
+            .collect();
+        chain.push_str(&format!(
+            ";{inputs}amix=inputs={}:duration=longest[a]",
+            sources.len()
+        ));
+    }
     args.extend(["-filter_complex".into(), chain, "-map".into(), "[v]".into()]);
     if with_audio {
         // `-filter_complex` switches off automatic stream selection, so the
-        // audio input has to be mapped by hand or it is dropped in silence.
-        args.extend(["-map".into(), "0:a".into()]);
+        // audio has to be mapped by hand or it is dropped in silence.
+        args.extend([
+            "-map".into(),
+            if sources.len() > 1 {
+                "[a]".into()
+            } else {
+                "0:a".to_string()
+            },
+        ]);
     }
     if kind == CaptureKind::Video {
         args.extend([
@@ -235,6 +325,117 @@ mod tests {
         assert!(joined.contains("audio=virtual-audio-capturer"));
         assert!(joined.contains("-c:v h264_nvenc -r 30 -preset p7 -tune hq -b:v 3000k"));
         assert!(joined.contains("-c:a aac -ac 2 -b:a 128k"));
+    }
+
+    /// A real listing, from a machine with a headset, a phone camera, two
+    /// virtual cameras and the loopback driver installed.
+    const LISTING: &str = r#"[in#0 @ 000002bd] "Ilhamjan's S25 Ultra (Windows Virtual Camera)" (video)
+[in#0 @ 000002bd]   Alternative name "@device_pnp_\?\swd#vcamdevapi#b4cf#{65e8773d}\{fcebba03}"
+[in#0 @ 000002bd] "screen-capture-recorder" (video)
+[in#0 @ 000002bd]   Alternative name "@device_sw_{860BB310}\{4EA69364}"
+[in#0 @ 000002bd] "OBS Virtual Camera" (none)
+[in#0 @ 000002bd] "Headset (Arctis "Nova" Pro)" (audio)
+[in#0 @ 000002bd]   Alternative name "@device_cm_{33D9A762}\wave_{F1D58F97}"
+[in#0 @ 000002bd] "virtual-audio-capturer" (audio)
+[in#0 @ 000002bd]   Alternative name "@device_sw_{33D9A762}\{8E146464}"
+Error opening input file dummy."#;
+
+    #[test]
+    fn only_the_audio_devices_come_out_of_a_listing() {
+        // The cameras, the `(none)` device, the alternative names and the error
+        // line are all skipped. The loopback goes too: it is system audio,
+        // which is a switch on its own rather than a row in the microphone
+        // list. A name with quotes inside it survives whole, because the name
+        // runs to the last quote on the line and not to the second one.
+        assert_eq!(
+            parse_devices(LISTING),
+            vec![r#"Headset (Arctis "Nova" Pro)"#]
+        );
+
+        // A machine with no microphone at all, which is a list rather than a
+        // failure: nothing here can tell the two apart, and the caller shows
+        // "No capture devices found" for the first.
+        assert!(parse_devices("Error opening input file dummy.").is_empty());
+    }
+
+    #[test]
+    fn a_microphone_is_mixed_into_the_system_audio_rather_than_muxed_beside_it() {
+        let mut settings = Settings::default();
+        settings.audio.microphone = Some("Headset (Arctis Nova Pro)".into());
+        let args = ffmpeg_args(
+            CaptureKind::Video,
+            &CaptureSource {
+                output_idx: 0,
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+            &settings,
+            Path::new("out.part.mp4"),
+        );
+        let joined = args.join(" ");
+        // Loopback first, so the two inputs are numbered the same way every
+        // time this pair is on.
+        assert!(
+            joined.contains("-i audio=virtual-audio-capturer"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("-i audio=Headset (Arctis Nova Pro)"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("[0:a][1:a]amix=inputs=2:duration=longest[a]"),
+            "{joined}"
+        );
+        assert!(joined.contains("-map [v] -map [a]"), "{joined}");
+        assert!(joined.contains("-c:a aac"), "{joined}");
+
+        // System audio off leaves the microphone alone at input 0, mapped
+        // straight rather than through a one-input mixer.
+        settings.audio.enabled = false;
+        let args = ffmpeg_args(
+            CaptureKind::Video,
+            &CaptureSource {
+                output_idx: 0,
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+            &settings,
+            Path::new("out.part.mp4"),
+        );
+        let joined = args.join(" ");
+        assert!(!joined.contains("virtual-audio-capturer"), "{joined}");
+        assert!(!joined.contains("amix"), "{joined}");
+        assert!(joined.contains("-map [v] -map 0:a"), "{joined}");
+    }
+
+    #[test]
+    fn a_microphone_is_not_recorded_into_a_screenshot_or_a_gif() {
+        // The soundtrack is a video-only pipeline, and a microphone chosen for
+        // a recording must not add an input to a format that cannot carry one.
+        let mut settings = Settings::default();
+        settings.audio.microphone = Some("Headset".into());
+        for kind in [CaptureKind::Gif, CaptureKind::RegionScreenshot] {
+            let args = ffmpeg_args(
+                kind,
+                &CaptureSource {
+                    output_idx: 0,
+                    x: 0,
+                    y: 0,
+                    width: 800,
+                    height: 600,
+                },
+                &settings,
+                Path::new("out.part"),
+            );
+            let joined = args.join(" ");
+            assert!(!joined.contains("audio="), "{kind:?}: {joined}");
+            assert!(!joined.contains("amix"), "{kind:?}: {joined}");
+        }
     }
 
     #[test]

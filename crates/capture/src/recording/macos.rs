@@ -150,6 +150,16 @@ fn first_screen_device() -> Result<u32, RecordingError> {
         })
 }
 
+/// No microphones, because macOS records no audio at all.
+///
+/// Not an empty list standing in for a failed enumeration: `ffmpeg_args` below
+/// declares no audio input on this platform, so there is nothing a chosen
+/// microphone could be mixed into. Offering one would be offering a setting
+/// that does nothing.
+pub(super) fn microphones() -> Result<Vec<String>, RecordingError> {
+    Ok(Vec::new())
+}
+
 pub(super) fn ffmpeg_args(
     kind: CaptureKind,
     source: &CaptureSource,
