@@ -77,7 +77,7 @@
     <tr><td>Drop the red HUD border; keep red for the frame and the dot</td><td class="file">overlay.rs:404-406</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Region frame 4px → 3px, retune <code>recording_border_regions</code> and its test</td><td class="file">overlay.rs:523-555</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Overlay: accent selection instead of <code>#4d8dff</code>, unified 30px float labels</td><td class="file">overlay.rs:100-205</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>One scrim window <b>per display</b>, only the active one taking mouse input</td><td class="file">overlay.rs:209-243</td><td><span class="tag t-bug">bug</span></td></tr>
+    <tr><td>Dim <b>every</b> display, not the one under the cursor. Shipped as one window over <code>virtual_screen()</code> rather than the per-display scrims this plan asked for — see the region overlay card</td><td class="file">overlay.rs · <code>open_region_overlay</code></td><td><span class="tag t-done">done</span></td></tr>
   </table>
   <div class="gate"><b>Done when:</b> a capture on a two-monitor setup dims both screens, and <code>recording_boundary_is_four_thin_edges</code> passes at the new thickness.</div>
 
@@ -127,7 +127,8 @@
     <tr><td>Errors clear themselves on the next command, so the message is never read</td><td class="file">controller.rs · <code>error</code></td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>Tray icon is a flat blue square and never changes state</td><td class="file">tray.rs</td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>A successful save produces no feedback at all — <code>CaptureEvent::OutputSaved</code> was emitted and had no subscriber</td><td class="file">window.rs · <code>saved</code></td><td><span class="tag t-done">fixed</span></td></tr>
-    <tr><td>Other monitors stay bright and live while the overlay is modal</td><td class="file">overlay.rs:209</td><td>2</td></tr>
+    <tr><td>Other monitors stay bright and live while the overlay is modal</td><td class="file">overlay.rs · <code>open_region_overlay</code></td><td><span class="tag t-done">fixed</span></td></tr>
+    <tr><td>The recording bar was placed against the cursor’s display and clamped to <code>(0, 0)</code>, so a region on a display left of or above the primary one put the bar on the primary display instead</td><td class="file">overlay.rs · <code>hud_origin</code></td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>GIF hotkey default collides with Windows Snipping Tool</td><td class="file">platform/mod.rs:118</td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>A hotkey that loses <code>RegisterHotKey</code> to another app fails silently — <code>warn</code> log, nothing on screen</td><td class="file">platform/mod.rs · <code>unavailable</code></td><td><span class="tag t-done">fixed</span></td></tr>
     <tr><td>File names were unsortable and unsearchable — random 10-character suffix</td><td class="file">naming.rs · <code>at</code></td><td><span class="tag t-done">fixed</span></td></tr>

@@ -10,7 +10,10 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use crate::{
     controller::AppController,
     icons::Icon,
-    platform::{exclude_from_capture, monitor_under_cursor, place_window, window_target_at},
+    platform::{
+        exclude_from_capture, monitor_containing, monitor_under_cursor, place_window,
+        virtual_screen, window_target_at,
+    },
     theme,
 };
 
@@ -19,8 +22,10 @@ actions!(rapidcap_overlay, [CancelSelection]);
 pub struct RegionOverlay {
     controller: Entity<AppController>,
     kind: CaptureKind,
+    /// The whole virtual screen, not one display. Every coordinate below is
+    /// measured from its top-left, which on a monitor left of the primary one
+    /// is a negative number.
     monitor: PhysicalRegion,
-    scale_factor: f32,
     start: Option<Point<Pixels>>,
     current: Option<Point<Pixels>>,
     hovered: Option<CaptureTarget>,
@@ -42,7 +47,6 @@ impl RegionOverlay {
             controller,
             kind,
             monitor,
-            scale_factor: window.scale_factor(),
             start: None,
             current: None,
             hovered: None,
@@ -56,14 +60,14 @@ impl RegionOverlay {
         cx.notify();
     }
 
-    fn mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn mouse_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.start.is_some() && event.dragging() {
             self.current = Some(event.position);
         } else {
             self.hovered = window_target_at(physical_point(
                 event.position,
                 &self.monitor,
-                self.scale_factor,
+                window.scale_factor(),
             ))
             .ok();
         }
@@ -74,10 +78,11 @@ impl RegionOverlay {
         let Some(start) = self.start else {
             return;
         };
+        let scale_factor = window.scale_factor();
         let Some(target) = selected_target(
             self.kind,
-            physical_point(start, &self.monitor, self.scale_factor),
-            physical_point(event.position, &self.monitor, self.scale_factor),
+            physical_point(start, &self.monitor, scale_factor),
+            physical_point(event.position, &self.monitor, scale_factor),
             self.hovered.as_ref(),
         ) else {
             self.start = None;
@@ -99,7 +104,11 @@ impl RegionOverlay {
 }
 
 impl Render for RegionOverlay {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Read live rather than cached: the overlay spans every display, so
+        // Windows hands it the DPI of whichever one holds most of it, and that
+        // arrives as a `WM_DPICHANGED` after the window is already up.
+        let scale_factor = window.scale_factor();
         let mut root = div()
             .id("region-overlay")
             .key_context("RapidCapOverlay")
@@ -119,8 +128,8 @@ impl Render for RegionOverlay {
         let drag = self.start.zip(self.current).filter(|(start, current)| {
             is_region_drag(
                 self.kind,
-                physical_point(*start, &self.monitor, self.scale_factor),
-                physical_point(*current, &self.monitor, self.scale_factor),
+                physical_point(*start, &self.monitor, scale_factor),
+                physical_point(*current, &self.monitor, scale_factor),
             )
         });
 
@@ -141,8 +150,8 @@ impl Render for RegionOverlay {
                     .bg(theme::overlay_drag_fill())
                     .child(float_label(format!(
                         "{} × {}",
-                        (width.as_f32() * self.scale_factor).round() as u32,
-                        (height.as_f32() * self.scale_factor).round() as u32
+                        (width.as_f32() * scale_factor).round() as u32,
+                        (height.as_f32() * scale_factor).round() as u32
                     )))
                     .child(
                         drag_handle()
@@ -177,10 +186,10 @@ impl Render for RegionOverlay {
             root = root.child(
                 div()
                     .absolute()
-                    .left(px((region.x - self.monitor.x) as f32 / self.scale_factor))
-                    .top(px((region.y - self.monitor.y) as f32 / self.scale_factor))
-                    .w(px(region.width as f32 / self.scale_factor))
-                    .h(px(region.height as f32 / self.scale_factor))
+                    .left(px((region.x - self.monitor.x) as f32 / scale_factor))
+                    .top(px((region.y - self.monitor.y) as f32 / scale_factor))
+                    .w(px(region.width as f32 / scale_factor))
+                    .h(px(region.height as f32 / scale_factor))
                     .border_2()
                     .border_color(theme::accent())
                     .bg(theme::overlay_window_fill())
@@ -263,7 +272,15 @@ pub fn open_region_overlay(
         CaptureState::Selecting(kind) => *kind,
         state => anyhow::bail!("selector opened from invalid state: {state:?}"),
     };
-    let (display_id, monitor) = monitor_under_cursor()?;
+    // The window covers every display, not the one under the pointer: a scrim
+    // over one monitor leaves the others bright and live, so a modal selection
+    // reads as a half-applied effect and a drag that crosses a seam runs off the
+    // edge of the only surface taking mouse events.
+    let monitor = virtual_screen();
+    // The cursor's display still decides which one GPUI creates the window on,
+    // which is what sets its initial DPI - starting on the display the user is
+    // looking at beats starting on the primary one and being corrected.
+    let (display_id, _) = monitor_under_cursor()?;
     let display = cx
         .find_display(display_id)
         .or_else(|| cx.primary_display())
@@ -292,7 +309,10 @@ pub fn open_region_overlay(
     // origin at (0, -4) - the top two pixels of every highlight border were
     // drawn above the screen and clipped. `place_window` strips the frame, which
     // makes client and window rects identical, then positions it in the device
-    // pixels the monitor is actually measured in.
+    // pixels the monitor is actually measured in. It is also the only way to
+    // reach the virtual screen at all: `window_bounds` is logical and per
+    // display, and no logical rectangle describes a desktop whose displays run
+    // at different scales.
     if let Some(hwnd) = handle.update(cx, |_view, window, _cx| panel_hwnd(window))? {
         place_window(
             hwnd,
@@ -636,7 +656,10 @@ pub fn open_recording_hud(
     // display bounds are logical, and mixing the two put the bar above a region
     // that had room under it and left it off centre by half the difference
     // between the pill's logical and physical width.
-    let (display_id, monitor) = monitor_under_cursor()?;
+    // The region's display, not the cursor's. Once a selection can be dragged
+    // across a seam the two are different displays, and the bar has to be
+    // measured and clamped against the one it is going to sit on.
+    let (display_id, monitor) = monitor_containing(region)?;
     let scale = cx
         .find_display(display_id)
         .or_else(|| cx.primary_display())
@@ -645,9 +668,8 @@ pub fn open_recording_hud(
         });
     let width = theme::scaled(HUD_WINDOW_W) * scale;
     let height = theme::scaled(HUD_WINDOW_H) * scale;
-    let screen_bottom = (monitor.y + monitor.height as i32) as f32;
     let gap = theme::scaled(theme::GAP) * scale;
-    let (x, y) = hud_origin(region, Some(screen_bottom), width, height, gap);
+    let (x, y) = hud_origin(region, &monitor, width, height, gap);
     let handle = cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -718,7 +740,7 @@ const HUD_WINDOW_H: f32 = 44.0;
 /// text scale.
 fn hud_origin(
     region: &PhysicalRegion,
-    screen_bottom: Option<f32>,
+    monitor: &PhysicalRegion,
     width: f32,
     height: f32,
     gap: f32,
@@ -727,18 +749,27 @@ fn hud_origin(
     let below = region_bottom + gap;
     let above = region.y as f32 - gap - height;
 
-    let screen_bottom = screen_bottom.unwrap_or(f32::MAX);
+    // A display is not a screen at the origin. One placed left of or above the
+    // primary display has negative coordinates, so every clamp below is against
+    // its own edges - clamping to zero pushed the bar onto the primary display,
+    // which is not the one the region is on.
+    let left = monitor.x as f32;
+    let top = monitor.y as f32;
+    let right = (monitor.x + monitor.width as i32) as f32;
+    let bottom = (monitor.y + monitor.height as i32) as f32;
 
-    let y = if below + height <= screen_bottom {
+    let y = if below + height <= bottom {
         below
-    } else if above >= 0.0 {
+    } else if above >= top {
         above
     } else {
         // Region fills the display: sit inside its bottom edge.
         region_bottom - gap - height
     };
     let x = region.x as f32 + (region.width as f32 - width) / 2.0;
-    (x.max(0.0), y.max(0.0))
+    // `max(left)` on the upper bound because a pill wider than the display has
+    // no in-bounds position, and the left edge is the less wrong of the two.
+    (x.clamp(left, (right - width).max(left)), y.max(top))
 }
 
 pub fn close_recording_hud<C: gpui::AppContext>(
@@ -865,7 +896,12 @@ mod tests {
 
     #[test]
     fn hud_sits_below_the_region_unless_there_is_no_room() {
-        let screen = Some(1080.0);
+        let screen = PhysicalRegion {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
         // Device pixels, the unit the caller works in. Held apart from
         // `theme::GAP` so the assertions read against a number rather than
         // against the same expression the function evaluates.
@@ -878,7 +914,7 @@ mod tests {
         };
 
         // Normal: one gap under the bottom edge, centred on the region.
-        let (x, y) = hud_origin(&region, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        let (x, y) = hud_origin(&region, &screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
         assert_eq!(y, 600.0 + gap);
         assert_eq!(x, 400.0 + (800.0 - HUD_WINDOW_W) / 2.0);
 
@@ -889,7 +925,7 @@ mod tests {
             width: 800,
             height: 460,
         };
-        let (_, y) = hud_origin(&low, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        let (_, y) = hud_origin(&low, &screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
         assert_eq!(y, 600.0 - gap - HUD_WINDOW_H);
 
         // Region fills the display: sit inside its bottom edge.
@@ -899,7 +935,7 @@ mod tests {
             width: 1920,
             height: 1080,
         };
-        let (x, y) = hud_origin(&full, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        let (x, y) = hud_origin(&full, &screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
         assert_eq!(y, 1080.0 - gap - HUD_WINDOW_H);
         assert!(x >= 0.0, "the HUD never starts off the left edge");
 
@@ -910,8 +946,42 @@ mod tests {
             width: 120,
             height: 80,
         };
-        let (x, _) = hud_origin(&narrow, screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        let (x, _) = hud_origin(&narrow, &screen, HUD_WINDOW_W, HUD_WINDOW_H, gap);
         assert_eq!(x, 0.0);
+    }
+
+    #[test]
+    fn hud_clamps_to_the_display_the_region_is_on_not_to_the_origin() {
+        // A second display left of the primary one runs from x = -1920 to 0.
+        // The old code clamped x and y to zero, which put the bar on the
+        // primary display - the one the user was not recording.
+        let left_of_primary = PhysicalRegion {
+            x: -1920,
+            y: -180,
+            width: 1920,
+            height: 1080,
+        };
+        let gap = 12.0;
+        let narrow = PhysicalRegion {
+            x: -1910,
+            y: -100,
+            width: 120,
+            height: 80,
+        };
+        let (x, y) = hud_origin(&narrow, &left_of_primary, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        assert_eq!(x, -1920.0, "the bar stays on the display it belongs to");
+        assert_eq!(y, -20.0 + gap, "a gap under a region whose y is negative");
+
+        // Nothing below and nothing above: the display's own top edge is the
+        // floor, not y = 0.
+        let full = PhysicalRegion {
+            x: -1920,
+            y: -180,
+            width: 1920,
+            height: 1080,
+        };
+        let (_, y) = hud_origin(&full, &left_of_primary, HUD_WINDOW_W, HUD_WINDOW_H, gap);
+        assert_eq!(y, 900.0 - gap - HUD_WINDOW_H);
     }
 
     #[test]

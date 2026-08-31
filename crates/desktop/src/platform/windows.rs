@@ -47,15 +47,16 @@ use windows::{
             Shell::ShellExecuteW,
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, FindWindowW, GW_HWNDNEXT, GWL_STYLE,
-                GetClientRect, GetCursorPos, GetTopWindow, GetWindow, GetWindowLongPtrW,
-                GetWindowRect, GetWindowThreadProcessId, HWND_NOTOPMOST, HWND_TOPMOST, IsIconic,
-                IsWindowVisible, LWA_ALPHA, RegisterClassW, SW_HIDE, SW_RESTORE, SW_SHOW,
-                SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-                SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow, SetLayeredWindowAttributes,
-                SetWindowDisplayAffinity, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-                WDA_EXCLUDEFROMCAPTURE, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-                WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_POPUP,
-                WS_SYSMENU, WS_THICKFRAME,
+                GetClientRect, GetCursorPos, GetSystemMetrics, GetTopWindow, GetWindow,
+                GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, HWND_NOTOPMOST,
+                HWND_TOPMOST, IsIconic, IsWindowVisible, LWA_ALPHA, RegisterClassW,
+                SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+                SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+                SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SetForegroundWindow,
+                SetLayeredWindowAttributes, SetWindowDisplayAffinity, SetWindowLongPtrW,
+                SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WNDCLASSW, WS_CAPTION,
+                WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+                WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
             },
         },
     },
@@ -542,13 +543,50 @@ pub fn place_window(handle: isize, x: i32, y: i32, width: i32, height: i32) {
 }
 
 /// The monitor under the cursor, as a GPUI display and a capture rectangle.
+pub fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
+    let mut point = POINT::default();
+    unsafe { GetCursorPos(&mut point) }?;
+    monitor_at(point)
+}
+
+/// The monitor a capture rectangle sits on, by its centre.
+///
+/// The cursor is the wrong question once a selection can cross monitors: the
+/// pointer has moved on by the time the recording bar opens, and a region
+/// dragged across a seam belongs to whichever display holds most of it - which
+/// is what the centre point picks.
+pub fn monitor_containing(region: &PhysicalRegion) -> anyhow::Result<(DisplayId, PhysicalRegion)> {
+    monitor_at(POINT {
+        x: region.x + region.width as i32 / 2,
+        y: region.y + region.height as i32 / 2,
+    })
+}
+
+/// The union of every monitor, in the same space `monitor_at` reports.
+///
+/// The origin is not (0, 0). A display placed left of or above the primary one
+/// puts it negative, which is why the selection overlay is positioned from this
+/// rectangle rather than sized from it.
+pub fn virtual_screen() -> PhysicalRegion {
+    // SAFETY: `GetSystemMetrics` takes no pointers and cannot fail - an index it
+    // does not know returns 0 - and these four are documented as the bounding
+    // box of the whole desktop.
+    unsafe {
+        PhysicalRegion {
+            x: GetSystemMetrics(SM_XVIRTUALSCREEN),
+            y: GetSystemMetrics(SM_YVIRTUALSCREEN),
+            width: GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32,
+            height: GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32,
+        }
+    }
+}
+
+/// The monitor nearest a point, as a GPUI display and a capture rectangle.
 ///
 /// `HMONITOR` is what GPUI's Windows backend hands out as a `DisplayId`, so the
 /// handle goes straight across; `rcMonitor` is already in the virtual-screen
 /// space `PhysicalRegion` uses.
-pub fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
-    let mut point = POINT::default();
-    unsafe { GetCursorPos(&mut point) }?;
+fn monitor_at(point: POINT) -> anyhow::Result<(DisplayId, PhysicalRegion)> {
     let monitor: HMONITOR = unsafe { MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST) };
     let mut info = MONITORINFO {
         cbSize: size_of::<MONITORINFO>() as u32,

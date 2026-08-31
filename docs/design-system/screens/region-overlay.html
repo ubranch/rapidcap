@@ -112,28 +112,34 @@
         </div>
         <div style="position:relative;width:170px;height:106px;border-radius:6px;overflow:hidden;background:linear-gradient(140deg,#3A3A3A,#242424)">
           <div style="position:absolute;inset:0;background:rgba(0,0,0,.55)"></div>
-          <span style="position:absolute;left:8px;bottom:6px;font-size:10px;color:#8A8A8A">Display 2 · dimmed, inert</span>
+          <span style="position:absolute;left:8px;bottom:6px;font-size:10px;color:#8A8A8A">Display 2 · dimmed, same surface</span>
         </div>
       </div>
-      <div class="caption" style="max-width:430px">Every display dims. Only the one under the cursor takes input — the others are a scrim and nothing else, so a stray click on the second monitor cancels rather than captures the wrong thing.</div>
+      <div class="caption" style="max-width:430px">Every display dims, and every display takes input, because they are one window. A drag started on display 1 keeps going onto display 2, and the rectangle it produces spans both.</div>
     </div>
   </div>
 
   <table style="border-collapse:collapse;width:100%;max-width:760px;margin-top:18px">
     <tr><th style="text-align:left;padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">Situation</th><th style="text-align:left;padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase">Behaviour</th></tr>
-    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Which display</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">The one under the cursor at the moment the hotkey fires</td></tr>
-    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Other displays</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Scrim only, click-through disabled, Esc still cancels</td></tr>
-    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Cursor crosses to another display</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Selection clamps at the active display edge. It does not follow.</td></tr>
-    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Mixed DPI</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Each overlay uses its own <code>scale_factor</code>; the badge always reports physical pixels</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Which display</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">All of them. One window covers the virtual screen, so there is no active display to pick</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Other displays</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">The same scrim, the same surface, the same mouse handler</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Cursor crosses to another display</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">The selection follows. A region may span two displays, and the capture is one rectangle in virtual-screen coordinates</td></tr>
+    <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Mixed DPI</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Geometry is exact everywhere: the process is per-monitor DPI aware, so the window’s surface is real screen pixels edge to edge. Only the chrome differs — badge and hint are laid out at the window’s own <code>scale_factor</code>, so they look physically smaller on a display scaled higher than the one the window was created on</td></tr>
     <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Window straddling two displays</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Hover highlights its full bounds, capture includes the off-screen part</td></tr>
     <tr><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Display disconnected mid-selection</td><td style="padding:9px 12px;border-bottom:1px solid #1C1C1C;font-size:12px">Cancel to <code>Idle</code>, no capture, no error bar</td></tr>
   </table>
 
-  <div class="note" style="border-color:var(--warn)">
-    <b>Code delta:</b> <code>open_region_overlay</code> calls <code>monitor_under_cursor()</code> and opens
-    <b>one</b> window on that display. Today the other monitors stay bright and fully live — the desktop looks normal
-    while the app is modal, which is the worst of both. This spec needs a scrim window per display, with only the
-    active one handling mouse events.
+  <div class="note">
+    <b>Built, and not the way this page first specified it.</b> The spec asked for a scrim window per display with only
+    the active one taking mouse events. <code>open_region_overlay</code> opens <b>one</b> window over
+    <code>virtual_screen()</code> instead — the union of every monitor, which is why its origin is negative on a
+    desktop with a display left of or above the primary one. The cursor’s display still decides which one GPUI
+    creates the window on, because that is what sets its starting DPI.
+    <br><br>
+    One window rather than several is the smaller change and the better behaviour. Per-display windows would have needed
+    shared drag state observed by every one of them, and only the window under the pointer would have kept receiving
+    mouse events — which is exactly why the old spec had to give up on a drag that crosses a seam. A single surface
+    gets the cross-display drag for free, and keeps Esc on the one window that has focus.
   </div>
 
   <div class="note">
