@@ -29,7 +29,6 @@
          line-height:19px; }
   .t-new { background:rgba(52,120,246,.18); color:#8FB6FB; }
   .t-edit { background:#242424; color:var(--text-pill); }
-  .t-bug { background:rgba(232,163,61,.16); color:#F0C07A; }
   .t-done { background:rgba(91,183,110,.16); color:#8FD79E; }
   .note { border-left:2px solid var(--accent); padding-left:11px; font-size:12px; color:var(--text-muted);
           line-height:1.6; margin-top:14px; max-width:700px; }
@@ -48,38 +47,38 @@
   <p class="sub">No visual change beyond colour. Everything after this reads tokens instead of literals.</p>
   <table>
     <tr><th>Work</th><th>Files</th><th></th></tr>
-    <tr><td>Add <code>theme.rs</code> — every token from the Colors card as <code>const</code> <code>Rgba</code>, plus <code>GAP</code>, <code>RADIUS</code>, the raised and recessed shadow helpers</td><td class="file">crates/desktop/src/theme.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Add <code>icons.rs</code> — 26 path constants, one <code>icon(name, size)</code> builder</td><td class="file">crates/desktop/src/icons.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Delete the light palette and the <code>WindowAppearance</code> branch</td><td class="file">window.rs:104-113</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Replace every <code>rgb()</code> / <code>rgba()</code> literal with a token</td><td class="file">window.rs · overlay.rs</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>Add <code>theme.rs</code> — every token from the Colors card as <code>const</code> <code>Rgba</code>, plus <code>GAP</code>, <code>RADIUS</code>, and the two shadow helpers — they shipped as <code>floating()</code> and <code>recessed()</code></td><td class="file">crates/desktop/src/theme.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Add <code>icons.rs</code> — 28 variants on an <code>Icon</code> enum rather than 26 loose constants, with <code>Icon::element(size, colour)</code> as the builder. An enum because a name typo is then a compile error</td><td class="file">crates/desktop/src/icons.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Delete the light palette and the <code>WindowAppearance</code> branch</td><td class="file">window.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Replace every <code>rgb()</code> / <code>rgba()</code> literal with a token</td><td class="file">window.rs · overlay.rs</td><td><span class="tag t-done">done</span></td></tr>
   </table>
-  <div class="gate"><b>Done when:</b> <code>grep -c "rgba\?(0x" crates/desktop/src</code> returns 0 and the app still launches.</div>
+  <div class="gate"><b>Done when:</b> <code>grep -c "rgba\?(0x" crates/desktop/src</code> returns 0 outside <code>theme.rs</code>, where the tokens are defined, and the app still launches. It does.</div>
 
   <h2><span class="n">Phase 1</span> — the panel</h2>
   <p class="sub">The visible rebuild. Cards: Panel, Cards rows &amp; controls, Titlebar, Pills &amp; status.</p>
   <table>
     <tr><th>Work</th><th>Files</th><th></th></tr>
-    <tr><td>Window 360 × 240 → <b>400 × 288</b>, fixed size, <code>appears_transparent</code> — <code>titlebar: None</code> hides the system bar on paper but produces a window that never becomes visible on Windows</td><td class="file">window.rs:288-300</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Custom titlebar: 30px bar, drag region, minimize and close at 34 × 30, no app actions, close reaches the corner</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Mode grid: 4 cards at 64px, icon over label, each card one whole target — no chevron pane</td><td class="file">window.rs:113-260</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Footer: two chips plus the recessed status well, replacing the button row</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Header: 34px mark, 22px wordmark, FPS badge, countdown segmented control</td><td class="file">window.rs</td><td><span class="tag t-new">new</span></td></tr>
+    <tr><td>Window 360 × 240 → <b>400 × 288</b>, fixed size, <code>appears_transparent</code> — <code>titlebar: None</code> hides the system bar on paper but produces a window that never becomes visible on Windows, so it ships as <code>TitlebarOptions</code> with <code>appears_transparent</code> instead</td><td class="file">window.rs · <code>window_options</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Custom titlebar: 30px bar, drag region, minimize and close at 34 × 30, no app actions, close reaches the corner</td><td class="file">window.rs · <code>titlebar</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Mode grid: 4 cards at 64px, icon over label, each card one whole target — no chevron pane. Icon beside the label rather than over it: stacking icon, name and shortcut down a 64px card left every row cramped</td><td class="file">window.rs · <code>mode_card</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Footer: two chips plus the recessed status well, replacing the button row</td><td class="file">window.rs · <code>chip</code>, <code>status_well</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Header: 34px mark, 22px wordmark, FPS badge, countdown segmented control</td><td class="file">window.rs · <code>header_row</code></td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Map <code>CaptureState</code> to real strings — kills <code>format!("{other:?}")</code></td><td class="file">window.rs · <code>status_text</code></td><td><span class="tag t-done">done</span></td></tr>
   </table>
-  <div class="gate"><b>Done when:</b> no state in the panel can display raw Rust, and <code>window_size.rs</code> is updated to the new bounds.</div>
+  <div class="gate"><b>Done:</b> <code>no_state_renders_a_rust_debug_string</code> walks every state, and <code>window_size.rs</code> asserts the 400 × 288 bounds.</div>
 
   <h2><span class="n">Phase 2</span> — HUD and overlay</h2>
   <p class="sub">Cards: Recording HUD, Region overlay.</p>
   <table>
     <tr><th>Work</th><th>Files</th><th></th></tr>
-    <tr><td>HUD 420 × 58 → <b>~132 × 36</b> pill, icon buttons, timer only</td><td class="file">overlay.rs:307-432</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Move HUD <b>below</b> the region: <code>y = region.y + region.height + 9</code>, with the two fallbacks</td><td class="file">overlay.rs:444-449</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Drop the red HUD border; keep red for the frame and the dot</td><td class="file">overlay.rs:404-406</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Region frame 4px → 3px, retune <code>recording_border_regions</code> and its test</td><td class="file">overlay.rs:523-555</td><td><span class="tag t-edit">edit</span></td></tr>
-    <tr><td>Overlay: accent selection instead of <code>#4d8dff</code>, unified 30px float labels</td><td class="file">overlay.rs:100-205</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>HUD 420 × 58 → a <b>36px</b> pill, icon buttons, timer only. Fixed at 248px wide rather than sized to its content: the status text changes length on every state change, and a pill that grows drags the buttons sideways under a pointer already resting on them</td><td class="file">overlay.rs · <code>RecordingHud</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Move HUD <b>below</b> the region: <code>y = region.y + region.height + 9</code>, with the two fallbacks</td><td class="file">overlay.rs · <code>hud_origin</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Drop the red HUD border; keep red for the frame and the dot</td><td class="file">overlay.rs</td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Region frame 4px → 3px. The four edges are no longer computed in Rust: the frame is one window with its middle cut out by <code>SetWindowRgn</code>, so <code>theme::FRAME</code> is the only number left</td><td class="file">theme.rs · platform/windows.rs · <code>show_recording_frame</code></td><td><span class="tag t-done">done</span></td></tr>
+    <tr><td>Overlay: accent selection instead of <code>#4d8dff</code>, unified 30px float labels</td><td class="file">overlay.rs · <code>float_label</code></td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>Dim <b>every</b> display, not the one under the cursor. Shipped as one window over <code>virtual_screen()</code> rather than the per-display scrims this plan asked for — see the region overlay card</td><td class="file">overlay.rs · <code>open_region_overlay</code></td><td><span class="tag t-done">done</span></td></tr>
   </table>
-  <div class="gate"><b>Done when:</b> a capture on a two-monitor setup dims both screens, and <code>recording_boundary_is_four_thin_edges</code> passes at the new thickness.</div>
+  <div class="gate"><b>Done:</b> the scrim is one window over <code>virtual_screen()</code>, so it covers every display by construction. The frame test named here went with the code that computed four rectangles — the thickness is now <code>theme::FRAME</code>, read once by <code>show_recording_frame</code>.</div>
 
   <h2><span class="n">Phase 3</span> — errors, feedback, tray</h2>
   <p class="sub">Cards: Errors &amp; feedback, Tray. The phase that stops the app losing information.</p>
@@ -113,7 +112,7 @@
     <tr><th>Work</th><th>Files</th><th></th></tr>
     <tr><td>Gallery view — 3-column grid over <code>capture_root</code>, filters, hover actions, empty state</td><td class="file">crates/desktop/src/gallery.rs</td><td><span class="tag t-new">new</span></td></tr>
     <tr><td>Thumbnail cache at 236px in <code>%LOCALAPPDATA%</code>, generated off-thread</td><td class="file">crates/capture/src/thumbs.rs</td><td><span class="tag t-new">new</span></td></tr>
-    <tr><td>Tab order, arrow keys in the segmented control, <code>Home</code> / <code>End</code>, every Esc route</td><td class="file">window.rs:92-99 · menu.rs</td><td><span class="tag t-edit">edit</span></td></tr>
+    <tr><td>Tab order, arrow keys in the segmented control, <code>Home</code> / <code>End</code>, every Esc route</td><td class="file">window.rs · <code>focus_next</code>, <code>focus_previous</code> · menu.rs</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Focus-visible spacer on filled controls</td><td class="file">theme.rs · controls.rs</td><td><span class="tag t-edit">edit</span></td></tr>
     <tr><td>Three animations only: recording pulse, HUD idle fade, saved chip expiry. Built on GPUI's <code>with_animation</code>, which honours the system reduced-motion setting on its own</td><td class="file">motion.rs</td><td><span class="tag t-done">done</span></td></tr>
     <tr><td>File names gain a timestamp: <code>{process}_{YYYY-MM-DD_HH-mm-ss}_{guard}</code></td><td class="file">naming.rs</td><td><span class="tag t-done">done</span></td></tr>
