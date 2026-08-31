@@ -164,7 +164,7 @@ pub fn select(
         .role(Role::ComboBox)
         .aria_label(label)
         .aria_expanded(open)
-        .aria_keyshortcuts("Enter Space Up Down")
+        .aria_keyshortcuts("Enter Space Up Down Home End")
         .flex_none()
         .h(theme::u(CONTROL_H))
         .pl(theme::u(11.0))

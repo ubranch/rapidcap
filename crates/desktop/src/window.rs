@@ -41,6 +41,8 @@ actions!(
         SelectPrevAction,
         SelectNextAction,
         SelectConfirmAction,
+        SelectFirstAction,
+        SelectLastAction,
         EscapeAction,
         MinimizeAction,
         CloseAction,
@@ -299,11 +301,30 @@ impl MainWindow {
     }
 
     fn focus_next(&mut self, _: &TabAction, window: &mut Window, cx: &mut Context<Self>) {
+        if self.close_menu(cx) {
+            return;
+        }
         window.focus_next(cx);
     }
 
     fn focus_previous(&mut self, _: &TabPrevAction, window: &mut Window, cx: &mut Context<Self>) {
+        if self.close_menu(cx) {
+            return;
+        }
         window.focus_prev(cx);
+    }
+
+    /// Tab out of an open menu closes it and stops there.
+    ///
+    /// A menu is drawn over the row behind it, so tabbing on through would
+    /// leave it hanging over a control the focus ring has already moved past.
+    /// Unlike `Escape` this leaves an armed Reset armed: Tab is a move through
+    /// the panel, not a change of mind about the button it is moving off.
+    fn close_menu(&mut self, cx: &mut Context<Self>) -> bool {
+        self.screen == Screen::Settings
+            && self
+                .settings
+                .update(cx, |settings, cx| settings.close_menu(cx))
     }
 
     /// Home and End: the first and last control in the panel.
@@ -1521,6 +1542,14 @@ fn window_button(
         .cursor_pointer()
         // One `hover` call per element: GPUI panics on a second.
         .hover(move |style| style.bg(hover_bg).text_color(theme::text_primary()))
+        // Inside rather than outside, which is the one place in the app that
+        // is true. These sit flush in the top right corner of the window, so
+        // the ring the rest of the panel draws 2px clear of itself would be
+        // clipped by the two edges that matter. The glyph is centred by flex
+        // and stays centred inside the border.
+        .border_2()
+        .border_color(gpui::transparent_black())
+        .focus_visible(|style| style.border_color(theme::accent()))
         .child(icon.element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()))
 }
 
@@ -1789,6 +1818,12 @@ pub fn key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new("down", SelectNextAction, Some("RapidCapSelect")),
         KeyBinding::new("enter", SelectConfirmAction, Some("RapidCapSelect")),
         KeyBinding::new("space", SelectConfirmAction, Some("RapidCapSelect")),
+        // Home and End mean the ends of the menu while one is open and the ends
+        // of the panel while none is. Bound here as well as globally because
+        // the more specific context wins outright: the global binding never
+        // fires on a focused pill, so the pill's handler has to cover both.
+        KeyBinding::new("home", SelectFirstAction, Some("RapidCapSelect")),
+        KeyBinding::new("end", SelectLastAction, Some("RapidCapSelect")),
         KeyBinding::new("home", FocusFirstAction, None),
         KeyBinding::new("end", FocusLastAction, None),
         KeyBinding::new("escape", EscapeAction, None),

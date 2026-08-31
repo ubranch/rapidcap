@@ -177,9 +177,40 @@
     in order &mdash; error first, then a run-up, then the recording states, then the tray.
   </div>
   <div class="note">
-    <b>Still missing:</b> the focus-visible spacer on filled controls, and the whole Menu column of the table above.
-    <code>menu.rs</code> does not exist yet, so there is no menu to close, no item to arrow between, and no trigger to
-    return focus to.
+    <b>The Menu column is the pill's, not the menu's.</b> Focus never enters an open menu &mdash; the surface is
+    <code>deferred</code> and holds no focus handle &mdash; so every key in that column is bound to the
+    <code>RapidCapSelect</code> context on the chip that opened it. The highlighted row carries
+    <code>aria_active_descendant</code>, which is what makes a screen reader announce the row rather than the combo box
+    again on every arrow press, and it is why <code>Esc</code> returning focus to the trigger costs nothing: focus was
+    never anywhere else.
+  </div>
+  <div class="note">
+    <b><code>Home</code> and <code>End</code> are bound twice.</b> Once globally, for the first and last control in the
+    panel, and once on the chip, for the first and last row of an open menu. The chip's binding is the more specific of
+    the two and is offered the key first whether or not a menu is showing; with none showing its handler propagates, and
+    GPUI walks on to the global one. Same two keys, two meanings, one press.
+  </div>
+  <div class="note">
+    <b><code>Tab</code> out of a menu closes it and stops there.</b> A menu is drawn over the row behind it, so tabbing
+    on through would leave it hanging over a control the focus ring has already moved past. Unlike <code>Esc</code> this
+    leaves an armed Reset armed: Tab is a move through the panel, not a change of mind about the button it is moving
+    off.
+  </div>
+  <div class="note">
+    <b>Filled controls get the spacer, and only they need it.</b> Everything else shows focus by turning its own border
+    accent. That fails on exactly the two the design calls filled &mdash; an armed mode card already has an accent
+    border, and a switch that is on is an accent fill &mdash; so those two draw the ring outside instead. GPUI has no
+    <code>outline</code>, so it is two hard-edged shadows, in the opposite order to the CSS above: CSS paints the first
+    shadow of a list on top, GPUI paints the last, so accent goes down first and the spacer is painted over it to cut
+    the gap back out. The spacer is whatever sits behind the control rather than a constant, and the gap is 2 everywhere
+    except the switch, which takes 3 &mdash; it is the one control with no border, and a ring 2px off a bare pill reads
+    as part of the pill.
+  </div>
+  <div class="note">
+    <b>The titlebar buttons ring inside.</b> Minimize and Close sit flush in the top right corner, so the ring the rest
+    of the panel draws 2px clear of itself would be clipped by the two edges that matter. They take a 2px accent border
+    on the inside edge instead &mdash; the same trick every bordered control uses, on a pair that carries a transparent
+    border purely to have something to recolour. This is the one place in the app where focus reads inward.
   </div>
 </body>
 </html>

@@ -26,7 +26,9 @@ use rapidcap_capture::{CaptureCommand, Settings};
 
 use crate::controller::AppController;
 use crate::platform::{hotkey_specs, open_path};
-use crate::window::{SelectConfirmAction, SelectNextAction, SelectPrevAction};
+use crate::window::{
+    SelectConfirmAction, SelectFirstAction, SelectLastAction, SelectNextAction, SelectPrevAction,
+};
 use crate::{controls, menu, theme};
 
 /// Frame rates offered for a video recording.
@@ -322,6 +324,19 @@ impl SettingsView {
         was_open
     }
 
+    /// Shut an open menu and say whether there was one.
+    ///
+    /// Narrower than `dismiss`, which also disarms Reset: this is for Tab,
+    /// which moves through the panel without deciding anything about the
+    /// button it is moving off.
+    pub fn close_menu(&mut self, cx: &mut Context<Self>) -> bool {
+        let was_open = self.open.take().is_some();
+        if was_open {
+            cx.notify();
+        }
+        was_open
+    }
+
     fn toggle(&mut self, select: Select, cx: &mut Context<Self>) {
         // Arming Reset and then reaching for a menu is a change of mind.
         self.confirm_reset = false;
@@ -352,6 +367,26 @@ impl SettingsView {
             return;
         };
         self.open = Some((open, menu::step(&entries, highlighted, delta)));
+        cx.notify();
+    }
+
+    /// Home and End on a select.
+    ///
+    /// Open, they go to the first and last row that can be chosen. Closed, they
+    /// mean what they mean everywhere else in the panel, so the press is handed
+    /// on: the pill's binding is the more specific of the two and is offered
+    /// the key first whether or not a menu is showing, and GPUI walks the rest
+    /// of the matched bindings only for a handler that propagates.
+    ///
+    /// `step` from nothing already lands on the first row going forward and the
+    /// last going back, which is the whole of what these two need.
+    fn menu_edge(&mut self, select: Select, delta: isize, cx: &mut Context<Self>) {
+        let Some((open, _)) = self.open.filter(|(open, _)| *open == select) else {
+            cx.propagate();
+            return;
+        };
+        let entries = select.entries(self.controller.read(cx).settings());
+        self.open = Some((open, menu::step(&entries, None, delta)));
         cx.notify();
     }
 
@@ -439,6 +474,12 @@ impl SettingsView {
                         }))
                         .on_action(cx.listener(move |this, _: &SelectPrevAction, _, cx| {
                             this.menu_step(select, -1, cx)
+                        }))
+                        .on_action(cx.listener(move |this, _: &SelectFirstAction, _, cx| {
+                            this.menu_edge(select, 1, cx)
+                        }))
+                        .on_action(cx.listener(move |this, _: &SelectLastAction, _, cx| {
+                            this.menu_edge(select, -1, cx)
                         }))
                         .on_action(cx.listener(move |this, _: &SelectConfirmAction, _, cx| {
                             this.menu_confirm(select, cx)
@@ -866,6 +907,52 @@ mod tests {
         assert!(view.read_with(cx, |view, _| matches!(view.open, Some((Select::GifFps, _)))));
     }
 
+    #[gpui::test]
+    fn home_and_end_go_to_the_ends_of_an_open_menu_and_tab_shuts_it(cx: &mut gpui::TestAppContext) {
+        let controller = cx.new(|_| {
+            AppController::new(
+                Settings::default(),
+                rapidcap_capture::AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+            )
+        });
+        let view = cx.new(|cx| SettingsView::new(cx, controller.clone()));
+        let entries = Select::VideoFps.entries(&Settings::default());
+        let last = entries.len() - 1;
+
+        view.update(cx, |view, cx| view.toggle(Select::VideoFps, cx));
+        view.update(cx, |view, cx| view.menu_edge(Select::VideoFps, -1, cx));
+        assert_eq!(
+            view.read_with(cx, |view, _| view.open),
+            Some((Select::VideoFps, Some(last))),
+            "End goes to the bottom row"
+        );
+
+        view.update(cx, |view, cx| view.menu_edge(Select::VideoFps, 1, cx));
+        assert_eq!(
+            view.read_with(cx, |view, _| view.open),
+            Some((Select::VideoFps, Some(0))),
+            "and Home back to the top, which for this menu is its first row"
+        );
+
+        // Tab takes the menu and nothing else. Reset stays armed, which is what
+        // separates this from Escape.
+        view.update(cx, |view, cx| {
+            view.confirm_reset = true;
+            assert!(view.close_menu(cx), "there was a menu to close");
+            assert_eq!(view.open, None);
+            assert!(
+                view.confirm_reset,
+                "Tab is not a change of mind about Reset"
+            );
+            assert!(!view.close_menu(cx), "and nothing to close the second time");
+        });
+
+        // Closed, Home leaves the menu shut rather than opening one: it is the
+        // panel's Home, and the pill only had first refusal on it.
+        view.update(cx, |view, cx| view.menu_edge(Select::VideoFps, 1, cx));
+        assert_eq!(view.read_with(cx, |view, _| view.open), None);
+    }
+
     /// The keys the handlers above are hung on.
     ///
     /// Without these four lines every one of them is dead code, which is what
@@ -873,7 +960,7 @@ mod tests {
     #[test]
     fn a_select_is_bound_to_the_keys_it_advertises() {
         let bindings = crate::window::key_bindings();
-        for key in ["up", "down", "enter", "space"] {
+        for key in ["up", "down", "enter", "space", "home", "end"] {
             assert!(
                 bindings.iter().any(|binding| {
                     binding
