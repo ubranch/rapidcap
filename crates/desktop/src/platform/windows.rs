@@ -569,7 +569,11 @@ pub fn monitor_under_cursor() -> anyhow::Result<(DisplayId, PhysicalRegion)> {
     ))
 }
 
-pub fn open_folder(path: &Path) -> anyhow::Result<()> {
+/// Hand a folder or a file to the shell.
+///
+/// The verb is `open` either way: Explorer takes a directory, the registered
+/// handler takes a file. Nothing here needs to know which one it was given.
+pub fn open_path(path: &Path) -> anyhow::Result<()> {
     let wide: Vec<u16> = path
         .as_os_str()
         .encode_wide()

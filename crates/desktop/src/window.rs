@@ -10,7 +10,7 @@ use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget}
 use crate::controller::AppController;
 use crate::icons::Icon;
 use crate::platform::{
-    drag_main_window, hide_main_window, lock_window_size, open_folder, place_main_window,
+    drag_main_window, hide_main_window, lock_window_size, open_path, place_main_window,
     remember_main_window, shortcut_label, window_drag_grab,
 };
 use crate::theme;
@@ -100,7 +100,7 @@ impl MainWindow {
     }
 
     fn open_output(&mut self, _: &OpenOutputAction, _: &mut Window, cx: &mut Context<Self>) {
-        if let Err(error) = open_folder(&self.controller.read(cx).paths().capture_root) {
+        if let Err(error) = open_path(&self.controller.read(cx).paths().capture_root) {
             tracing::error!(%error, "open output folder");
         }
     }

@@ -32,14 +32,14 @@ mod windows;
 #[cfg(target_os = "macos")]
 pub use macos::{
     SingleInstance, drag_main_window, exclude_from_capture, hide_main_window, hide_recording_frame,
-    lock_window_size, monitor_under_cursor, open_folder, place_main_window, place_window,
+    lock_window_size, monitor_under_cursor, open_path, place_main_window, place_window,
     remember_main_window, show_main_window, show_recording_frame, text_scale, window_drag_grab,
     window_target_at,
 };
 #[cfg(windows)]
 pub use windows::{
     SingleInstance, drag_main_window, exclude_from_capture, hide_main_window, hide_recording_frame,
-    lock_window_size, monitor_under_cursor, open_folder, place_main_window, place_window,
+    lock_window_size, monitor_under_cursor, open_path, place_main_window, place_window,
     remember_main_window, show_main_window, show_recording_frame, text_scale, window_drag_grab,
     window_target_at,
 };

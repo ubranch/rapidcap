@@ -30,7 +30,7 @@ use crate::{
     overlay::{close_recording_hud, open_recording_hud, open_region_overlay, overlay_key_bindings},
     platform::{
         PlatformEvent, PlatformRuntime, SingleInstance, hide_main_window, hide_recording_frame,
-        open_folder, probe_payload, show_main_window, show_recording_frame,
+        open_path, probe_payload, show_main_window, show_recording_frame,
     },
     window::{key_bindings, open_main_window},
 };
@@ -325,7 +325,7 @@ fn main() -> anyhow::Result<()> {
                     PlatformEvent::OpenOutput => {
                         let output = controller
                             .read_with(cx, |controller, _| controller.paths().capture_root.clone());
-                        if let Err(error) = open_folder(&output) {
+                        if let Err(error) = open_path(&output) {
                             tracing::error!(%error, "open output folder");
                         }
                     }
