@@ -113,18 +113,17 @@
   <div class="row">
     <div class="anchor">
       <button class="chip open">
-        <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="m17 10 4 4m0-4-4 4"/></svg></span>
-        No audio
+        <span class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 9h3l5-4v14l-5-4H4z"/><path d="M16 10a4 4 0 0 1 0 4"/></svg></span>
+        Audio + mic
       </button>
       <div class="menu wide">
         <div class="mhead">System audio</div>
-        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Off</span></div>
-        <div class="mi"><span class="ico"></span><span class="txt" title="Speakers (Realtek High Definition Audio)">Speakers (Realtek High Defin…</span></div>
-        <div class="mi"><span class="ico"></span><span class="txt">Headset (Arctis Nova Pro)</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">Off</span></div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Default playback device</span></div>
         <div class="msep"></div>
         <div class="mhead">Microphone</div>
-        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Off</span></div>
-        <div class="mi"><span class="ico"></span><span class="txt">Microphone (Arctis Nova Pro)</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">Off</span></div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt" title="Microphone (Arctis Nova Pro Wireless)">Microphone (Arctis Nova Pro W…</span></div>
       </div>
       <div class="caption">Two groups, one menu. Device names truncate at the menu width and keep the full string in the tooltip.</div>
     </div>
@@ -137,10 +136,37 @@
       <div class="menu wide">
         <div class="mhead">System audio</div>
         <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Off</span></div>
+        <div class="mi"><span class="ico"></span><span class="txt">Default playback device</span></div>
+        <div class="msep"></div>
+        <div class="mhead">Microphone</div>
+        <div class="mi sel"><span class="ico"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#3478F6"><path d="m5 12 5 5 9-10"/></svg></span><span class="txt">Off</span></div>
         <div class="caption" style="padding:4px 10px 8px;margin:0;max-width:none">No capture devices found. Plug one in and reopen this menu.</div>
       </div>
-      <div class="caption">Empty state. The menu says what to do next instead of showing an empty box.</div>
+      <div class="caption">Empty state. Only the group that came back empty gets the sentence — System audio is never empty, so it keeps its rows.</div>
     </div>
+  </div>
+
+  <div class="note">
+    <b>System audio is two rows, not a list of speakers.</b> Windows exposes no per-endpoint loopback FFmpeg can
+    open. <code>virtual-audio-capturer</code> is the only DirectShow source that hears what is playing, and it
+    follows whatever the default playback device happens to be — so there is exactly one system source, and a
+    row per speaker would be a row nothing can record from. Change the default in the Windows sound settings and
+    the recording follows. The Microphone group <i>is</i> a real device list: <code>-list_devices</code> returns
+    capture devices, and their names are exactly the strings <code>-i audio=&lt;name&gt;</code> takes.
+  </div>
+
+  <div class="note">
+    <b>The two halves are independent.</b> Both can be on at once — the recorder mixes them into one track with
+    <code>amix</code> rather than muxing two, so the file has one audio stream and plays everywhere. Choosing a
+    microphone therefore does not turn system audio off, and the chip label carries both:
+    <code>No audio</code>, <code>System audio</code>, <code>Microphone</code>, <code>Audio + mic</code>.
+  </div>
+
+  <div class="note">
+    <b>The device list is fetched on the first open, not at startup.</b> Enumerating shells out to FFmpeg, and a
+    panel that pays for that at launch pays for a menu most sessions never open. Until the answer comes back the
+    Microphone group reads <i>Looking for capture devices…</i>, which is not the same claim as the empty state.
+    A device plugged in later is picked up on the next launch; nothing polls.
   </div>
 
   <h2>Rules</h2>
@@ -154,13 +180,18 @@
       <li>Opening a menu marks its trigger — a chip takes its hover fill, and anything else takes whatever its own hover state is.</li>
     </ul>
   </div>
+  <div class="note">
+    <b>Built, in two places.</b> <code>menu.rs</code> is the surface, the rows and the arrow-key walk, and it owns no
+    state: whoever opens a menu keeps the highlight and decides what a row does. The settings selects use it for
+    every pill on that screen, and the audio chip in the panel footer uses it for the two-group menu above — the
+    one menu in the product that opens <i>upward</i>, because its trigger is in the footer and there is nothing
+    below it to hang off.
+  </div>
   <div class="note" style="border-color:var(--warn)">
-    <b>None of this exists in code, and there is nothing left to open it.</b> The mode cards used to carry a chevron
-    pane that rendered and opened nothing; it came off, and <code>scripts/verify-design.ps1</code> now fails if it
-    comes back. The frame rates are a read-only <code>60 / 15 FPS</code> badge in the header, and the audio chip has no
-    picker behind it. So this page needs a trigger designed before it needs any of the menus drawn here.
-    <code>Settings</code> does already hold <code>video.fps</code>, <code>video.bitrate</code>, <code>gif.fps</code>
-    and <code>audio</code>, so there is somewhere to write — the model is not the missing half.
+    <b>Still nothing opens a frame-rate menu.</b> The rates are a read-only <code>60 / 15 FPS</code> badge in the
+    header, and the mode cards' chevron pane — which rendered and opened nothing — came off. That mock stays on
+    this page as a shape, not as a promise. <code>Settings</code> already holds <code>video.fps</code> and
+    <code>gif.fps</code>, so the model is not the missing half; the trigger is.
   </div>
 </body>
 </html>

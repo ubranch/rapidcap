@@ -1,8 +1,8 @@
 use gpui::{
-    Animation, AnimationExt, App, Bounds, Context, DispatchPhase, Entity, FocusHandle, FontWeight,
-    KeyBinding, MouseButton, MouseMoveEvent, MouseUpEvent, Render, Role, SharedString,
-    Subscription, Toggled, Window, WindowBounds, WindowHandle, WindowOptions, actions, canvas, div,
-    prelude::*, size,
+    Anchor, Animation, AnimationExt, App, Bounds, Context, DispatchPhase, Entity, FocusHandle,
+    FontWeight, KeyBinding, MouseButton, MouseMoveEvent, MouseUpEvent, Render, Role, SharedString,
+    Subscription, Toggled, Window, WindowBounds, WindowHandle, WindowOptions, actions, anchored,
+    canvas, deferred, div, prelude::*, px, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::path::{Path, PathBuf};
@@ -10,12 +10,13 @@ use std::time::Duration;
 
 use rapidcap_capture::{
     CaptureCommand, CaptureEvent, CaptureFailure, CaptureKind, CaptureState, CaptureTarget,
-    SavedOutput, write_clipboard_text,
+    SavedOutput, Settings, write_clipboard_text,
 };
 
 use crate::controller::AppController;
 use crate::gallery::GalleryView;
 use crate::icons::Icon;
+use crate::menu;
 use crate::motion;
 use crate::platform::{
     drag_main_window, hide_main_window, lock_window_size, open_path, place_main_window,
@@ -59,6 +60,113 @@ pub const CONTROL_IDS: [&str; 6] = [
     "open-gallery",
     "toggle-audio",
 ];
+
+/// The audio menu, built fresh from the settings and the last enumeration.
+///
+/// System audio is a pair of rows rather than a list of speakers, which is the
+/// one place this parts from the design. Windows exposes no per-endpoint
+/// loopback FFmpeg can open: `virtual-audio-capturer` is the only source that
+/// hears the speakers, and it follows whatever the default playback device is.
+/// A row per speaker would be a row nothing can record from.
+///
+/// `microphones` is `None` until the first enumeration comes back.
+fn audio_entries(
+    settings: &Settings,
+    microphones: Option<&Result<Vec<String>, String>>,
+) -> Vec<menu::Entry> {
+    let audio = &settings.audio;
+    let mut entries = vec![
+        menu::Entry::Header("System audio".into()),
+        menu::Entry::Item(menu::Item::new(AUDIO_SYSTEM_OFF, "Off").selected(!audio.enabled)),
+        menu::Entry::Item(
+            menu::Item::new(AUDIO_SYSTEM_ON, "Default playback device").selected(audio.enabled),
+        ),
+        menu::Entry::Separator,
+        menu::Entry::Header("Microphone".into()),
+    ];
+    match microphones {
+        // Opening the menu is what starts the enumeration, so its first frame
+        // has nothing to list yet. Saying so beats the empty sentence, which
+        // would claim there are no devices before anything had looked for one.
+        None => entries.push(menu::Entry::Empty(LOOKING.into())),
+        Some(Err(error)) => entries.push(menu::Entry::Empty(error.clone().into())),
+        Some(Ok(devices)) => {
+            entries.push(menu::Entry::Item(
+                menu::Item::new(AUDIO_MIC_OFF, "Off").selected(audio.microphone.is_none()),
+            ));
+            if devices.is_empty() {
+                entries.push(menu::Entry::Empty(NO_DEVICES.into()));
+            }
+            entries.extend(devices.iter().map(|device| {
+                menu::Entry::Item(
+                    menu::Item::new(format!("{AUDIO_MIC}{device}"), device.clone())
+                        // The row truncates at the menu width, so the whole name
+                        // has to stay readable somewhere.
+                        .tooltip(device.clone())
+                        .selected(audio.microphone.as_deref() == Some(device.as_str())),
+                )
+            }));
+        }
+    }
+    entries
+}
+
+/// What taking the row with this id means.
+///
+/// A device id that has lost its prefix changes nothing rather than clearing
+/// the microphone: an id this does not recognise is a bug in the list, and
+/// silently switching the recording to something else would hide it.
+fn choose_audio(id: &str, settings: &mut Settings) {
+    match id {
+        AUDIO_SYSTEM_OFF => settings.audio.enabled = false,
+        AUDIO_SYSTEM_ON => settings.audio.enabled = true,
+        AUDIO_MIC_OFF => settings.audio.microphone = None,
+        device => {
+            if let Some(name) = device.strip_prefix(AUDIO_MIC) {
+                settings.audio.microphone = Some(name.to_string());
+            }
+        }
+    }
+}
+
+/// What the audio chip reads as, given what a recording would actually pick up.
+struct AudioSources {
+    label: &'static str,
+    aria: String,
+    /// Whether anything at all would be recorded. Drives the icon and the
+    /// toggled state, which are about sound reaching the file rather than about
+    /// which of the two sources it came from.
+    recording: bool,
+}
+
+fn audio_sources(system: bool, microphone: Option<&str>) -> AudioSources {
+    let (label, aria) = match (system, microphone) {
+        (false, None) => ("No audio", "No audio".to_string()),
+        (true, None) => ("System audio", "System audio".to_string()),
+        (false, Some(device)) => ("Microphone", format!("Microphone: {device}")),
+        (true, Some(device)) => ("Audio + mic", format!("System audio and {device}")),
+    };
+    AudioSources {
+        label,
+        aria: format!("{aria} — click to choose what a recording picks up"),
+        recording: system || microphone.is_some(),
+    }
+}
+
+/// What the audio menu says while the enumeration is still running.
+const LOOKING: &str = "Looking for capture devices\u{2026}";
+/// What it says when the enumeration came back with nothing.
+const NO_DEVICES: &str = "No capture devices found. Plug one in and reopen this menu.";
+
+/// The rows of the audio menu, by id. Written on the way in and read on the
+/// way back out, so the two halves are one edit apart rather than two lists
+/// that can drift out of step.
+const AUDIO_SYSTEM_OFF: &str = "audio-system-off";
+const AUDIO_SYSTEM_ON: &str = "audio-system-on";
+const AUDIO_MIC_OFF: &str = "audio-mic-off";
+/// What a device row's id starts with. The rest of it is the DirectShow name,
+/// which is exactly the string the recorder hands to FFmpeg.
+const AUDIO_MIC: &str = "audio-mic:";
 
 /// The gear in the header. Smaller than a chip and round, so it reads as an
 /// affordance on the brand row rather than as a fourth control in a row of
@@ -141,6 +249,15 @@ pub struct MainWindow {
     /// started. Empty until the platform runtime reports in, which happens
     /// after this window opens.
     unavailable: Vec<CaptureCommand>,
+    /// The highlighted row of the audio menu, while it is down. `Some(None)` is
+    /// open with nothing highlighted, which is what a click rather than an
+    /// arrow key opens it as.
+    audio_menu: Option<Option<usize>>,
+    /// What the last enumeration found, and when. `None` is "not asked yet",
+    /// which is every moment before the menu is first opened: enumerating runs
+    /// FFmpeg, and a panel that does that at startup pays for a menu most
+    /// sessions never open.
+    microphones: Option<Result<Vec<String>, String>>,
     _controller_subscription: Subscription,
     _event_subscription: Subscription,
 }
@@ -218,6 +335,8 @@ impl MainWindow {
             drag_grab: None,
             saved: None,
             unavailable: Vec::new(),
+            audio_menu: None,
+            microphones: None,
             _controller_subscription: controller_subscription,
             _event_subscription: event_subscription,
         }
@@ -401,6 +520,98 @@ impl MainWindow {
         cx.notify();
     }
 
+    fn audio_entries(&self, cx: &App) -> Vec<menu::Entry> {
+        audio_entries(
+            self.controller.read(cx).settings(),
+            self.microphones.as_ref(),
+        )
+    }
+
+    /// Open the audio menu, or shut it again.
+    fn toggle_audio_menu(&mut self, cx: &mut Context<Self>) {
+        if self.audio_menu.take().is_some() {
+            cx.notify();
+            return;
+        }
+        let entries = self.audio_entries(cx);
+        // Opens on the row it is already set to, so the first arrow press steps
+        // from the current value rather than from the top.
+        self.audio_menu = Some(menu::selected(&entries));
+        cx.notify();
+        // Enumerating shells out to FFmpeg, so it is asked once, on the first
+        // open, and off the main thread. A device plugged in afterwards is
+        // picked up by the next launch rather than by polling for one.
+        if self.microphones.is_none() {
+            cx.spawn(async move |this, cx| {
+                let found = cx
+                    .background_spawn(async { rapidcap_capture::microphones() })
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    this.microphones = Some(found.map_err(|error| error.to_string()));
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+    }
+
+    /// Down and Up on the audio chip. Closed, either one opens the menu.
+    fn audio_step(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let Some(highlighted) = self.audio_menu else {
+            self.toggle_audio_menu(cx);
+            return;
+        };
+        let entries = self.audio_entries(cx);
+        self.audio_menu = Some(menu::step(&entries, highlighted, delta));
+        cx.notify();
+    }
+
+    /// Home and End on the audio chip.
+    ///
+    /// Open, they go to the ends of the menu. Closed, they mean what they mean
+    /// everywhere else in the panel, so the press is handed on: the chip's
+    /// binding is the more specific of the two and is offered the key first
+    /// whether or not a menu is showing.
+    fn audio_edge(&mut self, delta: isize, cx: &mut Context<Self>) {
+        if self.audio_menu.is_none() {
+            cx.propagate();
+            return;
+        }
+        let entries = self.audio_entries(cx);
+        self.audio_menu = Some(menu::step(&entries, None, delta));
+        cx.notify();
+    }
+
+    /// Enter and Space on the audio chip. Open on nothing - which only a menu
+    /// with no row left to take can be - shuts it.
+    fn audio_confirm(&mut self, cx: &mut Context<Self>) {
+        match self.audio_menu {
+            Some(Some(index)) => self.choose_audio(index, cx),
+            Some(None) => {
+                self.audio_menu = None;
+                cx.notify();
+            }
+            None => self.toggle_audio_menu(cx),
+        }
+    }
+
+    /// Take the row at `index`, whatever it turns out to be.
+    ///
+    /// Decoded from the id rather than from the position, because the list is
+    /// two groups long and its length moves with the machine's devices.
+    fn choose_audio(&mut self, index: usize, cx: &mut Context<Self>) {
+        let entries = self.audio_entries(cx);
+        let Some(menu::Entry::Item(item)) = entries.get(index) else {
+            return;
+        };
+        let id = item.id.clone();
+        self.audio_menu = None;
+        self.controller.update(cx, |controller, cx| {
+            controller.edit_settings(|settings| choose_audio(&id, settings), cx);
+        });
+        cx.notify();
+    }
+
     fn escape(&mut self, _: &EscapeAction, window: &mut Window, cx: &mut Context<Self>) {
         // Settings is in front of everything else on screen, so it answers
         // first: one press shuts an open menu or disarms Reset, the next goes
@@ -413,6 +624,12 @@ impl MainWindow {
             if !handled {
                 self.show(Screen::Panel, window, cx);
             }
+            return;
+        }
+        // The panel has one thing of its own to dismiss, and it sits in front of
+        // the rest of that screen the same way a settings menu does.
+        if self.screen == Screen::Panel && self.audio_menu.take().is_some() {
+            cx.notify();
             return;
         }
         // The gallery has nothing of its own to dismiss - no menu, no armed
@@ -462,6 +679,12 @@ impl Render for MainWindow {
         let gif_fps = controller.settings().gif.fps;
         let countdown = controller.settings().countdown_seconds;
         let audio = controller.settings().audio.enabled;
+        let microphone = controller.settings().audio.microphone.clone();
+        // Built here rather than inside the footer closure, which cannot reach
+        // `self` again once it has taken a listener.
+        let audio_menu = self
+            .audio_menu
+            .map(|highlighted| (highlighted, self.audio_entries(cx)));
         let output = controller.paths().capture_root.display().to_string();
         let folder_label = folder_label(&output);
         let error = controller.error().cloned();
@@ -630,31 +853,119 @@ impl Render for MainWindow {
                             .gap(theme::u(6.0))
                             .h(theme::u(theme::CHIP_H))
                             .children((!selecting).then(|| {
-                                chip(
-                                    CONTROL_IDS[5],
-                                    "rapidcap.toggle-audio",
-                                    "RapidCapAudio",
-                                    if audio { Icon::AudioOn } else { Icon::AudioOff },
-                                    if audio { "System audio" } else { "No audio" }.to_string(),
-                                    if audio {
-                                        "System audio is on — click to mute recordings".to_string()
-                                    } else {
-                                        "System audio is off — click to record sound".to_string()
-                                    },
-                                    Some(audio),
-                                )
-                                // The one footer label that is a fixed string,
-                                // so it is the one that never has to give up
-                                // room: the filename beside it absorbs the
-                                // shrink instead.
-                                .flex_shrink_0()
-                                .on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.controller.update(cx, |controller, cx| {
-                                            controller.toggle_audio(cx)
-                                        });
-                                    },
-                                ))
+                                let sources = audio_sources(audio, microphone.as_deref());
+                                let open = audio_menu.is_some();
+                                div()
+                                    .relative()
+                                    .flex()
+                                    // The one footer label that is a fixed set
+                                    // of strings, so it is the one that never
+                                    // has to give up room: the filename beside
+                                    // it absorbs the shrink instead.
+                                    .flex_shrink_0()
+                                    .child(
+                                        chip(
+                                            CONTROL_IDS[5],
+                                            "rapidcap.toggle-audio",
+                                            // The settings pills' context, so
+                                            // the arrows, Enter, Space, Home
+                                            // and End reach this menu on the
+                                            // bindings that already exist.
+                                            "RapidCapSelect",
+                                            if sources.recording {
+                                                Icon::AudioOn
+                                            } else {
+                                                Icon::AudioOff
+                                            },
+                                            sources.label.to_string(),
+                                            sources.aria,
+                                            Some(sources.recording),
+                                        )
+                                        .role(Role::ComboBox)
+                                        .aria_expanded(open)
+                                        .aria_keyshortcuts("Enter Space Up Down Home End")
+                                        // The trigger is marked while its menu
+                                        // is down. Applied rather than hovered
+                                        // because the chip already spends its
+                                        // one `hover` call, and GPUI panics on
+                                        // a second.
+                                        .when(open, |chip| chip.bg(theme::bg_hover()))
+                                        .on_action(cx.listener(
+                                            |this, _: &SelectNextAction, _, cx| {
+                                                this.audio_step(1, cx)
+                                            },
+                                        ))
+                                        .on_action(cx.listener(
+                                            |this, _: &SelectPrevAction, _, cx| {
+                                                this.audio_step(-1, cx)
+                                            },
+                                        ))
+                                        .on_action(cx.listener(
+                                            |this, _: &SelectFirstAction, _, cx| {
+                                                this.audio_edge(1, cx)
+                                            },
+                                        ))
+                                        .on_action(cx.listener(
+                                            |this, _: &SelectLastAction, _, cx| {
+                                                this.audio_edge(-1, cx)
+                                            },
+                                        ))
+                                        .on_action(cx.listener(
+                                            |this, _: &SelectConfirmAction, _, cx| {
+                                                this.audio_confirm(cx)
+                                            },
+                                        ))
+                                        .on_click(
+                                            cx.listener(|this, _, _, cx| {
+                                                this.toggle_audio_menu(cx)
+                                            }),
+                                        ),
+                                    )
+                                    .children(audio_menu.map(|(highlighted, entries)| {
+                                        deferred(
+                                            anchored()
+                                                // Upward, unlike every other
+                                                // menu in the product: the chip
+                                                // that opens this one is in the
+                                                // footer, and there is nothing
+                                                // below it to hang off.
+                                                .anchor(Anchor::BottomLeft)
+                                                .offset(gpui::point(px(0.0), px(-4.0)))
+                                                .snap_to_window_with_margin(px(8.0))
+                                                .child(
+                                                    menu::surface(
+                                                        "rapidcap.audio-menu",
+                                                        menu::WIDTH_WIDE,
+                                                    )
+                                                    // A click anywhere else
+                                                    // shuts it, which is the
+                                                    // half of a menu Escape
+                                                    // does not cover.
+                                                    .on_mouse_down_out(cx.listener(
+                                                        |this, _, _, cx| {
+                                                            this.audio_menu = None;
+                                                            cx.notify();
+                                                        },
+                                                    ))
+                                                    .children(entries.iter().enumerate().map(
+                                                        |(index, entry)| {
+                                                            let row = menu::entry(
+                                                                entry,
+                                                                highlighted == Some(index),
+                                                            );
+                                                            div()
+                                                                .id(("audio-row", index))
+                                                                .on_click(cx.listener(
+                                                                    move |this, _, _, cx| {
+                                                                        this.choose_audio(index, cx)
+                                                                    },
+                                                                ))
+                                                                .child(row)
+                                                        },
+                                                    )),
+                                                ),
+                                        )
+                                    }))
                             }))
                             // The confirmation is a control, not a toast: it
                             // lands where the eye already is, it is pressable,
@@ -2406,6 +2717,178 @@ mod tests {
             view.read_with(&cx, |view, _| saved_path(view)),
             None,
             "the chip outlived its timer"
+        );
+    }
+    /// The ids of every row a menu offers, in order, with a `*` on the ticked
+    /// ones. Compact enough to assert the whole shape of the menu at once,
+    /// which is the part that has to stay right as the list grows.
+    fn rows(entries: &[menu::Entry]) -> Vec<String> {
+        entries
+            .iter()
+            .map(|entry| match entry {
+                menu::Entry::Header(label) => format!("[{label}]"),
+                menu::Entry::Separator => "-".to_string(),
+                menu::Entry::Empty(sentence) => format!("({sentence})"),
+                menu::Entry::Item(item) if item.selected => format!("*{}", item.id),
+                menu::Entry::Item(item) => item.id.to_string(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_audio_menu_is_two_groups_with_a_tick_in_each() {
+        let mut settings = Settings::default();
+        settings.audio.enabled = true;
+        settings.audio.microphone = Some("Headset".to_string());
+        let found = Ok(vec!["Headset".to_string(), "Webcam".to_string()]);
+        assert_eq!(
+            rows(&audio_entries(&settings, Some(&found))),
+            [
+                "[System audio]",
+                "audio-system-off",
+                "*audio-system-on",
+                "-",
+                "[Microphone]",
+                "audio-mic-off",
+                "*audio-mic:Headset",
+                "audio-mic:Webcam",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_microphone_that_is_no_longer_plugged_in_ticks_nothing() {
+        let mut settings = Settings::default();
+        settings.audio.microphone = Some("Headset".to_string());
+        let found = Ok(vec!["Webcam".to_string()]);
+        let entries = audio_entries(&settings, Some(&found));
+        // Not corrected to Off, and not ticked onto whatever took its place:
+        // the setting still says Headset, and the recorder is the only thing
+        // that can tell the user it has gone.
+        assert!(
+            !rows(&entries)
+                .iter()
+                .any(|row| row.starts_with('*') && row.starts_with(&format!("*{AUDIO_MIC}"))),
+            "no device row is ticked"
+        );
+        assert!(rows(&entries).contains(&"audio-mic-off".to_string()));
+    }
+
+    #[test]
+    fn a_menu_with_no_devices_says_so_rather_than_showing_a_gap() {
+        let settings = Settings::default();
+        let empty = Ok(Vec::new());
+        assert!(rows(&audio_entries(&settings, Some(&empty))).contains(&format!("({NO_DEVICES})")));
+        // Before the first enumeration comes back there is no answer yet, which
+        // is not the same as an answer of none.
+        assert!(rows(&audio_entries(&settings, None)).contains(&format!("({LOOKING})")));
+        let failed = Err("FFmpeg is missing".to_string());
+        assert!(
+            rows(&audio_entries(&settings, Some(&failed)))
+                .contains(&"(FFmpeg is missing)".to_string())
+        );
+    }
+
+    #[test]
+    fn the_arrows_walk_past_the_headers_and_the_separator() {
+        let settings = Settings::default();
+        let found = Ok(vec!["Webcam".to_string()]);
+        let entries = audio_entries(&settings, Some(&found));
+        let walk: Vec<String> = std::iter::successors(menu::step(&entries, None, 1), |from| {
+            menu::step(&entries, Some(*from), 1)
+        })
+        .take(4)
+        .map(|index| rows(&entries)[index].trim_start_matches('*').to_string())
+        .collect();
+        assert_eq!(
+            walk,
+            [
+                "audio-system-off",
+                "audio-system-on",
+                "audio-mic-off",
+                "audio-mic:Webcam"
+            ]
+        );
+    }
+
+    #[test]
+    fn choosing_a_row_writes_the_one_setting_it_names() {
+        let mut settings = Settings::default();
+        settings.audio.enabled = true;
+
+        choose_audio(AUDIO_SYSTEM_OFF, &mut settings);
+        assert!(!settings.audio.enabled);
+        choose_audio(AUDIO_SYSTEM_ON, &mut settings);
+        assert!(settings.audio.enabled);
+
+        choose_audio(&format!("{AUDIO_MIC}Headset"), &mut settings);
+        assert_eq!(settings.audio.microphone.as_deref(), Some("Headset"));
+        // The microphone rows do not touch the system half, and vice versa:
+        // both are recorded at once, so choosing one is not un-choosing the
+        // other.
+        assert!(settings.audio.enabled);
+        choose_audio(AUDIO_MIC_OFF, &mut settings);
+        assert_eq!(settings.audio.microphone, None);
+        assert!(settings.audio.enabled);
+    }
+
+    #[gpui::test]
+    fn the_audio_menu_opens_over_the_footer_and_escape_shuts_it(cx: &mut TestAppContext) {
+        let controller = cx.new(|_| {
+            AppController::new(
+                Settings::default(),
+                AppPaths::from_roots("C:/Documents", "C:/Roaming", "C:/Local"),
+            )
+        });
+        let window = cx.update(|cx| {
+            let controller = controller.clone();
+            cx.open_window(Default::default(), |window, cx| {
+                cx.new(|cx| MainWindow::new(window, cx, controller))
+            })
+            .unwrap()
+        });
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        let view = window.root(&mut cx).unwrap();
+
+        view.update(&mut cx, |view, cx| {
+            // Answered up front so the test never shells out to FFmpeg. What is
+            // under test is the mount, not the enumeration.
+            view.microphones = Some(Ok(vec!["Headset".to_string()]));
+            view.toggle_audio_menu(cx);
+        });
+        // Opens on the row it is already set to rather than on nothing.
+        assert!(view.read_with(&cx, |view, _| view.audio_menu.flatten().is_some()));
+        // The real draw loop rather than the `draw` helper, which paints inside
+        // an arena scope it then clears - a `deferred` child is flushed after
+        // that scope closes, and reading it back panics on a cleared arena.
+        // This is the only place the anchored surface is ever built, and every
+        // GPUI panic this codebase has hit fires at paint and nowhere else.
+        cx.run_until_parked();
+
+        let focus = view.read_with(&cx, |view, _| view.focus_handle().clone());
+        cx.update(|window, cx| focus.dispatch_action(&EscapeAction, window, cx));
+        assert!(view.read_with(&cx, |view, _| view.audio_menu.is_none()));
+        // And stops there. Escape on the panel with a menu down closes the menu,
+        // not the app.
+        assert_eq!(view.read_with(&cx, |view, _| view.screen), Screen::Panel);
+        cx.run_until_parked();
+    }
+
+    #[test]
+    fn the_chip_says_what_a_recording_would_pick_up() {
+        assert_eq!(audio_sources(false, None).label, "No audio");
+        assert!(!audio_sources(false, None).recording);
+        assert_eq!(audio_sources(true, None).label, "System audio");
+        assert_eq!(audio_sources(false, Some("Headset")).label, "Microphone");
+        assert_eq!(audio_sources(true, Some("Headset")).label, "Audio + mic");
+        // A microphone alone still records something, so the chip is on and the
+        // icon is the one that means sound is being captured.
+        assert!(audio_sources(false, Some("Headset")).recording);
+        assert!(
+            audio_sources(false, Some("Headset"))
+                .aria
+                .contains("Headset"),
+            "the device name is what the label had to leave out"
         );
     }
 }
