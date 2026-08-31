@@ -1,8 +1,8 @@
 use gpui::{
-    App, AppContext as _, Bounds, Context, Entity, FocusHandle, KeyBinding, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Role, Subscription,
-    Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
-    actions, div, point, prelude::*, px, size,
+    Animation, AnimationExt, App, AppContext as _, Bounds, Context, Entity, FocusHandle,
+    KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
+    Role, Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind,
+    WindowOptions, actions, div, point, prelude::*, px, size,
 };
 use rapidcap_capture::{CaptureCommand, CaptureKind, CaptureState, CaptureTarget, PhysicalRegion};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -10,6 +10,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use crate::{
     controller::AppController,
     icons::Icon,
+    motion,
     platform::{
         exclude_from_capture, monitor_containing, monitor_under_cursor, place_window,
         virtual_screen, window_target_at,
@@ -331,6 +332,10 @@ pub struct RecordingHud {
     countdown_since: std::time::Instant,
     /// Last time the pointer was over the bar. Drives the idle fade.
     pointer_seen: std::time::Instant,
+    /// Whether the bar has ever dimmed. Until it has there is nothing to fade
+    /// back from, and a 240ms ramp up to full on the very first frame would be
+    /// 240ms of a dimmed bar over something the user is recording right now.
+    has_faded: bool,
     _subscription: Subscription,
 }
 
@@ -364,6 +369,7 @@ impl RecordingHud {
             target,
             countdown_since: opened,
             pointer_seen: opened,
+            has_faded: false,
             _subscription: subscription,
         }
     }
@@ -411,6 +417,15 @@ impl Render for RecordingHud {
         // a countdown is asking a question and has to stay legible.
         let faded = matches!(state, CaptureState::Recording(_) | CaptureState::Paused(_))
             && self.pointer_seen.elapsed() >= HUD_FADE_AFTER;
+        self.has_faded |= faded;
+        let (fade_from, fade_to) = if faded {
+            (1.0, theme::HUD_IDLE_OPACITY)
+        } else if self.has_faded {
+            (theme::HUD_IDLE_OPACITY, 1.0)
+        } else {
+            (1.0, 1.0)
+        };
+        let pulsing = matches!(state, CaptureState::Recording(_));
         // The window is a transparent letterbox; the pill inside it is what the
         // user sees, so it can size to its content the way the spec asks.
         div()
@@ -428,7 +443,6 @@ impl Render for RecordingHud {
                     .accessibility_id("rapidcap.hud")
                     .role(Role::Application)
                     .aria_label("RapidCap recording controls")
-                    .when(faded, |pill| pill.opacity(theme::HUD_IDLE_OPACITY))
                     .h(theme::u(theme::HUD_H))
                     .w(theme::u(theme::HUD_W))
                     .flex()
@@ -468,13 +482,7 @@ impl Render for RecordingHud {
                             .px(theme::u(8.0))
                             .text_size(theme::u(13.0))
                             .text_ellipsis()
-                            .child(
-                                div()
-                                    .size(theme::u(8.0))
-                                    .flex_none()
-                                    .rounded(theme::u(theme::RADIUS_PILL))
-                                    .bg(dot),
-                            )
+                            .child(motion::status_dot("hud-pulse", 8.0, dot, pulsing))
                             .child(status),
                     )
                     .child(
@@ -509,6 +517,15 @@ impl Render for RecordingHud {
                             true,
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
+                    )
+                    // Linear, because eased opacity reads as a flicker. The id
+                    // carries `faded`: `with_animation` restarts when its id
+                    // changes, and that restart is the only thing that runs the
+                    // fade back up when the pointer returns.
+                    .with_animation(
+                        ("hud-fade", faded as usize),
+                        Animation::new(motion::HUD_FADE),
+                        move |pill, delta| pill.opacity(fade_from + (fade_to - fade_from) * delta),
                     ),
             )
     }

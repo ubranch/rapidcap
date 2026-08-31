@@ -1,7 +1,8 @@
 use gpui::{
-    App, Bounds, Context, DispatchPhase, Entity, FocusHandle, FontWeight, KeyBinding, MouseButton,
-    MouseMoveEvent, MouseUpEvent, Render, Role, SharedString, Subscription, Toggled, Window,
-    WindowBounds, WindowHandle, WindowOptions, actions, canvas, div, prelude::*, size,
+    Animation, AnimationExt, App, Bounds, Context, DispatchPhase, Entity, FocusHandle, FontWeight,
+    KeyBinding, MouseButton, MouseMoveEvent, MouseUpEvent, Render, Role, SharedString,
+    Subscription, Toggled, Window, WindowBounds, WindowHandle, WindowOptions, actions, canvas, div,
+    prelude::*, size,
 };
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::path::{Path, PathBuf};
@@ -14,6 +15,7 @@ use rapidcap_capture::{
 
 use crate::controller::AppController;
 use crate::icons::Icon;
+use crate::motion;
 use crate::platform::{
     drag_main_window, hide_main_window, lock_window_size, open_path, place_main_window,
     remember_main_window, shortcut_label, window_drag_grab,
@@ -67,6 +69,10 @@ const SAVED_LABEL_TAIL: usize = 8;
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Saved {
     path: PathBuf,
+    /// Set when the six seconds are up, for the 160ms it takes to fade out.
+    /// The chip is still mounted through that, which is why the timer that
+    /// sets this is not the one that clears it.
+    expiring: bool,
     /// Replaces the state text in the status well. `00:42 · 12.4 MB` for a
     /// recording, `Copied` for a screenshot.
     summary: String,
@@ -76,6 +82,7 @@ impl Saved {
     fn new(output: &SavedOutput) -> Self {
         Self {
             path: output.path.clone(),
+            expiring: false,
             summary: saved_summary(output),
         }
     }
@@ -124,10 +131,27 @@ impl MainWindow {
             let path = output.path.clone();
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(SAVED_CHIP).await;
+                // A capture that saved inside the six seconds owns the chip
+                // now, and has its own timer running. Only the one whose file
+                // is still showing may take it down.
+                let ours = this
+                    .update(cx, |this, cx| {
+                        let Some(saved) = this.saved.as_mut().filter(|saved| saved.path == path)
+                        else {
+                            return false;
+                        };
+                        saved.expiring = true;
+                        cx.notify();
+                        true
+                    })
+                    .unwrap_or(false);
+                if !ours {
+                    return;
+                }
+                // Unmounting on the same tick that starts the fade would fade
+                // nothing: the chip has to outlive its own exit.
+                cx.background_executor().timer(motion::CHIP_FADE).await;
                 let _ = this.update(cx, |this, cx| {
-                    // A capture that saved inside the six seconds owns the
-                    // chip now, and has its own timer running. Only the one
-                    // whose file is still showing may take it down.
                     if this.saved.as_ref().map(|saved| saved.path.as_path()) == Some(path.as_path())
                     {
                         this.saved = None;
@@ -246,6 +270,7 @@ impl Render for MainWindow {
             None => status_text(&state, target.as_ref()),
         };
         let dot = status_dot(&state, target.is_some());
+        let pulsing = matches!(&state, CaptureState::Recording(_));
         let video_label = recording_label(&state, CaptureKind::Video);
         let gif_label = recording_label(&state, CaptureKind::Gif);
         let recording_video = matches!(&state, CaptureState::Recording(CaptureKind::Video));
@@ -403,6 +428,16 @@ impl Render for MainWindow {
                                 )
                                 .border_color(theme::accent())
                                 .on_click(cx.listener(|this, _, _, cx| this.open_saved(cx)))
+                                .with_animation(
+                                    ("saved-chip", saved.expiring as usize),
+                                    Animation::new(motion::CHIP_FADE),
+                                    {
+                                        let expiring = saved.expiring;
+                                        move |chip, delta| {
+                                            chip.opacity(if expiring { 1.0 - delta } else { delta })
+                                        }
+                                    },
+                                )
                                 .into_any_element(),
                                 None => chip(
                                     CONTROL_IDS[4],
@@ -419,7 +454,7 @@ impl Render for MainWindow {
                                 .into_any_element(),
                             })
                             .child(div().flex_1())
-                            .child(status_well(status, dot))
+                            .child(status_well(status, dot, pulsing))
                             .into_any_element(),
                     }),
             )
@@ -1018,7 +1053,7 @@ fn chip(
 
 /// Read-only, so recessed and never focusable: an inner shadow under the shared
 /// border, and 8px shorter than the chips beside it.
-fn status_well(status: String, dot: gpui::Hsla) -> impl IntoElement {
+fn status_well(status: String, dot: gpui::Hsla, pulsing: bool) -> impl IntoElement {
     div()
         .id("capture-status")
         .role(Role::Status)
@@ -1037,13 +1072,7 @@ fn status_well(status: String, dot: gpui::Hsla) -> impl IntoElement {
         .text_size(theme::u(theme::TEXT_SMALL))
         .font_weight(FontWeight::MEDIUM)
         .text_color(theme::text_pill())
-        .child(
-            div()
-                .size(theme::u(7.0))
-                .flex_none()
-                .rounded(theme::u(theme::RADIUS_PILL))
-                .bg(dot),
-        )
+        .child(motion::status_dot("status-pulse", 7.0, dot, pulsing))
         .child(status)
 }
 
@@ -1710,12 +1739,25 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             view.read_with(&cx, |view, _| saved_path(view)),
-            Some(path),
+            Some(path.clone()),
             "a save left no chip behind"
         );
 
+        // The six seconds are up, but the chip has to outlive them by its own
+        // fade or there is nothing on screen to fade.
         cx.executor()
-            .advance_clock(SAVED_CHIP + Duration::from_secs(1));
+            .advance_clock(SAVED_CHIP + Duration::from_millis(1));
+        cx.run_until_parked();
+        assert_eq!(
+            view.read_with(&cx, |view, _| (
+                saved_path(view),
+                view.saved.as_ref().map(|saved| saved.expiring)
+            )),
+            (Some(path.clone()), Some(true)),
+            "the chip vanished instead of fading"
+        );
+
+        cx.executor().advance_clock(motion::CHIP_FADE);
         cx.run_until_parked();
         assert_eq!(
             view.read_with(&cx, |view, _| saved_path(view)),

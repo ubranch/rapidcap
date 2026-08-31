@@ -91,8 +91,10 @@
   <div class="note" style="border-color:var(--rec)">
     <b>The recording dot pulses, 2s, <code>1 → .45 → 1</code>.</b> It is the only looping animation in the product,
     it exists because a static red dot is indistinguishable from a decoration, and it is the difference between
-    "is this recording?" and knowing. It runs in the HUD, the panel status well and the tray icon — the same rhythm in
-    all three, so they read as one signal. Nothing else in RapidCap is allowed to loop.
+    "is this recording?" and knowing. It runs in the HUD and the panel status well, on one shared clock so they read as
+    one signal. Not in the tray: this page also says a tween on the tray icon is a flicker, because Windows redraws it
+    on its own schedule, and that is the call that stands. The tray shows its recording state by colour instead.
+    Nothing else in RapidCap is allowed to loop.
   </div>
 
   <h2>Reduced motion</h2>
@@ -107,9 +109,23 @@
   <h2>Implementation</h2>
   <div class="note" style="border-color:var(--warn)">
     <b>GPUI has no CSS transitions.</b> Hover and press fills are style variants applied on state, so they land
-    instantly today — which is acceptable and is what ships now. The three that need real animation are the pulse,
-    the HUD idle fade and the saved chip expiry; each is a <code>cx.spawn</code> loop driving one interpolated value,
-    not a general animation system. Do not build a tween engine for three values.
+    instantly, and that is what ships. The three that needed real animation — the pulse, the HUD idle fade and the
+    saved chip expiry — are built in <code>motion.rs</code> on GPUI's own <code>with_animation</code>, one call each.
+    No <code>cx.spawn</code> tween loop was needed and no tween engine exists.
+  </div>
+
+  <div class="note">
+    <b>Reduced motion is free.</b> <code>with_animation</code> already reads the system setting: a repeating animation
+    renders in its start state and a one-shot in its end state, and neither schedules a frame. That is exactly what
+    this page asks for — the pulse becomes a static dot at full opacity, and the two fades snap to their targets.
+    Nothing in <code>motion.rs</code> checks the setting itself.
+  </div>
+
+  <div class="note">
+    <b>Two implementation details worth knowing.</b> The pulse uses <code>repeat_synced</code>, which phase-locks it to
+    a clock the whole app shares, so the panel's dot and the HUD's dot dip together rather than beating against each
+    other. And both fades key their element id on the direction, because <code>with_animation</code> restarts when its
+    id changes — that restart is the only thing that runs a one-shot fade back the other way.
   </div>
 </body>
 </html>

@@ -2,6 +2,7 @@
 
 mod controller;
 mod icons;
+mod motion;
 mod overlay;
 mod platform;
 mod theme;
