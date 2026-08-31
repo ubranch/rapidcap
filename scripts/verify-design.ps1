@@ -15,7 +15,7 @@ using System;
 using System.Runtime.InteropServices;
 public class RcWin {
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
-  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int c, uint flags);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr dc, uint flags);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern IntPtr GetWindowLongPtrW(IntPtr h, int index);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
@@ -27,8 +27,11 @@ public class RcWin {
 
 $proc = Get-Process -Name RapidCap -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $proc) { Write-Host "FAIL  RapidCap is not running"; exit 1 }
-$h = [IntPtr]$proc.MainWindowHandle
-if (-not [RcWin]::IsWindowVisible($h)) { Write-Host "FAIL  window is not visible"; exit 1 }
+# Not `$h`: PowerShell variable names are case-insensitive, so the frame
+# height assigned to `$H` below overwrote the handle, and every call made
+# with it afterwards was reading window 375.
+$hwnd = [IntPtr]$proc.MainWindowHandle
+if (-not [RcWin]::IsWindowVisible($hwnd)) { Write-Host "FAIL  window is not visible"; exit 1 }
 
 # Everything below measures a screen grab, which is in *physical* pixels, while
 # the design is specified in *logical* ones. On a 100% display those are the
@@ -41,7 +44,7 @@ if (-not [RcWin]::IsWindowVisible($h)) { Write-Host "FAIL  window is not visible
 # physical or logical depending on what happened to be loaded first.
 $PER_MONITOR_V2 = [IntPtr](-4)
 [void][RcWin]::SetThreadDpiAwarenessContext($PER_MONITOR_V2)
-$scale = [RcWin]::GetDpiForWindow($h) / 96.0
+$scale = [RcWin]::GetDpiForWindow($hwnd) / 96.0
 
 # Settings > Accessibility > Text size, the same value the app reads. The panel
 # is authored in design pixels and multiplied by this on the way to the screen,
@@ -57,27 +60,37 @@ function Du([double]$design) { [int][Math]::Round($design * $unit) }
 # Physical -> design units, for a distance we measured off the bitmap.
 function Lg([double]$physical) { $physical / $unit }
 
-# Capture by moving the panel to a clear patch and pinning it topmost, rather
-# than by activating it. A background console cannot take the foreground -
-# Windows' foreground lock denies it - so SetForegroundWindow leaves whatever
-# the user has open on top and the grab returns their desktop, not the panel.
-$before = New-Object RcWin+RECT
-[void][RcWin]::GetWindowRect($h, [ref]$before)
-$TOPMOST = [IntPtr](-1)
-$NOSIZE_NOACTIVATE = 0x0001 -bor 0x0010
-[void][RcWin]::SetWindowPos($h, $TOPMOST, 20, 60, 0, 0, $NOSIZE_NOACTIVATE)
-Start-Sleep -Milliseconds 900
-
+# Capture by asking the window to draw itself, not by grabbing the screen under
+# it. A background console cannot take the foreground - Windows' foreground lock
+# denies it - so a screen grab returns whatever the user has on top instead of
+# the panel. This script used to work around that by moving the panel to a clear
+# patch and pinning it topmost, which left their window parked in a corner and
+# in front of everything else on the desktop.
+#
+# PW_RENDERFULLCONTENT is the flag that makes this work on a
+# hardware-composited window; without it a GPUI panel prints blank.
+$PW_RENDERFULLCONTENT = 2
+$win = New-Object RcWin+RECT
+[void][RcWin]::GetWindowRect($hwnd, [ref]$win)
 $r = New-Object RcWin+RECT
-[void][RcWin]::DwmGetWindowAttribute($h, 9, [ref]$r, 16)
+[void][RcWin]::DwmGetWindowAttribute($hwnd, 9, [ref]$r, 16)
 $W = $r.R - $r.L
 $H = $r.B - $r.T
-$bmp = New-Object System.Drawing.Bitmap($W, $H)
-$g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+
+# PrintWindow draws the whole window, invisible resize border included, so the
+# frame rect is cropped back out - every measurement below is relative to the
+# DWM frame the way it was when this grabbed the screen.
+$full = New-Object System.Drawing.Bitmap(($win.R - $win.L), ($win.B - $win.T))
+$g = [System.Drawing.Graphics]::FromImage($full)
+$dc = $g.GetHdc()
+$printed = [RcWin]::PrintWindow($hwnd, $dc, $PW_RENDERFULLCONTENT)
+$g.ReleaseHdc($dc)
 $g.Dispose()
-$style = [int64][RcWin]::GetWindowLongPtrW($h, -16)
-[void][RcWin]::SetWindowPos($h, $TOPMOST, $before.L, $before.T, 0, 0, $NOSIZE_NOACTIVATE)
+if (-not $printed) { Write-Host "FAIL  PrintWindow returned false"; exit 1 }
+$crop = New-Object System.Drawing.Rectangle(($r.L - $win.L), ($r.T - $win.T), $W, $H)
+$bmp = $full.Clone($crop, $full.PixelFormat)
+$full.Dispose()
+$style = [int64][RcWin]::GetWindowLongPtrW($hwnd, -16)
 
 $script:pass = 0
 $script:fail = 0
