@@ -46,7 +46,7 @@ use windows::{
             HiDpi::GetDpiForWindow,
             Shell::{
                 FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT,
-                SHFILEOPSTRUCTW, SHFileOperationW, ShellExecuteW,
+                FOF_WANTNUKEWARNING, SHFILEOPSTRUCTW, SHFileOperationW, ShellExecuteW,
             },
             WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, FindWindowW, GW_HWNDNEXT, GWL_STYLE,
@@ -743,10 +743,15 @@ pub fn reveal_path(path: &Path) -> anyhow::Result<()> {
 /// this process does not otherwise have - for one flag, that is the whole
 /// reason the old call is still here.
 ///
-/// The four flags together are what makes it silent: `ALLOWUNDO` is the Recycle
-/// Bin, and the other three suppress the confirmation dialog, the progress
-/// window and the error box - none of which may appear over a panel that is
-/// always on top.
+/// The first four flags together are what makes it silent: `ALLOWUNDO` is the
+/// Recycle Bin, and the other three suppress the confirmation dialog, the
+/// progress window and the error box - none of which may appear over a panel
+/// that is always on top.
+///
+/// `WANTNUKEWARNING` is the one exception. A file bigger than the Recycle Bin
+/// cannot be recycled, and with `NOCONFIRMATION` alone the shell destroys it
+/// without asking - a long recording gone for good on one click. This flag
+/// brings back the prompt for exactly that case and no other.
 pub fn move_to_trash(path: &Path) -> anyhow::Result<()> {
     // `pFrom` is a *list*, terminated by an empty string on top of its own
     // terminator. One trailing NUL deletes nothing and reports success.
@@ -756,15 +761,19 @@ pub fn move_to_trash(path: &Path) -> anyhow::Result<()> {
     let mut operation = SHFILEOPSTRUCTW {
         wFunc: FO_DELETE,
         pFrom: PCWSTR(from.as_ptr()),
-        fFlags: (FOF_ALLOWUNDO.0 | FOF_NOCONFIRMATION.0 | FOF_SILENT.0 | FOF_NOERRORUI.0) as u16,
+        fFlags: (FOF_ALLOWUNDO.0
+            | FOF_NOCONFIRMATION.0
+            | FOF_SILENT.0
+            | FOF_NOERRORUI.0
+            | FOF_WANTNUKEWARNING.0) as u16,
         ..Default::default()
     };
     let result = unsafe { SHFileOperationW(&mut operation) };
     if result != 0 {
         anyhow::bail!("SHFileOperationW failed with code {result}");
     }
-    // Set when the user cancels out of a dialog the flags above should have
-    // stopped from appearing. Reported rather than swallowed: the caller drops
+    // Set when the user answers No to the too-big-to-recycle prompt, or cancels
+    // any other dialog the shell shows. Reported rather than swallowed: the caller drops
     // the tile on success, and a tile whose file is still there is worse than
     // an error in the log.
     if operation.fAnyOperationsAborted.as_bool() {

@@ -283,11 +283,6 @@ impl RecordingSession {
 /// How long a segment gets to write its trailer before it is killed.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Where the bundled `ffmpeg` is, or the one on `PATH` in a dev checkout.
-///
-/// Public because the gallery needs it too: an MP4's first frame and its length
-/// both come out of one `ffmpeg` call, and there is no second copy of this
-/// search worth keeping in sync with this one.
 /// Every microphone this machine will let a recording mix in.
 ///
 /// Runs FFmpeg, so it belongs on a background thread rather than in the middle
@@ -323,6 +318,11 @@ fn gif_palette_chain(settings: &Settings) -> String {
     )
 }
 
+/// Where the bundled `ffmpeg` is, or the one on `PATH` in a dev checkout.
+///
+/// Public because the gallery needs it too: an MP4's first frame and its length
+/// both come out of one `ffmpeg` call, and there is no second copy of this
+/// search worth keeping in sync with this one.
 pub fn ffmpeg_path() -> Result<PathBuf, RecordingError> {
     let bundled = std::env::current_exe()
         .map_err(recording_error)?
