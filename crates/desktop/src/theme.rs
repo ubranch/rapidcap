@@ -318,12 +318,12 @@ pub const GALLERY_H: f32 = 465.0;
 /// glyphs, a 9px leading inset and 8px between everything. Matching it by eye
 /// is what produced the 22px bar this replaces.
 pub const TITLEBAR_H: f32 = 30.0;
-/// Minimize and close. Wider than they are tall, which is what a titlebar
-/// control is; full bar height so the screen corner stays clickable.
+/// Every titlebar button: Back, Open output folder, and on Windows minimize
+/// and close. Wider than they are tall, which is what a titlebar control is;
+/// full bar height so the screen corner stays clickable.
 ///
-/// Windows only. macOS has its own controls in the leading corner and the panel
-/// shows the real ones - see [`titlebar_leading`].
-#[cfg(not(target_os = "macos"))]
+/// Not Windows-only: macOS draws its own minimize and close, but Back and the
+/// folder button are ours on both platforms and share this size.
 pub const WIN_BTN_W: f32 = 34.0;
 /// Mark, wordmark and window-control glyphs. One size, the whole bar.
 pub const TITLEBAR_GLYPH: f32 = 13.0;
