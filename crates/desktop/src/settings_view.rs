@@ -17,6 +17,7 @@ use gpui::{
 use rapidcap_capture::{CaptureCommand, Settings};
 
 use crate::controller::AppController;
+use crate::gallery::home_relative;
 use crate::platform::{hotkey_specs, open_path};
 use crate::window::{
     SelectConfirmAction, SelectFirstAction, SelectLastAction, SelectNextAction, SelectPrevAction,
@@ -88,39 +89,25 @@ const COUNTDOWN: [u8; 3] = AppController::COUNTDOWN_CHOICES;
 /// costs. The order is the one `DITHERS` validates against, so a file the
 /// loader accepts is always a choice this select can tick.
 ///
-/// The blurb finishes the sentence the label starts, which is how the design
-/// draws it: "Sierra 2-4A keeps gradients smooth at 256 colours".
+/// The line is short on purpose. It shares the row with a select pill, at
+/// 11px, in 400px of window: anything past about thirty characters wrapped
+/// onto a second line the row has no height for. It also leaves the name out -
+/// the pill beside it already says which dither is set.
 const GIF_DITHER: [(&str, &str, &str); 6] = [
     (
         "sierra2_4a",
         "Sierra 2-4A",
-        "keeps gradients smooth at 256 colours",
+        "Smooth gradients at 256 colours",
     ),
-    (
-        "sierra2",
-        "Sierra 2",
-        "diffuses over a wider kernel, slower and a little softer",
-    ),
+    ("sierra2", "Sierra 2", "Wider kernel, a little softer"),
     (
         "floyd_steinberg",
         "Floyd-Steinberg",
-        "is the classic kernel, slightly grainier than Sierra",
+        "Classic kernel, a bit grainier",
     ),
-    (
-        "heckbert",
-        "Heckbert",
-        "uses the smallest kernel, so the grain is coarser",
-    ),
-    (
-        "bayer",
-        "Bayer",
-        "lays down a fixed pattern instead of diffusing, and compresses smaller",
-    ),
-    (
-        "none",
-        "None",
-        "maps straight onto the palette, which bands every gradient",
-    ),
+    ("heckbert", "Heckbert", "Smallest kernel, coarser grain"),
+    ("bayer", "Bayer", "Fixed pattern, smaller files"),
+    ("none", "None", "No dithering, gradients band"),
 ];
 
 /// Every select on the screen.
@@ -186,6 +173,19 @@ impl Select {
             Self::GifDither => "Dithering",
             Self::AudioBitrate => "Audio bitrate",
             Self::JpegThreshold => "Convert large PNGs to JPEG",
+        }
+    }
+
+    /// What the row itself reads. The section label above the card already
+    /// says Video, GIF or Audio, so the row does not say it again; the full
+    /// [`Self::label`] stays the accessible name, where there is no heading
+    /// beside it to lean on.
+    const fn row_label(self) -> &'static str {
+        match self {
+            Self::VideoFps | Self::GifFps => "Frame rate",
+            Self::Quality => "Quality",
+            Self::AudioBitrate => "Bitrate",
+            Self::GifDither | Self::JpegThreshold => self.label(),
         }
     }
 
@@ -267,8 +267,8 @@ impl Select {
     fn sub(self, settings: &Settings) -> Option<SharedString> {
         match self {
             Self::GifDither => self.current(settings).map(|index| {
-                let (_, name, blurb) = GIF_DITHER[index];
-                format!("{name} {blurb}").into()
+                let (_, _, blurb) = GIF_DITHER[index];
+                blurb.into()
             }),
             _ => None,
         }
@@ -517,7 +517,7 @@ impl SettingsView {
             _ => None,
         };
         let entries = select.entries(&settings);
-        controls::row(select.row_id(), select.label(), select.sub(&settings))
+        controls::row(select.row_id(), select.row_label(), select.sub(&settings))
             .child(
                 div()
                     .relative()
@@ -626,7 +626,7 @@ impl SettingsView {
                 controls::row(
                     command_id(spec.command()),
                     command_name(spec.command()),
-                    clash.then(|| "Another app bound this first - first to start wins".into()),
+                    clash.then(|| "Taken by another app".into()),
                 )
                 .child(controls::hotkey_field(spec.label(), clash))
                 .into_any_element()
@@ -640,7 +640,7 @@ impl SettingsView {
 /// Written out here rather than reused from the mode cards: a card says
 /// `Region` because an icon beside it already says what a region is, and a bare
 /// row has nothing to lean on.
-const fn command_name(command: CaptureCommand) -> &'static str {
+pub(crate) const fn command_name(command: CaptureCommand) -> &'static str {
     match command {
         CaptureCommand::CaptureRegion => "Capture region",
         CaptureCommand::CaptureActiveWindow => "Capture window",
@@ -732,7 +732,7 @@ impl Render for SettingsView {
                             "settings-clipboard",
                             "Copy to clipboard",
                             Some(
-                                "Screenshots only - recordings are always saved to disk".into(),
+                                "Screenshots only".into(),
                             ),
                         )
                         .child(
@@ -788,7 +788,7 @@ impl Render for SettingsView {
                         controls::row(
                             "settings-audio",
                             "System audio",
-                            Some("Takes effect on the next recording, not the running one".into()),
+                            Some("Applies from the next recording".into()),
                         )
                         .child(
                             controls::toggle(
@@ -832,7 +832,7 @@ impl Render for SettingsView {
                         "settings-reset",
                         "Reset all settings",
                         Some(if self.confirm_reset {
-                            "Press again to put every setting back to its default".into()
+                            "Press again to reset everything".into()
                         } else {
                             "There is no undo".into()
                         }),
@@ -845,17 +845,23 @@ impl Render for SettingsView {
                 // The file, named, for the settings this screen deliberately
                 // does not show: the schema version, the audio channel count
                 // and the raw NVENC strings all live there and nowhere else.
+                // Two lines, each whole: the version, then the file. As one
+                // run the path broke wherever the width ran out, mid-folder.
                 div()
                     .px(theme::u(6.0))
                     .pt(theme::u(2.0))
+                    .pb(theme::u(4.0))
+                    .flex()
+                    .flex_col()
+                    .gap(theme::u(2.0))
                     .text_size(theme::u(theme::TEXT_MICRO))
                     .text_color(theme::text_muted())
                     .child(format!(
-                        "RapidCap {} · settings schema v{} · {}",
+                        "RapidCap {} · settings schema v{}",
                         env!("CARGO_PKG_VERSION"),
                         settings.schema_version,
-                        paths.settings_file.display()
-                    )),
+                    ))
+                    .child(div().truncate().child(home_relative(&paths.settings_file))),
             )
     }
 }
@@ -872,9 +878,11 @@ fn countdown_label(seconds: u8) -> String {
 
 /// The last two components of a path.
 ///
-/// The head of a capture folder is `C:\Users\<name>\Documents` on every machine
-/// that will ever run this, and the tail is the part that identifies it. The
-/// full string is on the field itself for anyone who needs it.
+/// The head of a capture folder is the user's Documents folder on every
+/// machine that will ever run this, and the tail is the part that identifies
+/// it. The full string is on the field itself for anyone who needs it. Joined
+/// with the platform's own separator: a backslash in a macOS path reads as a
+/// Windows app that was not finished.
 fn folder_tail(path: &str) -> String {
     let separator = |c: char| c == '\\' || c == '/';
     let mut parts: Vec<&str> = path.rsplitn(3, separator).collect();
@@ -883,7 +891,8 @@ fn folder_tail(path: &str) -> String {
     }
     parts.truncate(2);
     parts.reverse();
-    format!("…\\{}", parts.join("\\"))
+    let joint = std::path::MAIN_SEPARATOR_STR;
+    format!("…{joint}{}", parts.join(joint))
 }
 
 #[cfg(test)]
@@ -905,7 +914,7 @@ mod tests {
         let mut settings = Settings::default();
         assert_eq!(
             Select::GifDither.sub(&settings),
-            Some("Sierra 2-4A keeps gradients smooth at 256 colours".into())
+            Some("Smooth gradients at 256 colours".into())
         );
 
         Select::GifDither.choose(4, &mut settings);

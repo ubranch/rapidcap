@@ -1411,25 +1411,12 @@ fn header(
 
 /// Three slots: no delay, 3s, 5s. The active one is a 2px accent ring — no fill
 /// flood, no sliding pill.
+///
+/// The mockup hangs an `i` dot off the top-left corner. It is left out: it
+/// opened nothing and said nothing, and at panel scale it sat on the track's
+/// border and read as a rendering fault rather than as a hint.
 fn countdown_control(track: impl IntoElement) -> impl IntoElement {
-    div().relative().flex_none().child(track).child(
-        div()
-            .absolute()
-            .left(theme::u(-3.0))
-            .top(theme::u(-7.0))
-            .size(theme::u(theme::SEG_INFO))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(theme::u(theme::RADIUS_PILL))
-            .border_2()
-            .border_color(theme::border_card())
-            .bg(theme::bg_pill_off())
-            .text_size(theme::u(9.0))
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(theme::text_badge())
-            .child("i"),
-    )
+    div().flex_none().child(track)
 }
 
 /// Retry and Copy log on the error bar.

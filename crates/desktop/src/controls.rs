@@ -18,6 +18,7 @@ use gpui::{FontWeight, Role, SharedString, Toggled, div, prelude::*};
 
 use crate::icons::Icon;
 use crate::theme;
+use crate::theme::MONO;
 
 /// A settings row. 44px, or 54 when the label carries a second line.
 const ROW_H: f32 = 44.0;
@@ -44,6 +45,10 @@ const STEP_BTN: f32 = 30.0;
 const STEP_VALUE_W: f32 = 52.0;
 const STEP_DISABLED: f32 = 0.35;
 
+/// The path field, Open button included. Room for `…\RapidCap\Screenshots`
+/// at 12px in either platform's UI font, with the button beside it.
+const PATH_FIELD_W: f32 = 236.0;
+
 const ACTION_H: f32 = 24.0;
 /// The `Change` button inside a path field. Not a system token: this is the
 /// only raised thing in the product that sits inside a recessed well, so it
@@ -53,10 +58,6 @@ const ACTION_BG: u32 = 0x2a2a2a;
 /// well past a signal red so it stays readable on a near-black row.
 const DANGER: u32 = 0xff8a8a;
 const ACTION_BG_HOVER: u32 = 0x343434;
-
-/// Hotkeys are read as a shape, not as words - `Ctrl + Shift + W` has to line
-/// up with the row above it or the modifier column is unreadable.
-const MONO: &str = "Cascadia Mono";
 
 /// One row of a settings card.
 ///
@@ -79,16 +80,21 @@ pub fn row(
         .gap(theme::u(ROW_GAP))
         .rounded(theme::u(ROW_RADIUS))
         .hover(|style| style.bg(theme::bg_hover()))
+        // Label and sub-line each hold one line. The row's height is fixed, so
+        // a line that wrapped had nowhere to go but over the next row; a font
+        // wider than the one the copy was written against now ends in an
+        // ellipsis instead.
         .child(
             div()
                 .flex_1()
                 .min_w_0()
                 .text_size(theme::u(theme::TEXT_BODY))
                 .text_color(theme::text_label())
-                .child(label.into())
+                .child(div().truncate().child(label.into()))
                 .children(sub.map(|sub| {
                     div()
                         .mt(theme::u(3.0))
+                        .truncate()
                         .text_size(theme::u(theme::TEXT_MICRO))
                         .text_color(theme::text_muted())
                         .child(sub)
@@ -286,8 +292,11 @@ pub fn path_field(
     div()
         .id(id)
         .aria_label(full.into())
-        .flex_1()
-        .min_w_0()
+        // Fixed rather than sharing the row half and half with its label. The
+        // label is two words, and an even split cut `…\RapidCap\Screenshots`
+        // down to `…\RapidCap\Scre…` - an ellipsis on both ends of a path.
+        .w(theme::u(PATH_FIELD_W))
+        .flex_none()
         .h(theme::u(CONTROL_H))
         .pl(theme::u(11.0))
         .pr(theme::u(4.0))

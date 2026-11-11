@@ -389,7 +389,6 @@ pub const MARK_RING: f32 = 20.0;
 pub const BADGE_H: f32 = 22.0;
 /// Segmented control: 4px track padding around 32px slots.
 pub const SEG_PAD: f32 = 4.0;
-pub const SEG_INFO: f32 = 15.0;
 /// Gap between the header row and the grid, on top of the 9px column gap.
 pub const HEADER_MB: f32 = 3.0;
 
@@ -491,6 +490,16 @@ pub const TEXT_MICRO: f32 = 11.0;
 /// Group labels inside menus, uppercased. The smallest size in the system,
 /// and the only one that is never a sentence.
 pub const TEXT_TINY: f32 = 10.0;
+
+/// Hotkey chords, wherever they are drawn as keys. Cascadia Mono ships with
+/// Windows 11 and not with macOS, where the name fell through to a
+/// proportional face and the chords lost the column they are supposed to
+/// line up in. Menlo has been on every Mac since 10.6.
+pub const MONO: &str = if cfg!(target_os = "macos") {
+    "Menlo"
+} else {
+    "Cascadia Mono"
+};
 
 #[cfg(test)]
 mod tests {

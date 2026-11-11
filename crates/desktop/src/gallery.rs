@@ -36,7 +36,8 @@ use rapidcap_capture::{CaptureCommand, CaptureEvent, write_clipboard_file};
 
 use crate::controller::AppController;
 use crate::icons::Icon;
-use crate::platform::{hotkey_specs, move_to_trash, open_path, reveal_path, shortcut_label};
+use crate::platform::{move_to_trash, open_path, reveal_path, shortcut_label};
+use crate::settings_view::command_name;
 use crate::theme;
 use crate::thumbs::{self, Thumb};
 use crate::window::middle_trim;
@@ -84,16 +85,18 @@ const ACTION_GLYPH: f32 = 14.0;
 const ACTION_GAP: f32 = 5.0;
 
 /// Characters a tile name can show. A tile is 119px wide, less its border and
-/// 8px of padding on each side, and 11px regular runs a shade under six pixels
-/// a character.
-const NAME_MAX: usize = 18;
+/// 8px of padding on each side: 101px. 11px Segoe UI runs a shade under six
+/// pixels a character, but SF Pro on macOS runs closer to six and a quarter,
+/// and 18 there wrapped the name onto a second line that pushed the timestamp
+/// out of the tile. 16 fits both.
+const NAME_MAX: usize = 16;
 /// What a trim keeps of the tail: `a7Kq.png`, the extension plus the guard.
 const NAME_TAIL: usize = 8;
 
 /// The empty state's ring, and the inset of the hotkey rows inside it.
 const RING: f32 = 44.0;
 const KEYS_PX: f32 = 20.0;
-const KBD: &str = "Cascadia Mono";
+const KBD: &str = theme::MONO;
 
 /// What the gallery knows how to show.
 ///
@@ -572,24 +575,32 @@ impl GalleryView {
                             .size_full()
                             .object_fit(ObjectFit::Cover)
                     }))
-                    .children(capture.thumb.as_ref().and_then(|thumb| thumb.duration).map(
-                        |duration| {
-                            div()
-                                .absolute()
-                                .right(theme::u(BADGE_INSET))
-                                .bottom(theme::u(BADGE_INSET))
-                                .h(theme::u(BADGE_H))
-                                .px(theme::u(BADGE_PX))
-                                .flex()
-                                .items_center()
-                                .rounded(theme::u(theme::RADIUS_PILL))
-                                .bg(theme::thumb_badge())
-                                .text_size(theme::u(10.0))
-                                .text_color(theme::text_primary())
-                                .child(thumbs::duration_label(duration))
-                        },
-                    ))
-                    .child(
+                    // Both badges step aside while the actions are up. Left in
+                    // place they sat under the action scrim as a dimmed `PNG`
+                    // ghost beside the Copy button.
+                    .children(
+                        capture
+                            .thumb
+                            .as_ref()
+                            .and_then(|thumb| thumb.duration)
+                            .filter(|_| !hovered)
+                            .map(|duration| {
+                                div()
+                                    .absolute()
+                                    .right(theme::u(BADGE_INSET))
+                                    .bottom(theme::u(BADGE_INSET))
+                                    .h(theme::u(BADGE_H))
+                                    .px(theme::u(BADGE_PX))
+                                    .flex()
+                                    .items_center()
+                                    .rounded(theme::u(theme::RADIUS_PILL))
+                                    .bg(theme::thumb_badge())
+                                    .text_size(theme::u(10.0))
+                                    .text_color(theme::text_primary())
+                                    .child(thumbs::duration_label(duration))
+                            }),
+                    )
+                    .children((!hovered).then(|| {
                         div()
                             .absolute()
                             .left(theme::u(BADGE_INSET))
@@ -603,8 +614,8 @@ impl GalleryView {
                             .text_size(theme::u(9.0))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(theme::text_primary())
-                            .child(capture.kind.badge()),
-                    )
+                            .child(capture.kind.badge())
+                    }))
                     .children(hovered.then(|| self.actions(index, &path, cx))),
             )
             .child(
@@ -613,8 +624,12 @@ impl GalleryView {
                     .px(theme::u(META_PX))
                     .pb(theme::u(META_PB))
                     .child(
+                        // One line, always. The trim above is sized for the
+                        // fonts it was measured against; on anything wider the
+                        // tail is clipped with an ellipsis instead of the name
+                        // wrapping and shoving the timestamp out of the tile.
                         div()
-                            .overflow_hidden()
+                            .truncate()
                             .text_size(theme::u(theme::TEXT_MICRO))
                             .line_height(theme::u(NAME_LINE))
                             .text_color(theme::text_label())
@@ -684,13 +699,7 @@ impl GalleryView {
     /// card that can be pressed, and it spends its space teaching the three
     /// hotkeys rather than apologising for being empty.
     fn empty_state(&self, cx: &mut Context<Self>) -> AnyElement {
-        let folder = self
-            .controller
-            .read(cx)
-            .paths()
-            .capture_root
-            .display()
-            .to_string();
+        let folder = home_relative(&self.controller.read(cx).paths().capture_root);
         // The three the design lists, in its order: the two screenshots and the
         // video. Straight off the same table the panel reads, so a chord the
         // machine could not register is not taught here as if it worked.
@@ -699,11 +708,16 @@ impl GalleryView {
             CaptureCommand::CaptureActiveWindow,
             CaptureCommand::ToggleVideo,
         ];
+        // Fills the body and centres its content. Sized to its content it
+        // stopped two thirds of the way down a window sized for three rows of
+        // tiles, and left a dead band of background under it.
         div()
-            .flex_none()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .justify_center()
             .px(theme::u(18.0))
-            .pt(theme::u(26.0))
-            .pb(theme::u(22.0))
+            .py(theme::u(22.0))
             .rounded(theme::u(theme::RADIUS))
             .bg(theme::bg_well())
             .shadow(theme::recessed())
@@ -725,17 +739,21 @@ impl GalleryView {
                     .text_color(theme::text_label())
                     .child("No captures yet"),
             )
+            // The sentence, then the folder on a line of its own. Run together
+            // the path broke at whichever separator the width ran out on.
             .child(
                 div()
-                    .max_w(theme::u(250.0))
-                    .mx_auto()
                     .text_center()
                     .text_size(theme::u(theme::TEXT_MICRO))
                     .line_height(theme::u(theme::TEXT_MICRO * 1.6))
                     .text_color(theme::text_muted())
-                    .child(format!(
-                        "Everything you capture lands in {folder} and shows up here."
-                    )),
+                    .child("Every capture is saved to")
+                    .child(
+                        div()
+                            .truncate()
+                            .text_color(theme::text_label())
+                            .child(folder),
+                    ),
             )
             .child(
                 div()
@@ -745,14 +763,32 @@ impl GalleryView {
                     .gap(theme::u(4.0))
                     .children(taught.into_iter().filter_map(|command| {
                         let binding = shortcut_label(command)?;
-                        let label = hotkey_specs()
-                            .into_iter()
-                            .find(|spec| spec.command() == command)?
-                            .label();
-                        Some(key_row(label, binding))
+                        // The action on the left, the chord on the right. The
+                        // spec's own label is the chord again, so a row built
+                        // from it read `⌥E … ⌥E`.
+                        Some(key_row(command_name(command).into(), binding))
                     })),
             )
             .into_any_element()
+    }
+}
+
+/// A folder as the empty state names it: from the home folder down.
+///
+/// The full path is the user's own name followed by four folders everyone has,
+/// and at 250px wide it broke in the middle of a component. `~/Documents/...`
+/// on macOS and `Documents\...` on Windows say the same thing in the part of
+/// the line that wraps cleanly.
+pub(crate) fn home_relative(path: &Path) -> String {
+    let Some(rest) =
+        std::env::home_dir().and_then(|home| path.strip_prefix(home).ok().map(Path::to_path_buf))
+    else {
+        return path.display().to_string();
+    };
+    if cfg!(target_os = "macos") {
+        format!("~/{}", rest.display())
+    } else {
+        rest.display().to_string()
     }
 }
 

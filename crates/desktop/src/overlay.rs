@@ -461,7 +461,13 @@ impl Render for RecordingHud {
                     .border_2()
                     .border_color(theme::border_card())
                     .bg(theme::hud_bg())
-                    .shadow(theme::floating())
+                    // Windows only. On macOS the pill sits on frosted glass in a
+                    // transparent window, and a 28px drop shadow there has
+                    // nothing to land on but the footage: it read as a dark
+                    // smudge around the bar rather than as elevation.
+                    .when(cfg!(not(target_os = "macos")), |pill| {
+                        pill.shadow(theme::floating())
+                    })
                     .text_color(theme::text_primary())
                     .child(
                         // Everything the idle fade applies to, in one element.
