@@ -66,31 +66,37 @@ fn kind_noun(kind: CaptureKind) -> &'static str {
 /// the geometry is written once and read at 32 regardless of the raster.
 pub const GRID: u32 = 32;
 
-const RING_OUTER: f32 = 13.0;
-/// How thick the ring is, in *device* pixels, never grid units. Below three the
-/// ring stops being a ring and becomes a grey smudge, which at 16px is the whole
-/// icon - so at small sizes it takes a bigger share of the grid rather than
-/// scaling down with everything else.
-const RING_STROKE: f32 = 3.0;
-/// The state mark, as a fraction of the hole the ring leaves. Follows the ring
-/// inwards: a fixed radius would collide with a thickened ring at 16px.
-const CORE_RATIO: f32 = 0.65;
+/// The mark, as in the app icon (scripts/make-icon.py): two viewfinder
+/// corners, top-left and bottom-right, leaning forward round a centre dot.
+/// Each corner is two strokes from its elbow, in grid units from the centre.
+const CORNERS: [[(f32, f32); 3]; 2] = [
+    [(-10.0, -3.5), (-10.0, -9.0), (-2.0, -9.0)],
+    [(2.0, 9.0), (10.0, 9.0), (10.0, 3.5)],
+];
+/// Horizontal shift per unit of height: the top moves right.
+const LEAN: f32 = 0.18;
+/// Half the stroke, in *device* pixels at the least. Thinner than that and
+/// the corners turn into a grey smudge at 16px.
+const HALF_STROKE: f32 = 1.25;
+/// The centre dot when idle, and the state mark's radius otherwise.
+const DOT: f32 = 2.2;
+const CORE: f32 = 4.6;
 
 /// RGBA, row-major, straight alpha — the layout `tray_icon::Icon::from_rgba`
 /// expects — rasterised `size` square.
 ///
 /// Drawn at the size the tray will actually show rather than resampled from one
-/// 32px bitmap. Windows downscales with no regard for a three-pixel ring, and at
-/// 16px that ring is all there is.
+/// 32px bitmap. Windows downscales with no regard for a stroke two pixels
+/// wide, and at 16px those strokes are all there is.
 pub fn rgba(state: TrayState, size: u32) -> Vec<u8> {
-    let ring = if state == TrayState::Idle { 1.0 } else { 0.45 };
+    let corners = if state == TrayState::Idle { 1.0 } else { 0.45 };
     let scale = size as f32 / GRID as f32;
     let center = size as f32 / 2.0;
     // Half a device pixel, in grid units: what every coverage function below
     // spreads its edge over, so antialiasing stays one pixel wide at any size
     // instead of one grid unit wide.
     let feather = 0.5 / scale;
-    let ring_inner = RING_OUTER - (RING_STROKE / scale).max(RING_STROKE);
+    let half = (HALF_STROKE / scale).max(HALF_STROKE);
     let mut buffer = vec![0u8; (size * size * 4) as usize];
 
     for y in 0..size {
@@ -99,14 +105,18 @@ pub fn rgba(state: TrayState, size: u32) -> Vec<u8> {
             let py = (y as f32 + 0.5 - center) / scale;
             let distance = (px * px + py * py).sqrt();
 
-            // The mark: a ring, always present, dimmed when it is carrying a
-            // state in its centre.
+            // The corners, always present, dimmed when the centre carries a
+            // state. Undo the lean to find the point on the upright shape.
+            let upright = px + LEAN * py;
+            let stroke = CORNERS
+                .iter()
+                .flat_map(|corner| corner.windows(2))
+                .map(|pair| segment(upright, py, pair[0], pair[1]))
+                .fold(f32::MAX, f32::min);
             let mut colour = [252.0, 252.0, 252.0];
-            let mut alpha = band(distance, ring_inner, RING_OUTER, feather) * ring;
+            let mut alpha = coverage(half - stroke, feather) * corners;
 
-            if let Some((core_colour, core_alpha)) =
-                core(state, px, py, distance, ring_inner, feather)
-            {
+            if let Some((core_colour, core_alpha)) = core(state, px, py, distance, feather) {
                 // Straight `over`: the core is opaque where it covers.
                 colour = core_colour;
                 alpha = alpha.max(core_alpha);
@@ -122,20 +132,18 @@ pub fn rgba(state: TrayState, size: u32) -> Vec<u8> {
     buffer
 }
 
-/// The state mark inside the ring.
+/// The mark in the centre: a small dot when idle, the state otherwise.
 fn core(
     state: TrayState,
     px: f32,
     py: f32,
     distance: f32,
-    ring_inner: f32,
     feather: f32,
 ) -> Option<([f32; 3], f32)> {
-    let core = ring_inner * CORE_RATIO;
     match state {
-        TrayState::Idle => None,
-        TrayState::Recording => Some((rgb(theme::rec()), disc(distance, core, feather))),
-        TrayState::Finalizing => Some((rgb(theme::accent()), disc(distance, core, feather))),
+        TrayState::Idle => Some(([252.0, 252.0, 252.0], disc(distance, DOT, feather))),
+        TrayState::Recording => Some((rgb(theme::rec()), disc(distance, CORE, feather))),
+        TrayState::Finalizing => Some((rgb(theme::accent()), disc(distance, CORE, feather))),
         TrayState::Paused => {
             // Two bars, 3 wide, 10 tall, 2 apart.
             let bar = |offset: f32| rect(px - offset, py, 1.5, 5.0, feather);
@@ -149,6 +157,14 @@ fn core(
     }
 }
 
+/// Distance from a point to the segment `a`-`b`.
+fn segment(px: f32, py: f32, a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let t = (((px - a.0) * dx + (py - a.1) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+    let (cx, cy) = (a.0 + t * dx - px, a.1 + t * dy - py);
+    (cx * cx + cy * cy).sqrt()
+}
+
 /// Coverage for a distance that is positive inside the shape, feathered across
 /// exactly one device pixel however many grid units that comes to.
 fn coverage(inside: f32, feather: f32) -> f32 {
@@ -158,11 +174,6 @@ fn coverage(inside: f32, feather: f32) -> f32 {
 /// Antialiased disc coverage.
 fn disc(distance: f32, radius: f32, feather: f32) -> f32 {
     coverage(radius - distance, feather)
-}
-
-/// Antialiased annulus coverage.
-fn band(distance: f32, inner: f32, outer: f32, feather: f32) -> f32 {
-    coverage(outer - distance, feather).min(coverage(distance - inner, feather))
 }
 
 /// Antialiased axis-aligned rectangle coverage, centred on the origin.
@@ -212,8 +223,9 @@ mod tests {
                     (size * size * 4) as usize,
                     "{state:?} at {size}"
                 );
-                // Corners are outside the ring: fully transparent, or the icon
-                // renders as a square block the way the old one did.
+                // The icon's own corners are outside the mark: fully
+                // transparent, or it renders as a square block the way an old
+                // one did.
                 assert_eq!(pixel(&buffer, size, 0, 0)[3], 0, "{state:?} at {size}");
                 assert_eq!(
                     pixel(&buffer, size, size - 1, size - 1)[3],
@@ -224,26 +236,28 @@ mod tests {
         }
     }
 
-    /// The reason the rasteriser takes a size at all: a ring that scales
-    /// linearly is 1.5px at 16px, and 1.5px of antialiased white is a smudge.
+    /// The reason the rasteriser takes a size at all: a stroke that scales
+    /// linearly is a pixel and a bit at 16px, and that much antialiased white
+    /// is a smudge.
     #[test]
-    fn the_ring_stays_three_pixels_thick_at_every_size() {
+    fn the_corners_stay_two_pixels_thick_at_every_size() {
         for size in SIZES {
             let buffer = rgba(TrayState::Idle, size);
-            let row = size / 2;
-            let lit = (0..size)
-                .filter(|x| pixel(&buffer, size, *x, row)[3] > 0)
-                .count();
-            // Two crossings of the ring on the row through the centre, each
-            // at least three pixels of it.
+            // A column through the top-left corner's upright stroke.
+            let column = (size as f32 * 0.2) as u32;
+            let widest = (0..size)
+                .map(|y| {
+                    (0..size)
+                        .filter(|x| {
+                            x.abs_diff(column) < size / 6 && pixel(&buffer, size, *x, y)[3] > 200
+                        })
+                        .count()
+                })
+                .max()
+                .unwrap_or(0);
             assert!(
-                lit >= 6,
-                "{size}px icon lights only {lit} pixels across the middle"
-            );
-            assert_eq!(
-                pixel(&buffer, size, size / 2, row)[3],
-                0,
-                "{size}px icon filled the hole in the ring"
+                widest >= 2,
+                "{size}px corners are only {widest} pixels thick"
             );
         }
     }
@@ -276,10 +290,11 @@ mod tests {
                 "expected red at {size}px, got {r},{g},{b}"
             );
 
-            // Idle has nothing at the centre at all.
-            assert_eq!(
-                pixel(&rgba(TrayState::Idle, size), size, size / 2, size / 2)[3],
-                0
+            // Idle has the mark's small dot there, never red.
+            let [r, g, b, a] = pixel(&rgba(TrayState::Idle, size), size, size / 2, size / 2);
+            assert!(
+                a > 200 && r > 200 && g > 200 && b > 200,
+                "idle centre at {size}px"
             );
         }
     }

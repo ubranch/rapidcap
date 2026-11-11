@@ -87,7 +87,7 @@ impl RawFrame {
         let mut rgba = Vec::with_capacity(row_bytes * crop.height as usize);
         for y in crop.y as u32..crop.y as u32 + crop.height {
             let start = y as usize * self.stride as usize + crop.x as usize * 4;
-            for pixel in self.bytes[start..start + row_bytes].chunks_exact(4) {
+            for pixel in self.bytes[start..start + row_bytes].as_chunks::<4>().0 {
                 rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
             }
         }

@@ -44,7 +44,8 @@ jobs:
 
   package-macos:
     name: macos (app bundle)
-    runs-on: macos-15
+    # The Swift app uses Liquid Glass, which needs the macOS 26 SDK.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

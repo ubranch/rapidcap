@@ -97,7 +97,12 @@ impl Icon {
             Self::Microphone => {
                 r#"<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>"#
             }
-            Self::Mark => r#"<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>"#,
+            // Two viewfinder corners leaning forward round a dot: the app
+            // icon's mark (scripts/make-icon.py). The dot is a tiny stroked
+            // circle, so the mark keeps to the set's no-fill rule.
+            Self::Mark => {
+                r#"<path d="M4.27 10.5 L5.26 5 L11.26 5"/><path d="M12.74 19 L18.74 19 L19.73 13.5"/><circle cx="12" cy="12" r="1"/>"#
+            }
             Self::Settings => {
                 r#"<circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4m0-12.8-1.4 1.4m-10 10-1.4 1.4"/>"#
             }

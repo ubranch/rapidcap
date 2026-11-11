@@ -80,10 +80,10 @@ impl RecordingSession {
             .capture_root
             .join(format!("{:04}-{:02}", now.year(), now.month()));
         fs::create_dir_all(&directory).map_err(recording_error)?;
-        let extension = if kind == CaptureKind::Video {
-            "mp4"
-        } else {
-            "gif"
+        let (extension, final_extension) = match kind {
+            CaptureKind::Video => ("mp4", "mp4"),
+            _ if platform::GIF_PALETTE_AT_STOP => ("mkv", "gif"),
+            _ => ("gif", "gif"),
         };
         let stem = OutputNamer::at(now).file_stem("Screen");
         let mut session = Self {
@@ -95,7 +95,7 @@ impl RecordingSession {
             segments: Vec::new(),
             temp_stem: paths.temp_dir.join(format!("{stem}.part")),
             extension,
-            final_path: directory.join(format!("{stem}.{extension}")),
+            final_path: directory.join(format!("{stem}.{final_extension}")),
         };
         session.spawn_segment()?;
         Ok(session)
@@ -208,7 +208,19 @@ impl RecordingSession {
 
     pub fn stop(mut self) -> Result<PathBuf, RecordingError> {
         self.close_segment()?;
-        let joined = self.join_segments()?;
+        let mut joined = self.join_segments()?;
+        if self.kind == CaptureKind::Gif && platform::GIF_PALETTE_AT_STOP {
+            let gif = encode_gif(
+                &self.ffmpeg,
+                &self.settings,
+                &joined,
+                &self.temp_stem.with_extension("gif"),
+            )?;
+            if !self.segments.contains(&joined) {
+                let _ = fs::remove_file(&joined);
+            }
+            joined = gif;
+        }
         fs::rename(&joined, &self.final_path).map_err(|error| {
             RecordingError(format!(
                 "finalize {} to {} failed: {error}",
@@ -278,6 +290,40 @@ impl RecordingSession {
         };
         Ok(only.clone())
     }
+}
+
+/// The GIF made from a finished capture file, with the palette pass the
+/// settings name. On a file, unlike a live source, the pass finishes.
+fn encode_gif(
+    ffmpeg: &std::path::Path,
+    settings: &Settings,
+    source: &std::path::Path,
+    gif: &std::path::Path,
+) -> Result<PathBuf, RecordingError> {
+    let mut command = Command::new(ffmpeg);
+    command
+        .args(["-hide_banner", "-loglevel", "error", "-i"])
+        .arg(source)
+        .args([
+            "-filter_complex",
+            &format!("[0:v]null{}", gif_palette_chain(settings)),
+            "-map",
+            "[v]",
+            "-y",
+        ])
+        .arg(gif)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    platform::hide_console(&mut command);
+    let status = command.status().map_err(recording_error)?;
+    if !status.success() {
+        return Err(RecordingError(format!(
+            "making the GIF failed: FFmpeg exited {status}; capture kept at {}",
+            source.display()
+        )));
+    }
+    Ok(gif.to_path_buf())
 }
 
 /// How long a segment gets to write its trailer before it is killed.
@@ -356,4 +402,52 @@ impl std::error::Error for RecordingError {}
 
 pub(crate) fn recording_error(error: impl fmt::Display) -> RecordingError {
     RecordingError(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The regression: a GIF that came out as one still frame. Needs an FFmpeg
+    /// on PATH, as the recorder does, and passes without checking when there
+    /// is none.
+    #[test]
+    fn a_gif_made_at_stop_keeps_every_frame() {
+        let Ok(ffmpeg) = ffmpeg_path() else { return };
+        let dir = std::env::temp_dir().join(format!("rapidcap-gif-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("capture.mkv");
+        let made = Command::new(&ffmpeg)
+            .args([
+                "-nostdin",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=160x120:rate=10",
+                "-t",
+                "2",
+            ])
+            .args(["-c:v", "ffv1", "-y"])
+            .arg(&source)
+            .status()
+            .unwrap();
+        assert!(made.success());
+
+        let gif = encode_gif(&ffmpeg, &Settings::default(), &source, &dir.join("out.gif")).unwrap();
+        // Count frames by decoding them: one line per frame.
+        let frames = Command::new(&ffmpeg)
+            .args(["-nostdin", "-v", "error", "-i"])
+            .arg(&gif)
+            .args(["-f", "framemd5", "-"])
+            .output()
+            .unwrap();
+        let count = String::from_utf8_lossy(&frames.stdout)
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .count();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(count, 20, "2 seconds at 10 fps");
+    }
 }

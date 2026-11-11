@@ -34,7 +34,7 @@ pub fn save_screenshot(
         // upper size hint, so a full-screen capture grew this buffer by doubling
         // and recopied tens of megabytes on the way. The size is known exactly.
         let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
-        for pixel in rgba.chunks_exact(4) {
+        for pixel in rgba.as_chunks::<4>().0 {
             rgb.extend_from_slice(&pixel[..3]);
         }
         JpegEncoder::new_with_quality(&mut encoded, jpeg_quality)

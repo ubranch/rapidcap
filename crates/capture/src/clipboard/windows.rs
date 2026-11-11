@@ -128,7 +128,7 @@ fn dibv5_bytes(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Clipboar
     bytes[52..56].copy_from_slice(&0xff00_0000_u32.to_le_bytes());
     bytes[56..60].copy_from_slice(&0x7352_4742_u32.to_le_bytes());
     for row in rgba.chunks_exact(width as usize * 4).rev() {
-        for pixel in row.chunks_exact(4) {
+        for pixel in row.as_chunks::<4>().0 {
             bytes.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
         }
     }

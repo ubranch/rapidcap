@@ -169,6 +169,9 @@ fn parse_devices(listing: &str) -> Vec<String> {
         .collect()
 }
 
+/// `ddagrab` runs the palette pass live, in the capture graph.
+pub(super) const GIF_PALETTE_AT_STOP: bool = false;
+
 pub(super) fn ffmpeg_args(
     kind: CaptureKind,
     source: &CaptureSource,

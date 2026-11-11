@@ -1,0 +1,18 @@
+[package]
+name = "rapidcap-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The capture core behind the native macOS app in `macos/`. SwiftUI owns the
+# whole interface there; everything that has to behave the same on both
+# platforms - settings, file naming, screenshots, the FFmpeg recorder - stays
+# in `rapidcap-capture` and is reached through this C surface.
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+rapidcap-capture = { path = "../capture" }
+serde_json.workspace = true

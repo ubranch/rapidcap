@@ -1,0 +1,5 @@
+module CRapidCap {
+    header "rapidcap.h"
+    link "rapidcap_ffi"
+    export *
+}

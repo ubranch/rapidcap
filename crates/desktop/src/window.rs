@@ -1391,13 +1391,7 @@ fn header(
                         .justify_center()
                         .rounded(theme::u(10.0))
                         .bg(theme::text_primary())
-                        .child(
-                            div()
-                                .size(theme::u(theme::MARK_RING))
-                                .rounded(theme::u(theme::RADIUS_PILL))
-                                .border_3()
-                                .border_color(theme::bg_body()),
-                        ),
+                        .child(Icon::Mark.element(theme::u(theme::MARK_GLYPH), theme::bg_body())),
                 )
                 .child(
                     div()
@@ -2216,7 +2210,10 @@ pub fn open_main_window(
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext as _, TestAppContext, VisualTestContext};
+    // Rust 1.99 reports this import unused; kept for older toolchains.
+    #[allow(unused_imports)]
+    use gpui::AppContext as _;
+    use gpui::{TestAppContext, VisualTestContext};
     use rapidcap_capture::{
         AppPaths, CaptureKind, CaptureState, PhysicalRegion, SavedCapture, Settings,
     };

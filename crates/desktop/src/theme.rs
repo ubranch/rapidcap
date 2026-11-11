@@ -386,8 +386,8 @@ pub const CHIP_MAX_W: f32 = 152.0;
 pub const STATUS_H: f32 = 28.0;
 pub const SEGMENT: f32 = 32.0;
 pub const MARK: f32 = 34.0;
-/// Ring inside the logo mark: 20px circle, 3px cut.
-pub const MARK_RING: f32 = 20.0;
+/// The mark's glyph inside the logo tile.
+pub const MARK_GLYPH: f32 = 24.0;
 pub const BADGE_H: f32 = 22.0;
 /// Segmented control: 4px track padding around 32px slots.
 pub const SEG_PAD: f32 = 4.0;

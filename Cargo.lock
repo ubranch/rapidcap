@@ -4715,6 +4715,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rapidcap-ffi"
+version = "0.1.0"
+dependencies = [
+ "rapidcap-capture",
+ "serde_json",
+]
+
+[[package]]
 name = "rav1e"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
