@@ -160,13 +160,6 @@ pub(super) fn microphones() -> Result<Vec<String>, RecordingError> {
     Ok(Vec::new())
 }
 
-/// A live capture cannot run the palette pass in the same graph: on FFmpeg 9
-/// the whole-stream palette never arrives while the source is live, so the
-/// run wrote the first frame or two and nothing more - every GIF came out a
-/// still. The capture writes lossless FFV1 instead, and the GIF is made from
-/// that file at stop, where the same filter finishes.
-pub(super) const GIF_PALETTE_AT_STOP: bool = true;
-
 pub(super) fn ffmpeg_args(
     kind: CaptureKind,
     source: &CaptureSource,
@@ -207,7 +200,7 @@ pub(super) fn ffmpeg_args(
     chain.push_str("[v]");
     args.extend(["-filter_complex".into(), chain, "-map".into(), "[v]".into()]);
     if kind == CaptureKind::Gif {
-        // Lossless frames now, the palette at stop (`GIF_PALETTE_AT_STOP`).
+        // Lossless frames now; the GIF and its palette are made at stop.
         args.extend(["-c:v".into(), "ffv1".into()]);
     }
     if kind == CaptureKind::Video {

@@ -1,0 +1,6 @@
+FFmpeg 9.0.2, static Windows x64 "essentials" build by gyan.dev, GPL v3.
+
+Source code: https://github.com/FFmpeg/FFmpeg/commit/946fcce07b
+Release tarball: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+Build archive: https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2 (ffmpeg-9.0.2-essentials_build.zip)
+Build configuration and component versions: FFMPEG-BUILD.txt

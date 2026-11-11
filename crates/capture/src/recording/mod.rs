@@ -40,8 +40,8 @@ use windows as platform;
 /// out again, because they are indistinguishable from a still desktop.
 ///
 /// The segments are concatenated at stop with `-c copy`, so the extra runs cost
-/// a remux and no re-encode. Both container formats survive it: an MP4 of NVENC
-/// H.264 and a GIF both concatenate frame-for-frame.
+/// a remux and no re-encode. Both container formats survive it: an MP4 of H.264
+/// and the FFV1 MKV a GIF is captured as both concatenate frame-for-frame.
 pub struct RecordingSession {
     /// The run writing the current segment, or `None` between a pause and the
     /// resume that follows it.
@@ -80,10 +80,12 @@ impl RecordingSession {
             .capture_root
             .join(format!("{:04}-{:02}", now.year(), now.month()));
         fs::create_dir_all(&directory).map_err(recording_error)?;
+        // A GIF is captured as lossless FFV1 and made at stop: on FFmpeg 9 the
+        // palette pass never finishes against a live source, so a GIF made in
+        // the capture graph came out as its first frame or two.
         let (extension, final_extension) = match kind {
             CaptureKind::Video => ("mp4", "mp4"),
-            _ if platform::GIF_PALETTE_AT_STOP => ("mkv", "gif"),
-            _ => ("gif", "gif"),
+            _ => ("mkv", "gif"),
         };
         let stem = OutputNamer::at(now).file_stem("Screen");
         let mut session = Self {
@@ -209,7 +211,7 @@ impl RecordingSession {
     pub fn stop(mut self) -> Result<PathBuf, RecordingError> {
         self.close_segment()?;
         let mut joined = self.join_segments()?;
-        if self.kind == CaptureKind::Gif && platform::GIF_PALETTE_AT_STOP {
+        if self.kind == CaptureKind::Gif {
             let gif = encode_gif(
                 &self.ffmpeg,
                 &self.settings,
@@ -407,6 +409,26 @@ pub(crate) fn recording_error(error: impl fmt::Display) -> RecordingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_palette_pass_follows_the_stats_mode() {
+        let mut settings = Settings::default();
+        // One palette for the whole stream, so `new` stays off: with it,
+        // paletteuse reads the next frame of video as a palette.
+        let whole = gif_palette_chain(&settings);
+        assert!(
+            whole.contains(
+                "palettegen=stats_mode=full[pal];[pu][pal]paletteuse=dither=sierra2_4a[v]"
+            ),
+            "{whole}"
+        );
+        settings.gif.palette_stats_mode = "single".into();
+        let each = gif_palette_chain(&settings);
+        assert!(
+            each.contains("paletteuse=dither=sierra2_4a:new=1[v]"),
+            "{each}"
+        );
+    }
 
     /// The regression: a GIF that came out as one still frame. Needs an FFmpeg
     /// on PATH, as the recorder does, and passes without checking when there
