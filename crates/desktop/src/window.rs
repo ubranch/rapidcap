@@ -483,11 +483,19 @@ impl MainWindow {
             return;
         }
         self.screen = screen;
-        resize_main_window(theme::scaled(match screen {
+        let height = theme::scaled(match screen {
             Screen::Panel => theme::PANEL_H,
             Screen::Settings => theme::SETTINGS_H,
             Screen::Gallery => theme::GALLERY_H,
-        }));
+        });
+        // On the next turn of the run loop, not here. This runs inside a GPUI
+        // update, and on macOS `setFrame:` calls straight back into GPUI's
+        // resize handler, which cannot borrow the app while this holds it: the
+        // drawable grew but the layout kept the old viewport, so the gallery
+        // drew into its top 288pt and left the rest of the window black.
+        cx.foreground_executor()
+            .spawn(async move { resize_main_window(height) })
+            .detach();
         // On the way in, every time. The folder is shared with Explorer, the
         // shell and whatever else the user drags into it, so a listing from the
         // last visit is a guess about a folder this app does not own.

@@ -383,7 +383,12 @@ impl GalleryView {
     }
 }
 
-/// Everything in `root` the gallery knows how to draw, newest first.
+/// Everything under `root` the gallery knows how to draw, newest first.
+///
+/// Captures are saved into one `YYYY-MM` folder per month, never into `root`
+/// itself, so the listing reads `root` and the folders directly under it. One
+/// level only: that is the whole layout the app writes, and a deeper walk would
+/// wander into whatever the user filed there by hand.
 ///
 /// A file that cannot be stat'd is dropped rather than sorted to one end: it is
 /// mid-write, or gone between the listing and the stat, and either way it has
@@ -392,8 +397,16 @@ fn read_folder(root: &Path, limit: usize) -> Vec<Capture> {
     let Ok(entries) = std::fs::read_dir(root) else {
         return Vec::new();
     };
+    let entries: Vec<std::fs::DirEntry> = entries.flatten().collect();
+    let months: Vec<std::fs::DirEntry> = entries
+        .iter()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter_map(|entry| std::fs::read_dir(entry.path()).ok())
+        .flat_map(|month| month.flatten())
+        .collect();
     let mut captures: Vec<Capture> = entries
-        .flatten()
+        .into_iter()
+        .chain(months)
         .filter_map(|entry| {
             let path = entry.path();
             let kind = Kind::of(&path)?;
@@ -887,6 +900,25 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let missing = root.path().join("nope");
         assert!(read_folder(&missing, RECENT).is_empty());
+    }
+
+    #[test]
+    fn captures_in_the_month_folders_are_listed() {
+        // The app never saves into the root: every capture lands in a
+        // `YYYY-MM` folder under it. A root-only listing showed "No captures
+        // yet" over a folder full of them.
+        let root = tempfile::tempdir().unwrap();
+        let month = root.path().join("2026-11");
+        std::fs::create_dir(&month).unwrap();
+        write(&month, "shot.png");
+        let deeper = month.join("filed-by-hand");
+        std::fs::create_dir(&deeper).unwrap();
+        write(&deeper, "ignored.png");
+        let names: Vec<String> = read_folder(root.path(), RECENT)
+            .iter()
+            .map(|capture| capture.name.to_string())
+            .collect();
+        assert_eq!(names, ["shot.png"]);
     }
 
     #[test]
