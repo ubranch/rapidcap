@@ -318,13 +318,13 @@ pub const GALLERY_H: f32 = 465.0;
 /// glyphs, a 9px leading inset and 8px between everything. Matching it by eye
 /// is what produced the 22px bar this replaces.
 pub const TITLEBAR_H: f32 = 30.0;
-/// Every titlebar button: Back, Open output folder, and on Windows minimize
-/// and close. Wider than they are tall, which is what a titlebar control is;
-/// full bar height so the screen corner stays clickable.
-///
-/// Not Windows-only: macOS draws its own minimize and close, but Back and the
-/// folder button are ours on both platforms and share this size.
+/// Minimize and close on Windows. Wider than they are tall, which is what a
+/// titlebar control is; full bar height so the screen corner stays clickable.
 pub const WIN_BTN_W: f32 = 34.0;
+/// Back and Open output folder, on both platforms: a square inset in the bar
+/// rather than a full-height slab, so the hover has air around it.
+pub const BAR_BTN: f32 = 24.0;
+pub const BAR_BTN_RADIUS: f32 = 6.0;
 /// Mark, wordmark and window-control glyphs. One size, the whole bar.
 pub const TITLEBAR_GLYPH: f32 = 13.0;
 /// Leading inset before the mark.
@@ -338,15 +338,17 @@ pub fn titlebar_leading() -> f32 {
 }
 /// Leading inset of the macOS traffic lights inside the bar.
 ///
-/// Their vertical inset is not a constant because it follows the bar: GPUI
-/// resizes AppKit's titlebar container to the button height plus twice this
-/// number, so `(TITLEBAR_H - 14) / 2` is what centres a 14pt button in a 30px
-/// bar.
+/// The vertical inset is not a free constant: GPUI resizes AppKit's titlebar
+/// container to the button height plus twice it, which centres the button's
+/// 14pt frame in the bar at `(TITLEBAR_H - 14) / 2`. Centred frames were
+/// measured a point low against the mark and title on macOS 27 - AppKit draws
+/// the 12pt circle off-centre inside its frame - so the inset is one point
+/// shorter than the arithmetic says.
 #[cfg(target_os = "macos")]
 pub const TRAFFIC_LIGHT_X: f32 = 10.0;
 /// See [`TRAFFIC_LIGHT_X`].
 #[cfg(target_os = "macos")]
-pub const TRAFFIC_LIGHT_Y: f32 = (TITLEBAR_H - 14.0) / 2.0;
+pub const TRAFFIC_LIGHT_Y: f32 = (TITLEBAR_H - 14.0) / 2.0 - 1.0;
 /// Between the mark and the wordmark, and between the two window controls.
 pub const TITLEBAR_GAP: f32 = 8.0;
 

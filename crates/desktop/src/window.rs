@@ -1247,12 +1247,11 @@ impl MainWindow {
             // macOS that corner belongs to the traffic lights, so the arrow
             // follows the same inset the mark does rather than a second rule.
             .children((!panel).then(|| {
-                window_button(
+                bar_button(
                     "titlebar-back",
                     "Back to the panel",
                     "RapidCapBack",
                     Icon::Back,
-                    false,
                 )
                 .ml(theme::u(theme::titlebar_leading()))
                 .on_click(cx.listener(|this, _, window, cx| this.show(Screen::Panel, window, cx)))
@@ -1277,6 +1276,8 @@ impl MainWindow {
                                 .element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()),
                         )
                     })
+                    // Air between the Back button's hover and the title.
+                    .when(!panel, |bar| bar.pl(theme::u(theme::TITLEBAR_GAP)))
                     .child(
                         div()
                             .text_size(theme::u(theme::TEXT_SMALL))
@@ -1294,13 +1295,15 @@ impl MainWindow {
             // of this view rather than a thing done inside it - which is what
             // the leading Back arrow is too.
             .children((self.screen == Screen::Gallery).then(|| {
-                window_button(
+                bar_button(
                     "titlebar-output",
                     "Open output folder",
                     "RapidCapOutput",
                     Icon::Folder,
-                    false,
                 )
+                // Off the window edge on macOS, where nothing follows it; a
+                // little apart from minimize on Windows.
+                .mr(theme::u(if cfg!(target_os = "macos") { 8.0 } else { 4.0 }))
                 .on_click(cx.listener(|this, _, _, cx| this.open_output(cx)))
             }))
             .children(self.window_controls(cx))
@@ -1840,6 +1843,24 @@ fn window_button(
         .border_color(gpui::transparent_black())
         .focus_visible(|style| style.border_color(theme::accent()))
         .child(icon.element(theme::u(theme::TITLEBAR_GLYPH), theme::text_muted()))
+}
+
+/// Back and Open output folder: titlebar buttons that are not window controls.
+///
+/// Same glyph and colours as [`window_button`], but not flush and not square.
+/// Those two sit mid-bar, beside text, where a full-height square hover ran
+/// straight into the title with no air between them; an inset rounded fill
+/// reads as a button sitting in the bar instead of a slab cut out of it.
+fn bar_button(
+    id: &'static str,
+    label: &'static str,
+    context: &'static str,
+    icon: Icon,
+) -> gpui::Stateful<gpui::Div> {
+    window_button(id, label, context, icon, false)
+        .w(theme::u(theme::BAR_BTN))
+        .h(theme::u(theme::BAR_BTN))
+        .rounded(theme::u(theme::BAR_BTN_RADIUS))
 }
 
 /// The one place that decides what Alt+F4 and the close button do.
