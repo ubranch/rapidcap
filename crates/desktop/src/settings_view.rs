@@ -1162,9 +1162,16 @@ mod tests {
 
     #[test]
     fn a_folder_shows_the_end_of_its_path() {
+        // Joined with the platform's own separator, whichever one the input
+        // used: the tail is for reading, not for pasting into a shell.
+        let joint = std::path::MAIN_SEPARATOR_STR;
         assert_eq!(
             folder_tail(r"C:\Users\inspire\Documents\RapidCap"),
-            r"…\Documents\RapidCap"
+            format!("…{joint}Documents{joint}RapidCap")
+        );
+        assert_eq!(
+            folder_tail("/Users/inspire/Documents/RapidCap/Screenshots"),
+            format!("…{joint}RapidCap{joint}Screenshots")
         );
         // Nothing to trim: shown whole rather than given a leading ellipsis
         // that hides nothing.
