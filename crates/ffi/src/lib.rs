@@ -20,7 +20,7 @@ use std::{
 
 use rapidcap_capture::{
     AppPaths, CaptureKind, CaptureTarget, PhysicalRegion, RecordingSession, Settings,
-    SettingsStore, capture_and_save, ffmpeg_path, microphones, write_clipboard,
+    SettingsStore, capture_and_save, ffmpeg_path, microphones, recording_paths, write_clipboard,
     write_clipboard_file,
 };
 use serde_json::{Value, json};
@@ -269,6 +269,25 @@ pub unsafe extern "C" fn rc_record_cancel(recording: *mut Recording) {
     if !recording.is_null() {
         let Recording(session) = *unsafe { Box::from_raw(recording) };
         let _ = session.cancel();
+    }
+}
+
+/// Where a recording made outside FFmpeg goes: the macOS app records video
+/// through ScreenCaptureKit and files it exactly as [`rc_record_start`]
+/// would. Creates both directories.
+/// `{"temp": "<temp>/<stem>.part.mp4", "final": "<root>/<yyyy-mm>/<stem>.mp4"}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rc_recording_paths() -> *mut c_char {
+    let (paths, _) = match context() {
+        Ok(context) => context,
+        Err(message) => return error(message),
+    };
+    match recording_paths(CaptureKind::Video, &paths) {
+        Ok((temp_stem, final_path)) => into_c(json!({
+            "temp": temp_stem.with_extension("part.mp4"),
+            "final": final_path,
+        })),
+        Err(problem) => error(problem),
     }
 }
 

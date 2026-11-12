@@ -84,7 +84,7 @@ final class AppModel {
     /// or Recent captures was opened - so the gallery lists it again.
     var capturesVersion = 0
 
-    @ObservationIgnored private var recording: RecordingHandle?
+    @ObservationIgnored private var recording: (any Recorder)?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
     @ObservationIgnored private var savedClearTask: Task<Void, Never>?
     @ObservationIgnored private var hidPanel = false
@@ -316,8 +316,27 @@ final class AppModel {
         let mine = session
         unsettled += 1
         if kind == .video && settings.audio.enabled { attachAudio(mine) }
+        let rect = pick.pixels
+        let area = kind == .video ? ScreenRecorder.area(pick.points) : nil
+        let video = settings.video
         Task { [weak self] in
-            let result = await offMain { Result { try RecordingHandle(gif: kind == .gif, rect: pick.pixels) } }
+            var sck: (any Recorder)?
+            var fallback: String?
+            // Video through ScreenCaptureKit; FFmpeg when that does not start,
+            // so a recording is never lost to it.
+            if let area {
+                do {
+                    sck = try await ScreenRecorder.start(area, video: video)
+                } catch {
+                    fallback = error.localizedDescription
+                }
+            }
+            let result: Result<any Recorder, Error>
+            if let sck {
+                result = .success(sck)
+            } else {
+                result = await offMain { Result<any Recorder, Error> { try RecordingHandle(gif: kind == .gif, rect: rect) } }
+            }
             guard let self else { return }
             defer { self.settle() }
             // Cancelled while FFmpeg was starting, and maybe a new capture
@@ -333,6 +352,9 @@ final class AppModel {
                 self.pausedTotal = 0
                 self.pausedAt = nil
                 self.state = .recording(kind)
+                if let fallback {
+                    self.error = String(localized: "Recording with FFmpeg: ScreenCaptureKit did not start: \(fallback)")
+                }
             case let .failure(error):
                 self.audio?.cancel()
                 self.audio = nil

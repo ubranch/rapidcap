@@ -25,7 +25,7 @@ pub use clipboard::{ClipboardError, write_clipboard, write_clipboard_file, write
 pub use geometry::{CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, RawFrame};
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::OutputNamer;
-pub use recording::{RecordingError, RecordingSession, ffmpeg_path, microphones};
+pub use recording::{RecordingError, RecordingSession, ffmpeg_path, microphones, recording_paths};
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{
     AppPaths, DITHERS, PALETTE_STATS_MODES, Settings, SettingsError, SettingsStore,

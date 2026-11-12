@@ -156,11 +156,28 @@ enum Core {
     static func copyFile(_ url: URL) throws {
         _ = try check(take(url.path.withCString { rc_copy_file($0) }))
     }
+
+    /// Where a video recorded outside FFmpeg is written, then moved to: the
+    /// same temp directory and file name the core gives its own recordings.
+    static func recordingPaths() throws -> (temp: URL, final: URL) {
+        let answer = try check(take(rc_recording_paths()))
+        return (URL(fileURLWithPath: answer["temp"] as? String ?? ""),
+                URL(fileURLWithPath: answer["final"] as? String ?? ""))
+    }
+}
+
+/// A recording in progress, whichever engine writes it. Every call blocks, so
+/// callers run them off the main thread.
+protocol Recorder: AnyObject, Sendable {
+    func pause() throws
+    func resume() throws
+    func stop() throws -> Core.Saved
+    func cancel()
 }
 
 /// One FFmpeg recording. Every call blocks on FFmpeg, so callers run them off
 /// the main thread.
-final class RecordingHandle: @unchecked Sendable {
+final class RecordingHandle: Recorder, @unchecked Sendable {
     private var raw: OpaquePointer?
     /// One call at a time. Pause, stop and cancel run on different detached
     /// tasks; without this a stop could free the Rust handle while a pause

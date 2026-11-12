@@ -74,20 +74,14 @@ impl RecordingSession {
         if !matches!(kind, CaptureKind::Video | CaptureKind::Gif) {
             return Err(RecordingError("unsupported recording kind".into()));
         }
-        fs::create_dir_all(&paths.temp_dir).map_err(recording_error)?;
-        let now = Local::now();
-        let directory = paths
-            .capture_root
-            .join(format!("{:04}-{:02}", now.year(), now.month()));
-        fs::create_dir_all(&directory).map_err(recording_error)?;
         // A GIF is captured as lossless FFV1 and made at stop: on FFmpeg 9 the
         // palette pass never finishes against a live source, so a GIF made in
         // the capture graph came out as its first frame or two.
-        let (extension, final_extension) = match kind {
-            CaptureKind::Video => ("mp4", "mp4"),
-            _ => ("mkv", "gif"),
+        let extension = match kind {
+            CaptureKind::Video => "mp4",
+            _ => "mkv",
         };
-        let stem = OutputNamer::at(now).file_stem("Screen");
+        let (temp_stem, final_path) = recording_paths(kind, paths)?;
         let mut session = Self {
             child: None,
             kind,
@@ -95,9 +89,9 @@ impl RecordingSession {
             settings: settings.clone(),
             ffmpeg: ffmpeg_path()?,
             segments: Vec::new(),
-            temp_stem: paths.temp_dir.join(format!("{stem}.part")),
+            temp_stem,
             extension,
-            final_path: directory.join(format!("{stem}.{final_extension}")),
+            final_path,
         };
         session.spawn_segment()?;
         Ok(session)
@@ -292,6 +286,34 @@ impl RecordingSession {
         };
         Ok(only.clone())
     }
+}
+
+/// Where a recording started now is written and where it ends up:
+/// `<temp>/<stem>.part` without an extension, and
+/// `<root>/<yyyy-mm>/<stem>.mp4|gif`. Creates both directories.
+///
+/// Public for the macOS app, which records video through ScreenCaptureKit
+/// rather than FFmpeg and still names and files it the same way.
+pub fn recording_paths(
+    kind: CaptureKind,
+    paths: &AppPaths,
+) -> Result<(PathBuf, PathBuf), RecordingError> {
+    fs::create_dir_all(&paths.temp_dir).map_err(recording_error)?;
+    let now = Local::now();
+    let directory = paths
+        .capture_root
+        .join(format!("{:04}-{:02}", now.year(), now.month()));
+    fs::create_dir_all(&directory).map_err(recording_error)?;
+    let final_extension = if kind == CaptureKind::Video {
+        "mp4"
+    } else {
+        "gif"
+    };
+    let stem = OutputNamer::at(now).file_stem("Screen");
+    Ok((
+        paths.temp_dir.join(format!("{stem}.part")),
+        directory.join(format!("{stem}.{final_extension}")),
+    ))
 }
 
 /// The GIF made from a finished capture file, with the palette the settings
