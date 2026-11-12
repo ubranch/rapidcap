@@ -8,7 +8,10 @@
 
 use std::path::Path;
 
-use image::{ExtendedColorType, ImageEncoder, codecs::png::PngEncoder};
+use image::{
+    ExtendedColorType, ImageEncoder,
+    codecs::png::{CompressionType, FilterType, PngEncoder},
+};
 use objc2::runtime::ProtocolObject;
 use objc2_app_kit::{NSPasteboard, NSPasteboardTypePNG, NSPasteboardTypeString};
 use objc2_foundation::{NSArray, NSData, NSString, NSURL};
@@ -21,8 +24,13 @@ pub fn write_clipboard(capture: &SavedCapture) -> Result<(), ClipboardError> {
     // the clipboard write does not depend on the file having landed. PNG rather
     // than the TIFF the pasteboard prefers: it is what `image` already links,
     // and every macOS paste target reads it.
+    //
+    // Fastest compression: these bytes live in memory for one paste and are
+    // never stored, so size hardly matters. A 2880x1800 screenshot encodes in
+    // about 15 ms this way against 236 ms at the default level, and the saved
+    // file has already paid for its own encode.
     let mut png = Vec::new();
-    PngEncoder::new(&mut png)
+    PngEncoder::new_with_quality(&mut png, CompressionType::Fast, FilterType::Adaptive)
         .write_image(
             &capture.rgba,
             capture.width,

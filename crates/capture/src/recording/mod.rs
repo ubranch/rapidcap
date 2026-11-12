@@ -294,38 +294,89 @@ impl RecordingSession {
     }
 }
 
-/// The GIF made from a finished capture file, with the palette pass the
-/// settings name. On a file, unlike a live source, the pass finishes.
+/// The GIF made from a finished capture file, with the palette the settings
+/// name. On a file, unlike a live source, the palette pass finishes.
+///
+/// One palette for the whole clip (`full`, `diff`) is chosen in a pass of its
+/// own, written to a PNG, and then applied in a second pass. Both stream. The
+/// single-graph form held every decoded frame in memory until the palette was
+/// known: 1.3 GB for ten seconds of 1080p, growing with the length. A palette
+/// per frame (`single`) streams in one graph, so it keeps that form.
 fn encode_gif(
     ffmpeg: &std::path::Path,
     settings: &Settings,
     source: &std::path::Path,
     gif: &std::path::Path,
 ) -> Result<PathBuf, RecordingError> {
-    let mut command = Command::new(ffmpeg);
-    command
-        .args(["-hide_banner", "-loglevel", "error", "-i"])
-        .arg(source)
-        .args([
-            "-filter_complex",
+    let mode = &settings.gif.palette_stats_mode;
+    let palette = gif.with_extension("palette.png");
+    let result = if mode == "single" {
+        run_ffmpeg(
+            ffmpeg,
+            &[source],
             &format!("[0:v]null{}", gif_palette_chain(settings)),
-            "-map",
-            "[v]",
-            "-y",
-        ])
-        .arg(gif)
+            &[],
+            gif,
+        )
+    } else {
+        // One image: without `-update` the image muxer wants a numbered
+        // sequence.
+        run_ffmpeg(
+            ffmpeg,
+            &[source],
+            &format!("[0:v]palettegen=stats_mode={mode}[v]"),
+            &["-update", "1", "-frames:v", "1"],
+            &palette,
+        )
+        .and_then(|()| {
+            run_ffmpeg(
+                ffmpeg,
+                &[source, &palette],
+                &format!("[0:v][1:v]{}[v]", paletteuse(settings)),
+                &[],
+                gif,
+            )
+        })
+    };
+    let _ = fs::remove_file(&palette);
+    result.map_err(|status| {
+        RecordingError(format!(
+            "making the GIF failed: FFmpeg exited {status}; capture kept at {}",
+            source.display()
+        ))
+    })?;
+    Ok(gif.to_path_buf())
+}
+
+/// One FFmpeg run: `inputs` through `graph`, whose `[v]` is written to
+/// `output` with `extra` output options.
+fn run_ffmpeg(
+    ffmpeg: &std::path::Path,
+    inputs: &[&std::path::Path],
+    graph: &str,
+    extra: &[&str],
+    output: &std::path::Path,
+) -> Result<(), String> {
+    let mut command = Command::new(ffmpeg);
+    command.args(["-hide_banner", "-loglevel", "error"]);
+    for input in inputs {
+        command.arg("-i").arg(input);
+    }
+    command
+        .args(["-filter_complex", graph, "-map", "[v]"])
+        .args(extra)
+        .arg("-y")
+        .arg(output)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     platform::hide_console(&mut command);
-    let status = command.status().map_err(recording_error)?;
-    if !status.success() {
-        return Err(RecordingError(format!(
-            "making the GIF failed: FFmpeg exited {status}; capture kept at {}",
-            source.display()
-        )));
+    let status = command.status().map_err(|error| error.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(status.to_string())
     }
-    Ok(gif.to_path_buf())
 }
 
 /// How long a segment gets to write its trailer before it is killed.
@@ -353,17 +404,27 @@ pub fn microphones() -> Result<Vec<String>, RecordingError> {
 /// the whole stream, and passing `new=1` there would make it read the second
 /// frame of video as a palette.
 ///
-/// ponytail: `full` and `diff` buffer every frame until end of stream, because
-/// a palette for the whole recording cannot be chosen before the recording
-/// ends - a minute of 1080p at 15fps is several gigabytes of RAM. `single`
-/// streams instead, at the cost of a palette that shifts between frames.
+/// Used live only for `single`, which streams. The whole-clip modes buffer
+/// every frame in this form, so [`encode_gif`] runs them in two passes.
 fn gif_palette_chain(settings: &Settings) -> String {
     let mode = &settings.gif.palette_stats_mode;
-    let dither = &settings.gif.dither;
-    let new = if mode == "single" { ":new=1" } else { "" };
     format!(
-        ",split[pg][pu];[pg]palettegen=stats_mode={mode}[pal];[pu][pal]paletteuse=dither={dither}{new}[v]"
+        ",split[pg][pu];[pg]palettegen=stats_mode={mode}[pal];[pu][pal]{}[v]",
+        paletteuse(settings)
     )
+}
+
+/// The palette applied, with the settings' dither. `diff_mode=rectangle`
+/// re-dithers only the part of each frame that changed: a screen recording
+/// is mostly still, and this made the pass about three times faster on one.
+fn paletteuse(settings: &Settings) -> String {
+    let dither = &settings.gif.dither;
+    let new = if settings.gif.palette_stats_mode == "single" {
+        ":new=1"
+    } else {
+        ""
+    };
+    format!("paletteuse=dither={dither}:diff_mode=rectangle{new}")
 }
 
 /// Where the bundled `ffmpeg` is, or the one on `PATH` in a dev checkout.
@@ -413,20 +474,16 @@ mod tests {
     #[test]
     fn the_palette_pass_follows_the_stats_mode() {
         let mut settings = Settings::default();
-        // One palette for the whole stream, so `new` stays off: with it,
+        // One palette for the whole clip, so `new` stays off: with it,
         // paletteuse reads the next frame of video as a palette.
-        let whole = gif_palette_chain(&settings);
-        assert!(
-            whole.contains(
-                "palettegen=stats_mode=full[pal];[pu][pal]paletteuse=dither=sierra2_4a[v]"
-            ),
-            "{whole}"
+        assert_eq!(
+            paletteuse(&settings),
+            "paletteuse=dither=sierra2_4a:diff_mode=rectangle"
         );
         settings.gif.palette_stats_mode = "single".into();
-        let each = gif_palette_chain(&settings);
-        assert!(
-            each.contains("paletteuse=dither=sierra2_4a:new=1[v]"),
-            "{each}"
+        assert_eq!(
+            paletteuse(&settings),
+            "paletteuse=dither=sierra2_4a:diff_mode=rectangle:new=1"
         );
     }
 
@@ -457,19 +514,27 @@ mod tests {
             .unwrap();
         assert!(made.success());
 
-        let gif = encode_gif(&ffmpeg, &Settings::default(), &source, &dir.join("out.gif")).unwrap();
-        // Count frames by decoding them: one line per frame.
-        let frames = Command::new(&ffmpeg)
-            .args(["-nostdin", "-v", "error", "-i"])
-            .arg(&gif)
-            .args(["-f", "framemd5", "-"])
-            .output()
-            .unwrap();
-        let count = String::from_utf8_lossy(&frames.stdout)
-            .lines()
-            .filter(|line| !line.starts_with('#'))
-            .count();
+        // Every palette mode: `full` and `diff` run in two passes, `single`
+        // in one graph.
+        for mode in ["full", "diff", "single"] {
+            let mut settings = Settings::default();
+            settings.gif.palette_stats_mode = mode.into();
+            let gif = encode_gif(&ffmpeg, &settings, &source, &dir.join("out.gif")).unwrap();
+            // Count frames by decoding them: one line per frame.
+            let frames = Command::new(&ffmpeg)
+                .args(["-nostdin", "-v", "error", "-i"])
+                .arg(&gif)
+                .args(["-f", "framemd5", "-"])
+                .output()
+                .unwrap();
+            let count = String::from_utf8_lossy(&frames.stdout)
+                .lines()
+                .filter(|line| !line.starts_with('#'))
+                .count();
+            assert_eq!(count, 20, "{mode}: 2 seconds at 10 fps");
+            // The palette image is a temporary, not left beside the GIF.
+            assert!(!dir.join("out.palette.png").exists(), "{mode}");
+        }
         let _ = fs::remove_dir_all(&dir);
-        assert_eq!(count, 20, "2 seconds at 10 fps");
     }
 }

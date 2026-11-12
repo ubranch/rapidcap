@@ -4,7 +4,6 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $payload = Join-Path $repo 'assets\ffmpeg'
 $required = @(
     'bin\ffmpeg.exe',
-    'bin\ffprobe.exe',
     'LICENSE.txt',
     'BUILD.txt',
     'SOURCE.txt'
@@ -32,7 +31,6 @@ New-Item -ItemType Directory -Path $dist | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $repo '..\..\work\rapidcap-target\release\RapidCap.exe') -Destination $dist
 Copy-Item -LiteralPath (Join-Path $payload 'bin\ffmpeg.exe') -Destination $dist
-Copy-Item -LiteralPath (Join-Path $payload 'bin\ffprobe.exe') -Destination $dist
 Copy-Item -LiteralPath (Join-Path $payload 'LICENSE.txt') -Destination (Join-Path $dist 'FFMPEG-LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $payload 'BUILD.txt') -Destination (Join-Path $dist 'FFMPEG-BUILD.txt')
 Copy-Item -LiteralPath (Join-Path $payload 'SOURCE.txt') -Destination (Join-Path $dist 'FFMPEG-SOURCE.txt')
