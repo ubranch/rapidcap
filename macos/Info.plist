@@ -24,9 +24,9 @@
 	<key>CFBundleIconFile</key>
 	<string>rapidcap</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.1</string>
+	<string>0.2.2</string>
 	<key>CFBundleVersion</key>
-	<string>0.2.1</string>
+	<string>0.2.2</string>
 	<!-- Liquid Glass: glassEffect and NSGlassEffectView are macOS 26 API. -->
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
