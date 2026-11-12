@@ -6,6 +6,13 @@
 	     Recording grant against it and the signing certificate. -->
 	<key>CFBundleIdentifier</key>
 	<string>com.inspire.rapidcap</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>uz</string>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>RapidCap</string>
 	<key>CFBundleName</key>
@@ -17,9 +24,9 @@
 	<key>CFBundleIconFile</key>
 	<string>rapidcap</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.0</string>
+	<string>0.2.1</string>
 	<key>CFBundleVersion</key>
-	<string>0.2.0</string>
+	<string>0.2.1</string>
 	<!-- Liquid Glass: glassEffect and NSGlassEffectView are macOS 26 API. -->
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>

@@ -15,6 +15,7 @@ use rapidcap_capture::{
 
 use crate::controller::AppController;
 use crate::gallery::GalleryView;
+use crate::i18n::t;
 use crate::icons::Icon;
 use crate::menu;
 use crate::motion;
@@ -76,26 +77,26 @@ fn audio_entries(
 ) -> Vec<menu::Entry> {
     let audio = &settings.audio;
     let mut entries = vec![
-        menu::Entry::Header("System audio".into()),
-        menu::Entry::Item(menu::Item::new(AUDIO_SYSTEM_OFF, "Off").selected(!audio.enabled)),
+        menu::Entry::Header(t("System audio").into()),
+        menu::Entry::Item(menu::Item::new(AUDIO_SYSTEM_OFF, t("Off")).selected(!audio.enabled)),
         menu::Entry::Item(
-            menu::Item::new(AUDIO_SYSTEM_ON, "Default playback device").selected(audio.enabled),
+            menu::Item::new(AUDIO_SYSTEM_ON, t("Default playback device")).selected(audio.enabled),
         ),
         menu::Entry::Separator,
-        menu::Entry::Header("Microphone".into()),
+        menu::Entry::Header(t("Microphone").into()),
     ];
     match microphones {
         // Opening the menu is what starts the enumeration, so its first frame
         // has nothing to list yet. Saying so beats the empty sentence, which
         // would claim there are no devices before anything had looked for one.
-        None => entries.push(menu::Entry::Empty(LOOKING.into())),
+        None => entries.push(menu::Entry::Empty(t(LOOKING).into())),
         Some(Err(error)) => entries.push(menu::Entry::Empty(error.clone().into())),
         Some(Ok(devices)) => {
             entries.push(menu::Entry::Item(
-                menu::Item::new(AUDIO_MIC_OFF, "Off").selected(audio.microphone.is_none()),
+                menu::Item::new(AUDIO_MIC_OFF, t("Off")).selected(audio.microphone.is_none()),
             ));
             if devices.is_empty() {
-                entries.push(menu::Entry::Empty(NO_DEVICES.into()));
+                entries.push(menu::Entry::Empty(t(NO_DEVICES).into()));
             }
             entries.extend(devices.iter().map(|device| {
                 menu::Entry::Item(
@@ -141,20 +142,27 @@ struct AudioSources {
 
 fn audio_sources(system: bool, microphone: Option<&str>) -> AudioSources {
     let (label, aria) = match (system, microphone) {
-        (false, None) => ("No audio", "No audio".to_string()),
-        (true, None) => ("System audio", "System audio".to_string()),
-        (false, Some(device)) => ("Microphone", format!("Microphone: {device}")),
-        (true, Some(device)) => ("Audio + mic", format!("System audio and {device}")),
+        (false, None) => (t("No audio"), t("No audio").to_string()),
+        (true, None) => (t("System audio"), t("System audio").to_string()),
+        (false, Some(device)) => (
+            t("Microphone"),
+            t("Microphone: {device}").replace("{device}", device),
+        ),
+        (true, Some(device)) => (
+            t("Audio + mic"),
+            t("System audio and {device}").replace("{device}", device),
+        ),
     };
     AudioSources {
         label,
-        aria: format!("{aria} — click to choose what a recording picks up"),
+        aria: t("{sources} — click to choose what a recording picks up")
+            .replace("{sources}", &aria),
         recording: system || microphone.is_some(),
     }
 }
 
 /// What the audio menu says while the enumeration is still running.
-const LOOKING: &str = "Looking for capture devices\u{2026}";
+const LOOKING: &str = "Looking for capture devices…";
 /// What it says when the enumeration came back with nothing.
 const NO_DEVICES: &str = "No capture devices found. Plug one in and reopen this menu.";
 
@@ -704,7 +712,7 @@ impl Render for MainWindow {
             .id("rapidcap-root")
             .accessibility_id("rapidcap.application")
             .role(Role::Application)
-            .aria_label("RapidCap screen capture")
+            .aria_label(t("RapidCap screen capture"))
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::capture_region))
             .on_action(cx.listener(Self::capture_window))
@@ -971,7 +979,8 @@ impl Render for MainWindow {
                                         "RapidCapSaved",
                                         Icon::Saved,
                                         saved_label(&saved.path),
-                                        format!("Saved — open {}", saved.path.display()),
+                                        t("Saved — open {path}")
+                                            .replace("{path}", &saved.path.display().to_string()),
                                         None,
                                     )
                                     .border_color(theme::accent())
@@ -997,7 +1006,8 @@ impl Render for MainWindow {
                                         "RapidCapGallery",
                                         Icon::Gallery,
                                         folder_label,
-                                        format!("Recent captures in {output}"),
+                                        t("Recent captures in {folder}")
+                                            .replace("{folder}", &output),
                                         None,
                                     )
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -1037,7 +1047,7 @@ impl MainWindow {
             .focusable()
             .tab_stop(true)
             .role(Role::Button)
-            .aria_label("Settings")
+            .aria_label(t("Settings"))
             .aria_keyshortcuts("Enter Space")
             .size(theme::u(SETTINGS_BTN))
             .flex()
@@ -1142,7 +1152,7 @@ impl MainWindow {
                     .child(summary),
             )
             .children(retry.map(|_| {
-                ghost_button("error-retry", "Retry").on_click(cx.listener(|this, _, _, cx| {
+                ghost_button("error-retry", t("Retry")).on_click(cx.listener(|this, _, _, cx| {
                     this.controller
                         .update(cx, |controller, cx| controller.retry(cx));
                 }))
@@ -1151,7 +1161,7 @@ impl MainWindow {
             // button that copies what you can read is a button in the way.
             .children(summarised.then(|| {
                 let detail = detail.clone();
-                ghost_button("error-copy-log", "Copy log").on_click(move |_, _, _| {
+                ghost_button("error-copy-log", t("Copy log")).on_click(move |_, _, _| {
                     // Best effort. A clipboard the user cannot write to is not
                     // a reason to replace the error they were reading.
                     if let Err(error) = write_clipboard_text(&detail) {
@@ -1164,7 +1174,7 @@ impl MainWindow {
                     .id("dismiss-error")
                     .accessibility_id("rapidcap.error-dismiss")
                     .role(Role::Button)
-                    .aria_label("Dismiss")
+                    .aria_label(t("Dismiss"))
                     .size(theme::u(26.0))
                     .flex()
                     .flex_none()
@@ -1249,7 +1259,7 @@ impl MainWindow {
             .children((!panel).then(|| {
                 bar_button(
                     "titlebar-back",
-                    "Back to the panel",
+                    t("Back to the panel"),
                     "RapidCapBack",
                     Icon::Back,
                 )
@@ -1284,8 +1294,8 @@ impl MainWindow {
                             .font_weight(FontWeight::MEDIUM)
                             .child(match self.screen {
                                 Screen::Panel => "RapidCap",
-                                Screen::Settings => "Settings",
-                                Screen::Gallery => "Recent captures",
+                                Screen::Settings => t("Settings"),
+                                Screen::Gallery => t("Recent captures"),
                             }),
                     ),
             )
@@ -1297,7 +1307,7 @@ impl MainWindow {
             .children((self.screen == Screen::Gallery).then(|| {
                 bar_button(
                     "titlebar-output",
-                    "Open output folder",
+                    t("Open output folder"),
                     "RapidCapOutput",
                     Icon::Folder,
                 )
@@ -1335,7 +1345,7 @@ impl MainWindow {
                 .child(
                     window_button(
                         "titlebar-minimize",
-                        "Minimize to tray",
+                        t("Minimize to tray"),
                         "RapidCapMinimize",
                         Icon::Minimize,
                         false,
@@ -1345,7 +1355,7 @@ impl MainWindow {
                 .child(
                     window_button(
                         "titlebar-close",
-                        "Close",
+                        t("Close"),
                         "RapidCapClose",
                         Icon::Close,
                         true,
@@ -1512,9 +1522,9 @@ fn step_countdown(current: u8, delta: isize) -> u8 {
 /// one setting.
 fn countdown_label(seconds: u8) -> String {
     if seconds == 0 {
-        "No countdown".to_string()
+        t("No countdown").to_string()
     } else {
-        format!("{seconds} second countdown")
+        t("{n} second countdown").replace("{n}", &seconds.to_string())
     }
 }
 
@@ -1554,7 +1564,7 @@ impl Shortcut {
         if self.registered {
             self.label.clone()
         } else {
-            format!("{} · taken", self.label)
+            t("{shortcut} · taken").replace("{shortcut}", &self.label)
         }
     }
 }
@@ -1913,21 +1923,23 @@ fn card_dimmed(state: &CaptureState, card: CaptureKind) -> bool {
 fn status_text(state: &CaptureState, target: Option<&CaptureTarget>) -> String {
     match state {
         CaptureState::Idle => match target {
-            Some(CaptureTarget::Region(region)) => {
-                format!("Selected {} × {}", region.width, region.height)
-            }
+            Some(CaptureTarget::Region(region)) => t("Selected {w} × {h}")
+                .replace("{w}", &region.width.to_string())
+                .replace("{h}", &region.height.to_string()),
             Some(CaptureTarget::Window { process_name, .. }) => {
-                format!("Selected {process_name}")
+                t("Selected {name}").replace("{name}", process_name)
             }
-            None => "Ready".to_string(),
+            None => t("Ready").to_string(),
         },
-        CaptureState::Selecting(_) => "Selecting · Esc to cancel".to_string(),
-        CaptureState::Countdown(kind, seconds) => {
-            format!("{} starts in {seconds}", kind_noun(*kind))
+        CaptureState::Selecting(_) => t("Selecting · Esc to cancel").to_string(),
+        CaptureState::Countdown(kind, seconds) => t("{kind} starts in {n}")
+            .replace("{kind}", kind_noun(*kind))
+            .replace("{n}", &seconds.to_string()),
+        CaptureState::Recording(kind) => t("Recording {kind}").replace("{kind}", kind_noun(*kind)),
+        CaptureState::Paused(kind) => t("Paused {kind}").replace("{kind}", kind_noun(*kind)),
+        CaptureState::Finalizing(kind) => {
+            t("Finalizing {kind}…").replace("{kind}", kind_noun(*kind))
         }
-        CaptureState::Recording(kind) => format!("Recording {}", kind_noun(*kind)),
-        CaptureState::Paused(kind) => format!("Paused {}", kind_noun(*kind)),
-        CaptureState::Finalizing(kind) => format!("Finalizing {}…", kind_noun(*kind)),
         CaptureState::Error(failure) => failure.summary.clone(),
     }
 }
@@ -1948,8 +1960,8 @@ fn kind_noun(kind: CaptureKind) -> &'static str {
     match kind {
         CaptureKind::Video => "Video",
         CaptureKind::Gif => "GIF",
-        CaptureKind::RegionScreenshot => "Region",
-        CaptureKind::ActiveWindowScreenshot => "Window",
+        CaptureKind::RegionScreenshot => t("Region"),
+        CaptureKind::ActiveWindowScreenshot => t("Window"),
     }
 }
 
@@ -1958,14 +1970,14 @@ fn kind_noun(kind: CaptureKind) -> &'static str {
 fn region_label(target: Option<&CaptureTarget>) -> String {
     match target {
         Some(CaptureTarget::Region(region)) => format!("{} × {}", region.width, region.height),
-        _ => "Region".to_string(),
+        _ => t("Region").to_string(),
     }
 }
 
 fn window_label(target: Option<&CaptureTarget>) -> String {
     match target {
         Some(CaptureTarget::Window { process_name, .. }) => process_name.clone(),
-        _ => "Window".to_string(),
+        _ => t("Window").to_string(),
     }
 }
 
@@ -2026,9 +2038,9 @@ fn saved_summary(output: &SavedOutput) -> String {
     match (output.recorded, size) {
         (Some(recorded), Some(size)) => format!("{} · {size}", clock(recorded)),
         (Some(recorded), None) => clock(recorded),
-        (None, _) if output.copied => "Copied".to_string(),
-        (None, Some(size)) => format!("Saved · {size}"),
-        (None, None) => "Saved".to_string(),
+        (None, _) if output.copied => t("Copied").to_string(),
+        (None, Some(size)) => t("Saved · {size}").replace("{size}", &size),
+        (None, None) => t("Saved").to_string(),
     }
 }
 
@@ -2075,9 +2087,9 @@ fn recording_label(state: &CaptureState, kind: CaptureKind) -> &'static str {
     match state {
         CaptureState::Countdown(active, _) if *active == kind => {
             if kind == CaptureKind::Video {
-                "Cancel Video"
+                t("Cancel Video")
             } else {
-                "Cancel GIF"
+                t("Cancel GIF")
             }
         }
         CaptureState::Recording(active)
@@ -2086,9 +2098,9 @@ fn recording_label(state: &CaptureState, kind: CaptureKind) -> &'static str {
             if *active == kind =>
         {
             if kind == CaptureKind::Video {
-                "Stop Video"
+                t("Stop Video")
             } else {
-                "Stop GIF"
+                t("Stop GIF")
             }
         }
         _ if kind == CaptureKind::Video => "Video",

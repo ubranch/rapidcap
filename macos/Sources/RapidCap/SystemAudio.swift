@@ -45,7 +45,7 @@ final class SystemAudio: NSObject, SCStreamOutput, @unchecked Sendable {
     static func start(bitrate: Int, channels: Int) async throws -> SystemAudio {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else {
-            throw CoreError(message: "no display to take system audio from")
+            throw CoreError(message: String(localized: "no display to take system audio from"))
         }
         let config = SCStreamConfiguration()
         config.capturesAudio = true
@@ -91,12 +91,12 @@ final class SystemAudio: NSObject, SCStreamOutput, @unchecked Sendable {
         }
         guard let seconds else {
             discard()
-            return .failure(CoreError(message: "no sound arrived from the system"))
+            return .failure(CoreError(message: String(localized: "no sound arrived from the system")))
         }
         await writer.finishWriting()
         guard writer.status == .completed else {
             discard()
-            return .failure(writer.error ?? CoreError(message: "the sound track could not be written"))
+            return .failure(writer.error ?? CoreError(message: String(localized: "the sound track could not be written")))
         }
         return .success((url, seconds))
     }

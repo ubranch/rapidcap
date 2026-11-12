@@ -23,7 +23,8 @@ private struct Preset: Identifiable {
 }
 
 private let presets: [Preset] = [
-    Preset(id: "studio", name: "Studio", tagline: "Sharpest frames, smoothest motion",
+    Preset(id: "studio", name: String(localized: "Studio"),
+           tagline: String(localized: "Sharpest frames, smoothest motion"),
            symbol: "sparkles") {
         $0.video.fps = 60
         $0.video.bitrate = 6_000_000
@@ -35,7 +36,7 @@ private let presets: [Preset] = [
         $0.audio.bitrate = 192_000
         $0.screenshot.png_to_jpeg_threshold_bytes = 8 << 20
     },
-    Preset(id: "everyday", name: "Everyday", tagline: "Crisp enough, light enough",
+    Preset(id: "everyday", name: String(localized: "Everyday"), tagline: String(localized: "Crisp enough, light enough"),
            symbol: "dial.medium") {
         $0.video.fps = 30
         $0.video.bitrate = 3_000_000
@@ -47,7 +48,8 @@ private let presets: [Preset] = [
         $0.audio.bitrate = 128_000
         $0.screenshot.png_to_jpeg_threshold_bytes = 2 << 20
     },
-    Preset(id: "featherlight", name: "Featherlight", tagline: "Tiny files for chat and email",
+    Preset(id: "featherlight", name: String(localized: "Featherlight"),
+           tagline: String(localized: "Tiny files for chat and email"),
            symbol: "leaf") {
         $0.video.fps = 24
         $0.video.bitrate = 1_500_000
@@ -63,24 +65,25 @@ private let presets: [Preset] = [
 
 private struct Quality: Hashable {
     let name: String
+    let title: String
     let bitrate: Int
     let preset: String
     let tune: String
 }
 
 private let qualities = [
-    Quality(name: "Standard", bitrate: 1_500_000, preset: "p5", tune: "hq"),
-    Quality(name: "High", bitrate: 3_000_000, preset: "p7", tune: "hq"),
-    Quality(name: "Maximum", bitrate: 6_000_000, preset: "p7", tune: "hq"),
+    Quality(name: "Standard", title: String(localized: "Standard"), bitrate: 1_500_000, preset: "p5", tune: "hq"),
+    Quality(name: "High", title: String(localized: "High"), bitrate: 3_000_000, preset: "p7", tune: "hq"),
+    Quality(name: "Maximum", title: String(localized: "Maximum"), bitrate: 6_000_000, preset: "p7", tune: "hq"),
 ]
 
 private let dithers: [(id: String, name: String, blurb: String)] = [
-    ("sierra2_4a", "Sierra 2-4A", "Smooth gradients at 256 colours"),
-    ("sierra2", "Sierra 2", "Wider kernel, a little softer"),
-    ("floyd_steinberg", "Floyd-Steinberg", "Classic kernel, a bit grainier"),
-    ("heckbert", "Heckbert", "Smallest kernel, coarser grain"),
-    ("bayer", "Bayer", "Fixed pattern, smaller files"),
-    ("none", "None", "No dithering, gradients band"),
+    ("sierra2_4a", "Sierra 2-4A", String(localized: "Smooth gradients at 256 colours")),
+    ("sierra2", "Sierra 2", String(localized: "Wider kernel, a little softer")),
+    ("floyd_steinberg", "Floyd-Steinberg", String(localized: "Classic kernel, a bit grainier")),
+    ("heckbert", "Heckbert", String(localized: "Smallest kernel, coarser grain")),
+    ("bayer", "Bayer", String(localized: "Fixed pattern, smaller files")),
+    ("none", String(localized: "None"), String(localized: "No dithering, gradients band")),
 ]
 
 // MARK: settings
@@ -94,35 +97,37 @@ struct SettingsView: View {
             GlassEffectContainer(spacing: 12) {
                 VStack(spacing: 14) {
                     presetPicker
-                    section("Capture") {
-                        row("Countdown", "Before a recording starts") {
-                            LiquidSegmented(options: [(0, "Off"), (3, "3s"), (5, "5s")],
+                    section(String(localized: "Capture")) {
+                        row(String(localized: "Countdown"), String(localized: "Before a recording starts")) {
+                            LiquidSegmented(options: [(0, String(localized: "Off")), (3, "3s"), (5, "5s")],
                                             selection: bind(\.countdown_seconds))
                         }
                         divider
-                        row("Hide panel while capturing", "It never lands in a recording either way") {
+                        row(String(localized: "Hide panel while capturing"),
+                            String(localized: "It never lands in a recording either way")) {
                             Toggle("", isOn: bind(\.hide_panel_while_capturing)).toggleStyle(.switch)
                         }
                         divider
-                        row("Copy screenshots", "Put each screenshot on the clipboard") {
+                        row(String(localized: "Copy screenshots"),
+                            String(localized: "Put each screenshot on the clipboard")) {
                             Toggle("", isOn: bind(\.screenshot.copy_to_clipboard)).toggleStyle(.switch)
                         }
                         divider
-                        row("System audio", "Record what your Mac plays into videos") {
+                        row(String(localized: "System audio"), String(localized: "Record what your Mac plays into videos")) {
                             Toggle("", isOn: bind(\.audio.enabled)).toggleStyle(.switch)
                         }
                     }
-                    section("Shortcuts") {
+                    section(String(localized: "Shortcuts")) {
                         ForEach(Array(HotkeyCommand.allCases.enumerated()), id: \.element) { index, command in
                             if index > 0 { divider }
                             row(command.name, Hotkeys.shared.taken.contains(command)
-                                ? "Taken by another app – pick another" : nil) {
+                                ? String(localized: "Taken by another app – pick another") : nil) {
                                 ShortcutField(command: command)
                             }
                         }
                     }
                     advancedSection
-                    section("Save to") {
+                    section(String(localized: "Save to")) {
                         HStack(spacing: 10) {
                             Image(systemName: "folder.fill")
                                 .foregroundStyle(Color.accentColor)
@@ -161,7 +166,7 @@ struct SettingsView: View {
         let current = presets.first { $0.matches(model.settings) }
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                sectionTitle("Quality")
+                sectionTitle(String(localized: "Quality"))
                 Spacer()
                 if current == nil {
                     Text("Custom")
@@ -214,7 +219,7 @@ struct SettingsView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { advanced.toggle() }
             } label: {
                 HStack(spacing: 6) {
-                    sectionTitle("Advanced")
+                    sectionTitle(String(localized: "Advanced"))
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
@@ -228,15 +233,16 @@ struct SettingsView: View {
 
             if advanced {
                 VStack(spacing: 2) {
-                    subhead("Video")
-                    row("Frame rate", nil) {
+                    subhead(String(localized: "Video"))
+                    row(String(localized: "Frame rate"), nil) {
                         Picker("", selection: bind(\.video.fps)) {
                             ForEach([24, 30, 60], id: \.self) { Text("\($0) fps").tag($0) }
                         }
                         .fixedSize()
                     }
                     divider
-                    row("Quality", String(format: "%g Mbps", Double(model.settings.video.bitrate) / 1_000_000)) {
+                    row(String(localized: "Quality"),
+                        String(format: "%g Mbps", Double(model.settings.video.bitrate) / 1_000_000)) {
                         Picker("", selection: Binding(
                             get: { qualities.first { $0.bitrate == model.settings.video.bitrate }?.name ?? "High" },
                             set: { name in
@@ -248,33 +254,33 @@ struct SettingsView: View {
                                 }
                             }
                         )) {
-                            ForEach(qualities, id: \.name) { Text($0.name).tag($0.name) }
+                            ForEach(qualities, id: \.name) { Text($0.title).tag($0.name) }
                         }
                         .fixedSize()
                     }
-                    subhead("Audio")
-                    row("Bitrate", "System audio in videos") {
+                    subhead(String(localized: "Audio"))
+                    row(String(localized: "Bitrate"), String(localized: "System audio in videos")) {
                         Picker("", selection: bind(\.audio.bitrate)) {
                             ForEach([96_000, 128_000, 192_000], id: \.self) { Text("\($0 / 1000) kbps").tag($0) }
                         }
                         .fixedSize()
                     }
-                    subhead("GIF")
-                    row("Frame rate", nil) {
+                    subhead(String(localized: "GIF"))
+                    row(String(localized: "Frame rate"), nil) {
                         Picker("", selection: bind(\.gif.fps)) {
                             ForEach([10, 15, 20], id: \.self) { Text("\($0) fps").tag($0) }
                         }
                         .fixedSize()
                     }
                     divider
-                    row("Dithering", dithers.first { $0.id == model.settings.gif.dither }?.blurb) {
+                    row(String(localized: "Dithering"), dithers.first { $0.id == model.settings.gif.dither }?.blurb) {
                         Picker("", selection: bind(\.gif.dither)) {
                             ForEach(dithers, id: \.id) { Text($0.name).tag($0.id) }
                         }
                         .fixedSize()
                     }
                     divider
-                    row("Palette", "One for the clip, or one per frame") {
+                    row(String(localized: "Palette"), String(localized: "One for the clip, or one per frame")) {
                         Picker("", selection: bind(\.gif.palette_stats_mode)) {
                             Text("Whole clip").tag("full")
                             Text("Changes only").tag("diff")
@@ -282,8 +288,8 @@ struct SettingsView: View {
                         }
                         .fixedSize()
                     }
-                    subhead("Screenshots")
-                    row("Save as JPEG above", "Large PNGs become JPEG") {
+                    subhead(String(localized: "Screenshots"))
+                    row(String(localized: "Save as JPEG above"), String(localized: "Large PNGs become JPEG")) {
                         Picker("", selection: bind(\.screenshot.png_to_jpeg_threshold_bytes)) {
                             ForEach([1, 2, 4, 8], id: \.self) { Text("\($0) MB").tag($0 << 20) }
                         }
@@ -377,7 +383,7 @@ private struct ShortcutField: View {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
             Button(action: toggle) {
-                Text(recording ? "Press keys…" : Hotkeys.shared.label(command))
+                Text(recording ? String(localized: "Press keys…") : Hotkeys.shared.label(command))
                     .font(.system(size: 11.5, weight: .medium, design: .rounded))
                     .foregroundStyle(recording ? Color.accentColor : .primary)
                     .strikethrough(!recording && Hotkeys.shared.taken.contains(command))
@@ -422,16 +428,16 @@ private struct ShortcutField: View {
             return
         }
         guard let chord = Chord(event: event) else {
-            flash("Add ⌘, ⌥ or ⌃")
+            flash(String(localized: "Add ⌘, ⌥ or ⌃"))
             return
         }
         if let owner = Hotkeys.shared.owner(of: chord, except: command) {
-            flash("Used by \(owner.name)")
+            flash(String(localized: "Used by \(owner.name)"))
             return
         }
         stop()
         Hotkeys.shared.set(command, to: chord)
-        if Hotkeys.shared.taken.contains(command) { flash("Taken by another app") }
+        if Hotkeys.shared.taken.contains(command) { flash(String(localized: "Taken by another app")) }
     }
 
     private func flash(_ text: String) {

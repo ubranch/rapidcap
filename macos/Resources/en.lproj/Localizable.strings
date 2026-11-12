@@ -1,0 +1,2 @@
+/* English is the source text: every key is its own value. This folder exists so
+   macOS picks English, not Uzbek, for users whose language the app lacks. */

@@ -1,0 +1,147 @@
+/* RapidCap macOS - Uzbek (Latin). Keys are the English source text. */
+
+/* Menus and windows */
+"About RapidCap" = "RapidCap haqida";
+"Settings…" = "Sozlamalar…";
+"Hide RapidCap" = "RapidCap'ni yashirish";
+"Quit RapidCap" = "RapidCap'dan chiqish";
+"Quit" = "Chiqish";
+"Window" = "Oyna";
+"Close" = "Yopish";
+"Minimize" = "Kichraytirish";
+"Capture region" = "Hududni olish";
+"Capture window" = "Oynani olish";
+"Record video" = "Video yozish";
+"Record GIF" = "GIF yozish";
+"Stop recording" = "Yozishni to'xtatish";
+"Stop GIF" = "GIF'ni to'xtatish";
+"Show RapidCap" = "RapidCap'ni ochish";
+"Recent captures" = "So'nggi fayllar";
+"Open captures folder" = "Fayllar papkasini ochish";
+"Settings" = "Sozlamalar";
+"RapidCap – recording" = "RapidCap – yozilmoqda";
+"Pause · resume" = "Pauza · davom ettirish";
+
+/* Capture kinds */
+"Region" = "Hudud";
+"Video" = "Video";
+"GIF" = "GIF";
+"VIDEO" = "VIDEO";
+
+/* Panel */
+"Countdown" = "Taymer";
+"Off" = "O'chiq";
+"%lld fps · GIF %lld" = "%lld fps · GIF %lld";
+"Dismiss" = "Yopish";
+"Captures" = "Fayllar";
+"Open %@" = "Ochish: %@";
+"Another app uses this shortcut" = "Bu tugmani boshqa ilova ishlatadi";
+"Shortcut" = "Tezkor tugma";
+"Click a window…" = "Oynani tanlang…";
+"Drag a region…" = "Hududni belgilang…";
+"Starts in %lld" = "%lld soniyadan keyin";
+"Starting…" = "Boshlanmoqda…";
+"Starting" = "Boshlanmoqda";
+"Stop" = "To'xtatish";
+"Paused · Stop" = "Pauzada · To'xtatish";
+"Saving…" = "Saqlanmoqda…";
+"Ready" = "Tayyor";
+"Saved" = "Saqlandi";
+"Esc to cancel" = "Esc – bekor qilish";
+"In %llds" = "%lld s qoldi";
+"Paused %@" = "Pauzada %@";
+
+/* Recording HUD and countdown */
+"%lld" = "%lld";
+"Resume" = "Davom ettirish";
+"Pause" = "Pauza";
+"Cancel" = "Bekor qilish";
+"%@ in %lld" = "%@: %lld soniyadan keyin";
+"Saving %@…" = "%@ saqlanmoqda…";
+
+/* Selection overlay */
+"Click a window to capture it · Esc to cancel" = "Olish uchun oynani bosing · Esc – bekor qilish";
+"Drag to select · Esc to cancel" = "Sudrab belgilang · Esc – bekor qilish";
+
+/* Recent captures */
+"All" = "Hammasi";
+"Images" = "Rasmlar";
+"1 capture" = "1 ta fayl";
+"%lld captures" = "%lld ta fayl";
+"Nothing of this kind yet" = "Bu turda hali fayl yo'q";
+"No captures yet" = "Hali fayl yo'q";
+"Saved to %@" = "Saqlash joyi: %@";
+"Copy" = "Nusxalash";
+"Show in Finder" = "Finder'da ko'rsatish";
+"Move to Trash" = "Savatga tashlash";
+
+/* Settings */
+"Quality" = "Sifat";
+"Custom" = "Maxsus";
+"Studio" = "Studiya";
+"Sharpest frames, smoothest motion" = "Eng tiniq kadr, eng silliq harakat";
+"Everyday" = "Kundalik";
+"Crisp enough, light enough" = "Yetarlicha tiniq, yetarlicha yengil";
+"Featherlight" = "Yengil";
+"Tiny files for chat and email" = "Chat va email uchun kichik fayllar";
+"Capture" = "Olish";
+"Before a recording starts" = "Yozish boshlanishidan oldin";
+"Hide panel while capturing" = "Olish paytida panelni yashirish";
+"It never lands in a recording either way" = "Panel baribir yozuvga tushmaydi";
+"Copy screenshots" = "Skrinshotlarni nusxalash";
+"Put each screenshot on the clipboard" = "Har bir skrinshotni buferga nusxalash";
+"System audio" = "Tizim ovozi";
+"Record what your Mac plays into videos" = "Mac'dagi ovozni videoga yozish";
+"Shortcuts" = "Tezkor tugmalar";
+"Taken by another app – pick another" = "Boshqa ilova band qilgan – boshqasini tanlang";
+"Save to" = "Saqlash joyi";
+"Open" = "Ochish";
+"RapidCap %@ · settings schema %lld" = "RapidCap %@ · sozlamalar sxemasi %lld";
+"Advanced" = "Qo'shimcha";
+"Frame rate" = "Kadr tezligi";
+"%lld fps" = "%lld fps";
+"Standard" = "Standart";
+"High" = "Yuqori";
+"Maximum" = "Maksimal";
+"Audio" = "Ovoz";
+"Bitrate" = "Bitreyt";
+"System audio in videos" = "Videodagi tizim ovozi";
+"%lld kbps" = "%lld kbps";
+"Dithering" = "Ditering";
+"Smooth gradients at 256 colours" = "256 rangda silliq gradient";
+"Wider kernel, a little softer" = "Kengroq yadro, biroz yumshoqroq";
+"Classic kernel, a bit grainier" = "Klassik yadro, biroz donadorroq";
+"Smallest kernel, coarser grain" = "Eng kichik yadro, yirikroq don";
+"Fixed pattern, smaller files" = "Qat'iy naqsh, kichikroq fayllar";
+"None" = "Yo'q";
+"No dithering, gradients band" = "Diteringsiz, gradient pog'onali bo'ladi";
+"Palette" = "Palitra";
+"One for the clip, or one per frame" = "Butun klipga bitta yoki har kadrga bitta";
+"Whole clip" = "Butun klip";
+"Changes only" = "Faqat o'zgarishlar";
+"Per frame" = "Har kadr";
+"Screenshots" = "Skrinshotlar";
+"Save as JPEG above" = "JPEG chegarasi";
+"Large PNGs become JPEG" = "Katta PNG fayllar JPEG bo'ladi";
+"%lld MB" = "%lld MB";
+"Press keys…" = "Tugmalarni bosing…";
+"Click, then press a new shortcut. Esc cancels, Delete resets." = "Bosing, keyin yangi tugmalarni bosing. Esc – bekor qilish, Delete – asliga qaytarish.";
+"Add ⌘, ⌥ or ⌃" = "⌘, ⌥ yoki ⌃ qo'shing";
+"Used by %@" = "Band: %@";
+"Taken by another app" = "Boshqa ilova band qilgan";
+
+/* Messages */
+"Allow RapidCap in System Settings › Privacy & Security › Screen Recording." = "RapidCap'ga ruxsat bering: System Settings › Privacy & Security › Screen Recording.";
+"Settings could not be read: %@" = "Sozlamalarni o'qib bo'lmadi: %@";
+"Settings were not saved: %@" = "Sozlamalar saqlanmadi: %@";
+"Recording without system audio: %@" = "Tizim ovozisiz yozilmoqda: %@";
+"saved without sound: %@" = "ovozsiz saqlandi: %@";
+"Saved, but %@" = "Saqlandi, lekin %@";
+"not copied: %@" = "nusxalanmadi: %@";
+"the capture core returned nothing" = "yadro hech narsa qaytarmadi";
+"the capture core returned unreadable JSON" = "yadro noto'g'ri JSON qaytardi";
+"recording did not start" = "yozish boshlanmadi";
+"the recording has already ended" = "yozish allaqachon tugagan";
+"no display to take system audio from" = "tizim ovozini olish uchun ekran topilmadi";
+"no sound arrived from the system" = "tizimdan ovoz kelmadi";
+"the sound track could not be written" = "ovoz yo'lagini yozib bo'lmadi";

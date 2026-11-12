@@ -38,7 +38,7 @@ enum StatusMark {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = recording ? "RapidCap – recording" : "RapidCap"
+        image.accessibilityDescription = recording ? String(localized: "RapidCap – recording") : "RapidCap"
         cache[recording] = image
         return image
     }

@@ -34,6 +34,8 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin/RapidCap" "$app/Contents/MacOS/RapidCap"
 cp "$repo/macos/Info.plist" "$app/Contents/Info.plist"
 cp "$repo/crates/desktop/assets/rapidcap.icns" "$app/Contents/Resources/rapidcap.icns"
+# English and Uzbek UI text; macOS picks one by the user's language order.
+cp -R "$repo"/macos/Resources/*.lproj "$app/Contents/Resources/"
 
 identity="${RAPIDCAP_SIGN_IDENTITY:--}"
 keychain="${RAPIDCAP_SIGN_KEYCHAIN:-}"

@@ -35,6 +35,7 @@ use gpui::{
 use rapidcap_capture::{CaptureCommand, CaptureEvent, write_clipboard_file};
 
 use crate::controller::AppController;
+use crate::i18n::t;
 use crate::icons::Icon;
 use crate::platform::{move_to_trash, open_path, reveal_path, shortcut_label};
 use crate::settings_view::command_name;
@@ -149,8 +150,8 @@ impl Filter {
 
     fn label(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Images => "Images",
+            Self::All => t("All"),
+            Self::Images => t("Images"),
             Self::Video => "Video",
             Self::Gif => "GIF",
         }
@@ -443,18 +444,18 @@ fn when_label(modified: SystemTime, now: DateTime<Local>) -> String {
     let at: DateTime<Local> = modified.into();
     let elapsed = now.signed_duration_since(at);
     if elapsed.num_minutes() < 1 {
-        return "Just now".to_string();
+        return t("Just now").to_string();
     }
     if elapsed.num_minutes() < 60 {
-        return format!("{} min ago", elapsed.num_minutes());
+        return t("{n} min ago").replace("{n}", &elapsed.num_minutes().to_string());
     }
     let days = now
         .date_naive()
         .signed_duration_since(at.date_naive())
         .num_days();
     match days {
-        0 => format!("{} h ago", elapsed.num_hours()),
-        1 => "Yesterday".to_string(),
+        0 => t("{n} h ago").replace("{n}", &elapsed.num_hours().to_string()),
+        1 => t("Yesterday").to_string(),
         _ if at.year() == now.year() => at.format("%-d %b").to_string(),
         _ => at.format("%-d %b %Y").to_string(),
     }
@@ -476,7 +477,7 @@ impl Render for GalleryView {
             .id("gallery")
             .accessibility_id("rapidcap.gallery")
             .role(Role::Group)
-            .aria_label("Recent captures")
+            .aria_label(t("Recent captures"))
             .track_focus(&self.focus_handle)
             .size_full()
             .min_h_0()
@@ -663,17 +664,17 @@ impl GalleryView {
             .gap(theme::u(ACTION_GAP))
             .bg(theme::thumb_scrim())
             .child(
-                tile_action(("tile-copy", index), "Copy", Icon::Copy, false).on_click(cx.listener(
-                    move |this, _: &ClickEvent, _, cx| {
+                tile_action(("tile-copy", index), t("Copy"), Icon::Copy, false).on_click(
+                    cx.listener(move |this, _: &ClickEvent, _, cx| {
                         cx.stop_propagation();
                         this.copy(&copy);
-                    },
-                )),
+                    }),
+                ),
             )
             .child(
                 tile_action(
                     ("tile-reveal", index),
-                    "Show in folder",
+                    t("Show in folder"),
                     Icon::Folder,
                     false,
                 )
@@ -683,7 +684,7 @@ impl GalleryView {
                 })),
             )
             .child(
-                tile_action(("tile-delete", index), "Delete", Icon::Delete, true).on_click(
+                tile_action(("tile-delete", index), t("Delete"), Icon::Delete, true).on_click(
                     cx.listener(move |this, _: &ClickEvent, _, cx| {
                         cx.stop_propagation();
                         this.delete(index, cx);
@@ -737,7 +738,7 @@ impl GalleryView {
                     .text_size(theme::u(theme::TEXT_BODY))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(theme::text_label())
-                    .child("No captures yet"),
+                    .child(t("No captures yet")),
             )
             // The sentence, then the folder on a line of its own. Run together
             // the path broke at whichever separator the width ran out on.
@@ -747,7 +748,7 @@ impl GalleryView {
                     .text_size(theme::u(theme::TEXT_MICRO))
                     .line_height(theme::u(theme::TEXT_MICRO * 1.6))
                     .text_color(theme::text_muted())
-                    .child("Every capture is saved to")
+                    .child(t("Every capture is saved to"))
                     .child(
                         div()
                             .truncate()

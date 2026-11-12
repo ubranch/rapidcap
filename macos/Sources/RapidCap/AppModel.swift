@@ -13,10 +13,10 @@ enum CaptureKind: String {
 
     var noun: String {
         switch self {
-        case .region: "Region"
-        case .window: "Window"
-        case .video: "Video"
-        case .gif: "GIF"
+        case .region: String(localized: "Region")
+        case .window: String(localized: "Window")
+        case .video: String(localized: "Video")
+        case .gif: String(localized: "GIF")
         }
     }
 
@@ -115,7 +115,7 @@ final class AppModel {
                 thumb_dir: home + "/Library/Caches/RapidCap/Thumbnails"
             )
             version = "?"
-            self.error = "Settings could not be read: \(error.localizedDescription)"
+            self.error = String(localized: "Settings could not be read: \(error.localizedDescription)")
         }
     }
 
@@ -136,7 +136,7 @@ final class AppModel {
         do {
             try Core.save(next)
         } catch {
-            self.error = "Settings were not saved: \(error.localizedDescription)"
+            self.error = String(localized: "Settings were not saved: \(error.localizedDescription)")
         }
     }
 
@@ -262,7 +262,7 @@ final class AppModel {
         error = nil
         guard CGPreflightScreenCaptureAccess() else {
             CGRequestScreenCaptureAccess()
-            error = "Allow RapidCap in System Settings › Privacy & Security › Screen Recording."
+            error = String(localized: "Allow RapidCap in System Settings › Privacy & Security › Screen Recording.")
             return
         }
         state = .selecting(kind)
@@ -370,7 +370,7 @@ final class AppModel {
             case let .success(recorder):
                 recorder.cancel()
             case let .failure(problem) where live:
-                self.error = "Recording without system audio: \(problem.localizedDescription)"
+                self.error = String(localized: "Recording without system audio: \(problem.localizedDescription)")
             case .failure:
                 break
             }
@@ -398,11 +398,11 @@ final class AppModel {
                 if case let .failure(problem) = mixed {
                     try? FileManager.default.removeItem(at: track.url)
                     result = .success(Core.Saved(path: saved.path,
-                                                 note: "saved without sound: \(problem.localizedDescription)"))
+                                                 note: String(localized: "saved without sound: \(problem.localizedDescription)")))
                 }
             case let (.success(saved), .failure(problem)?):
                 result = .success(Core.Saved(path: saved.path,
-                                             note: "saved without sound: \(problem.localizedDescription)"))
+                                             note: String(localized: "saved without sound: \(problem.localizedDescription)")))
             case let (.failure, .success(track)?):
                 try? FileManager.default.removeItem(at: track.url)
             default:
@@ -422,7 +422,7 @@ final class AppModel {
         case let .success(saved):
             lastSaved = saved.path
             capturesVersion += 1
-            if let note = saved.note { error = "Saved, but \(note)" }
+            if let note = saved.note { error = String(localized: "Saved, but \(note)") }
             savedClearTask?.cancel()
             savedClearTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(8))

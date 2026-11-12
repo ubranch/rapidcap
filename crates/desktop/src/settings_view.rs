@@ -18,6 +18,7 @@ use rapidcap_capture::{CaptureCommand, Settings};
 
 use crate::controller::AppController;
 use crate::gallery::home_relative;
+use crate::i18n::t;
 use crate::platform::{hotkey_specs, open_path};
 use crate::window::{
     SelectConfirmAction, SelectFirstAction, SelectLastAction, SelectNextAction, SelectPrevAction,
@@ -165,14 +166,14 @@ impl Select {
         }
     }
 
-    const fn label(self) -> &'static str {
+    fn label(self) -> &'static str {
         match self {
-            Self::VideoFps => "Video frame rate",
-            Self::Quality => "Video quality",
-            Self::GifFps => "GIF frame rate",
-            Self::GifDither => "Dithering",
-            Self::AudioBitrate => "Audio bitrate",
-            Self::JpegThreshold => "Convert large PNGs to JPEG",
+            Self::VideoFps => t("Video frame rate"),
+            Self::Quality => t("Video quality"),
+            Self::GifFps => t("GIF frame rate"),
+            Self::GifDither => t("Dithering"),
+            Self::AudioBitrate => t("Audio bitrate"),
+            Self::JpegThreshold => t("Convert large PNGs to JPEG"),
         }
     }
 
@@ -180,11 +181,11 @@ impl Select {
     /// says Video, GIF or Audio, so the row does not say it again; the full
     /// [`Self::label`] stays the accessible name, where there is no heading
     /// beside it to lean on.
-    const fn row_label(self) -> &'static str {
+    fn row_label(self) -> &'static str {
         match self {
-            Self::VideoFps | Self::GifFps => "Frame rate",
-            Self::Quality => "Quality",
-            Self::AudioBitrate => "Bitrate",
+            Self::VideoFps | Self::GifFps => t("Frame rate"),
+            Self::Quality => t("Quality"),
+            Self::AudioBitrate => t("Bitrate"),
             Self::GifDither | Self::JpegThreshold => self.label(),
         }
     }
@@ -227,11 +228,11 @@ impl Select {
     fn name(self, index: usize) -> SharedString {
         match self {
             Self::VideoFps => format!("{} FPS", VIDEO_FPS[index]).into(),
-            Self::Quality => QUALITY[index].name.into(),
+            Self::Quality => t(QUALITY[index].name).into(),
             Self::GifFps => format!("{} FPS", GIF_FPS[index]).into(),
-            Self::GifDither => GIF_DITHER[index].1.into(),
+            Self::GifDither => t(GIF_DITHER[index].1).into(),
             Self::AudioBitrate => format!("{} kbps", AUDIO_BITRATE[index] / 1_000).into(),
-            Self::JpegThreshold => format!("Above {}", megabytes(JPEG_THRESHOLD[index])).into(),
+            Self::JpegThreshold => above(JPEG_THRESHOLD[index]).into(),
         }
     }
 
@@ -268,7 +269,7 @@ impl Select {
         match self {
             Self::GifDither => self.current(settings).map(|index| {
                 let (_, _, blurb) = GIF_DITHER[index];
-                blurb.into()
+                t(blurb).into()
             }),
             _ => None,
         }
@@ -287,11 +288,9 @@ impl Select {
                 Self::GifFps => format!("{} FPS", settings.gif.fps).into(),
                 Self::GifDither => settings.gif.dither.clone().into(),
                 Self::AudioBitrate => format!("{} kbps", settings.audio.bitrate / 1_000).into(),
-                Self::JpegThreshold => format!(
-                    "Above {}",
-                    megabytes(settings.screenshot.png_to_jpeg_threshold_bytes)
-                )
-                .into(),
+                Self::JpegThreshold => {
+                    above(settings.screenshot.png_to_jpeg_threshold_bytes).into()
+                }
             },
         }
     }
@@ -335,6 +334,11 @@ impl Select {
 /// no fractional case to get wrong.
 fn megabytes(bytes: usize) -> String {
     format!("{} MB", bytes / (1 << 20))
+}
+
+/// `Above 2 MB`, the name of one threshold choice.
+fn above(bytes: usize) -> String {
+    t("Above {size}").replace("{size}", &megabytes(bytes))
 }
 
 pub struct SettingsView {
@@ -594,7 +598,11 @@ impl SettingsView {
         let armed = self.confirm_reset;
         controls::ghost_button(
             "settings-reset-button",
-            if armed { "Confirm reset" } else { "Reset" },
+            if armed {
+                t("Confirm reset")
+            } else {
+                t("Reset")
+            },
             armed,
         )
         .on_click(cx.listener(move |this, _, _, cx| {
@@ -626,7 +634,7 @@ impl SettingsView {
                 controls::row(
                     command_id(spec.command()),
                     command_name(spec.command()),
-                    clash.then(|| "Taken by another app".into()),
+                    clash.then(|| t("Taken by another app").into()),
                 )
                 .child(controls::hotkey_field(spec.label(), clash))
                 .into_any_element()
@@ -640,14 +648,14 @@ impl SettingsView {
 /// Written out here rather than reused from the mode cards: a card says
 /// `Region` because an icon beside it already says what a region is, and a bare
 /// row has nothing to lean on.
-pub(crate) const fn command_name(command: CaptureCommand) -> &'static str {
+pub(crate) fn command_name(command: CaptureCommand) -> &'static str {
     match command {
-        CaptureCommand::CaptureRegion => "Capture region",
-        CaptureCommand::CaptureActiveWindow => "Capture window",
-        CaptureCommand::ToggleVideo => "Record video",
-        CaptureCommand::ToggleGif => "Record GIF",
-        CaptureCommand::TogglePause => "Pause · resume",
-        CaptureCommand::Cancel => "Cancel",
+        CaptureCommand::CaptureRegion => t("Capture region"),
+        CaptureCommand::CaptureActiveWindow => t("Capture window"),
+        CaptureCommand::ToggleVideo => t("Record video"),
+        CaptureCommand::ToggleGif => t("Record GIF"),
+        CaptureCommand::TogglePause => t("Pause · resume"),
+        CaptureCommand::Cancel => t("Cancel"),
     }
 }
 
@@ -675,7 +683,7 @@ impl Render for SettingsView {
             .id("settings")
             .track_focus(&self.focus_handle)
             .role(Role::Group)
-            .aria_label("Settings")
+            .aria_label(t("Settings"))
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
@@ -684,15 +692,15 @@ impl Render for SettingsView {
             .gap(theme::u(theme::GAP))
             .p(theme::u(theme::PAD))
             .child(self.section(
-                "Capture",
+                t("Capture"),
                 vec![
-                        controls::row("settings-countdown", "Countdown", None)
+                        controls::row("settings-countdown", t("Countdown"), None)
                             .child(
                                 controls::stepper("settings-countdown-stepper")
                                     .child(
                                         controls::step_button(
                                             "countdown-down",
-                                            "Shorter countdown",
+                                            t("Shorter countdown"),
                                             controls::Step::Down,
                                             index.is_some_and(|index| index > 0),
                                         )
@@ -712,7 +720,7 @@ impl Render for SettingsView {
                                     .child(
                                         controls::step_button(
                                             "countdown-up",
-                                            "Longer countdown",
+                                            t("Longer countdown"),
                                             controls::Step::Up,
                                             index.is_some_and(|index| index + 1 < COUNTDOWN.len()),
                                         )
@@ -730,15 +738,15 @@ impl Render for SettingsView {
                             .into_any_element(),
                         controls::row(
                             "settings-clipboard",
-                            "Copy to clipboard",
+                            t("Copy to clipboard"),
                             Some(
-                                "Screenshots only".into(),
+                                t("Screenshots only").into(),
                             ),
                         )
                         .child(
                             controls::toggle(
                                 "settings-clipboard-toggle",
-                                "Copy to clipboard",
+                                t("Copy to clipboard"),
                                 settings.screenshot.copy_to_clipboard,
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -750,13 +758,13 @@ impl Render for SettingsView {
                         .into_any_element(),
                         controls::row(
                             "settings-hide-panel",
-                            "Hide panel while capturing",
+                            t("Hide panel while capturing"),
                             None,
                         )
                         .child(
                             controls::toggle(
                                 "settings-hide-panel-toggle",
-                                "Hide panel while capturing",
+                                t("Hide panel while capturing"),
                                 settings.hide_panel_while_capturing,
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -783,17 +791,17 @@ impl Render for SettingsView {
                 ],
             ))
             .child(self.section(
-                "Audio",
+                t("Audio"),
                 vec![
                         controls::row(
                             "settings-audio",
-                            "System audio",
-                            Some("Applies from the next recording".into()),
+                            t("System audio"),
+                            Some(t("Applies from the next recording").into()),
                         )
                         .child(
                             controls::toggle(
                                 "settings-audio-toggle",
-                                "System audio",
+                                t("System audio"),
                                 settings.audio.enabled,
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -805,11 +813,11 @@ impl Render for SettingsView {
                         self.select_row(Select::AudioBitrate, cx),
                     ],
             ))
-            .child(self.section("Hotkeys", self.hotkey_rows(cx)))
+            .child(self.section(t("Hotkeys"), self.hotkey_rows(cx)))
             .child(self.section(
-                "Storage",
+                t("Storage"),
                 vec![
-                    controls::row("settings-folder", "Save to", None)
+                    controls::row("settings-folder", t("Save to"), None)
                         .child(
                             controls::path_field(
                                 "settings-folder-path",
@@ -817,7 +825,7 @@ impl Render for SettingsView {
                                 folder,
                             )
                             .child(
-                                controls::action_button("settings-folder-open", "Open").on_click(
+                                controls::action_button("settings-folder-open", t("Open")).on_click(
                                     cx.listener(move |_, _, _, _| {
                                         if let Err(error) = open_path(&capture_root) {
                                             tracing::error!(%error, "open capture folder");
@@ -830,11 +838,11 @@ impl Render for SettingsView {
                     self.select_row(Select::JpegThreshold, cx),
                     controls::row(
                         "settings-reset",
-                        "Reset all settings",
+                        t("Reset all settings"),
                         Some(if self.confirm_reset {
-                            "Press again to reset everything".into()
+                            t("Press again to reset everything").into()
                         } else {
-                            "There is no undo".into()
+                            t("There is no undo").into()
                         }),
                     )
                     .child(self.reset_button(cx))
@@ -856,11 +864,11 @@ impl Render for SettingsView {
                     .gap(theme::u(2.0))
                     .text_size(theme::u(theme::TEXT_MICRO))
                     .text_color(theme::text_muted())
-                    .child(format!(
-                        "RapidCap {} · settings schema v{}",
-                        env!("CARGO_PKG_VERSION"),
-                        settings.schema_version,
-                    ))
+                    .child(
+                        t("RapidCap {version} · settings schema v{schema}")
+                            .replace("{version}", env!("CARGO_PKG_VERSION"))
+                            .replace("{schema}", &settings.schema_version.to_string()),
+                    )
                     .child(div().truncate().child(home_relative(&paths.settings_file))),
             )
     }
@@ -870,7 +878,7 @@ impl Render for SettingsView {
 /// seconds of waiting is not a duration anybody sets.
 fn countdown_label(seconds: u8) -> String {
     if seconds == 0 {
-        "Off".to_string()
+        t("Off").to_string()
     } else {
         format!("{seconds} s")
     }
@@ -907,6 +915,20 @@ mod tests {
         // made here is refused on the next load.
         let offered: Vec<&str> = GIF_DITHER.iter().map(|(name, ..)| *name).collect();
         assert_eq!(offered, DITHERS);
+    }
+
+    #[test]
+    fn every_table_name_has_an_uzbek_line() {
+        // These reach `t` through a const table, out of sight of the scan in
+        // `i18n`. Dither names other than `None` are proper names and stay.
+        let keys = QUALITY
+            .iter()
+            .map(|quality| quality.name)
+            .chain(GIF_DITHER.iter().map(|(_, _, blurb)| *blurb))
+            .chain(["None"]);
+        for key in keys {
+            assert!(crate::i18n::uz(key).is_some(), "no Uzbek line for {key:?}");
+        }
     }
 
     #[test]

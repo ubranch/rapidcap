@@ -9,6 +9,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::{
     controller::AppController,
+    i18n::t,
     icons::Icon,
     motion,
     platform::{
@@ -41,7 +42,7 @@ impl RegionOverlay {
         kind: CaptureKind,
         monitor: PhysicalRegion,
     ) -> Self {
-        window.set_window_title("RapidCap Selection");
+        window.set_window_title(t("RapidCap Selection"));
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
         Self {
@@ -200,9 +201,9 @@ impl Render for RegionOverlay {
         root = root.child(
             float_label(
                 if self.kind == CaptureKind::ActiveWindowScreenshot {
-                    "Click window · Esc cancel"
+                    t("Click window · Esc cancel")
                 } else {
-                    "Click window or drag region · Esc cancel"
+                    t("Click window or drag region · Esc cancel")
                 }
                 .to_string(),
             )
@@ -452,7 +453,7 @@ impl Render for RecordingHud {
                     .id("recording-hud")
                     .accessibility_id("rapidcap.hud")
                     .role(Role::Application)
-                    .aria_label("RapidCap recording controls")
+                    .aria_label(t("RapidCap recording controls"))
                     .h(theme::u(theme::HUD_H))
                     .w(theme::u(theme::HUD_W))
                     .flex()
@@ -530,7 +531,7 @@ impl Render for RecordingHud {
                             .child(
                                 hud_button(
                                     "rapidcap.hud-stop",
-                                    if can_pause { "Stop" } else { "Cancel" },
+                                    if can_pause { t("Stop") } else { t("Cancel") },
                                     Icon::Stop,
                                     true,
                                     true,
@@ -562,8 +563,8 @@ fn kind_noun(kind: CaptureKind) -> &'static str {
     match kind {
         CaptureKind::Video => "Video",
         CaptureKind::Gif => "GIF",
-        CaptureKind::RegionScreenshot => "Region",
-        CaptureKind::ActiveWindowScreenshot => "Window",
+        CaptureKind::RegionScreenshot => t("Region"),
+        CaptureKind::ActiveWindowScreenshot => t("Window"),
     }
 }
 
@@ -588,34 +589,38 @@ struct HudFace {
 fn hud_face(state: &CaptureState, target: &str, countdown_elapsed: u8, recorded: u64) -> HudFace {
     let (status, pause_label, pause_icon, can_pause, dot) = match state {
         CaptureState::Countdown(kind, seconds) => (
-            format!(
-                "{} in {} · {target}",
-                kind_noun(*kind),
-                seconds.saturating_sub(countdown_elapsed)
-            ),
-            "Pause",
+            t("{kind} in {n} · {target}")
+                .replace("{kind}", kind_noun(*kind))
+                .replace(
+                    "{n}",
+                    &seconds.saturating_sub(countdown_elapsed).to_string(),
+                )
+                .replace("{target}", target),
+            t("Pause"),
             Icon::Pause,
             false,
             theme::text_muted(),
         ),
-        CaptureState::Recording(_) => (clock(recorded), "Pause", Icon::Pause, true, theme::rec()),
+        CaptureState::Recording(_) => {
+            (clock(recorded), t("Pause"), Icon::Pause, true, theme::rec())
+        }
         CaptureState::Paused(_) => (
             clock(recorded),
-            "Resume",
+            t("Resume"),
             Icon::Play,
             true,
             theme::text_pill(),
         ),
         CaptureState::Finalizing(kind) => (
-            format!("Finalizing {}…", kind_noun(*kind)),
-            "Pause",
+            t("Finalizing {kind}…").replace("{kind}", kind_noun(*kind)),
+            t("Pause"),
             Icon::Pause,
             false,
             theme::text_muted(),
         ),
         _ => (
-            "Closing…".into(),
-            "Pause",
+            t("Closing…").into(),
+            t("Pause"),
             Icon::Pause,
             false,
             theme::text_muted(),

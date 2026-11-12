@@ -11,12 +11,14 @@ struct PanelView: View {
                 header
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
                           spacing: 8) {
-                    ModeCard(model: model, kind: .region, symbol: "rectangle.dashed", title: "Region",
-                             shortcut: .region)
-                    ModeCard(model: model, kind: .window, symbol: "macwindow", title: "Window",
-                             shortcut: .window)
-                    ModeCard(model: model, kind: .video, symbol: "video", title: "Video", shortcut: .video)
-                    ModeCard(model: model, kind: .gif, symbol: "photo.stack", title: "GIF", shortcut: .gif)
+                    ModeCard(model: model, kind: .region, symbol: "rectangle.dashed",
+                             title: String(localized: "Region"), shortcut: .region)
+                    ModeCard(model: model, kind: .window, symbol: "macwindow",
+                             title: String(localized: "Window"), shortcut: .window)
+                    ModeCard(model: model, kind: .video, symbol: "video",
+                             title: String(localized: "Video"), shortcut: .video)
+                    ModeCard(model: model, kind: .gif, symbol: "photo.stack",
+                             title: String(localized: "GIF"), shortcut: .gif)
                 }
                 footer
             }
@@ -31,7 +33,7 @@ struct PanelView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
             LiquidSegmented(
-                options: [(0, "Off"), (3, "3s"), (5, "5s")],
+                options: [(0, String(localized: "Off")), (3, "3s"), (5, "5s")],
                 selection: Binding(
                     get: { model.settings.countdown_seconds },
                     set: { value in
@@ -80,10 +82,10 @@ struct PanelView: View {
             HStack(spacing: 6) {
                 let saved = model.lastSaved
                 Chip(symbol: saved == nil ? "folder" : "checkmark.circle.fill",
-                     text: saved?.lastPathComponent ?? "Captures", prominent: saved != nil) {
+                     text: saved?.lastPathComponent ?? String(localized: "Captures"), prominent: saved != nil) {
                     if let saved { NSWorkspace.shared.open(saved) } else { model.openOutput() }
                 }
-                .help(saved.map { "Open \($0.path)" } ?? homeRelative(model.paths.capture_root))
+                .help(saved.map { String(localized: "Open \($0.path)") } ?? homeRelative(model.paths.capture_root))
                 Spacer(minLength: 4)
                 StatusWell(model: model)
             }
@@ -126,7 +128,7 @@ private struct ModeCard: View {
                         .background(.white.opacity(0.08), in: .capsule)
                         .strikethrough(Hotkeys.shared.taken.contains(shortcut))
                         .help(Hotkeys.shared.taken.contains(shortcut)
-                              ? "Another app uses this shortcut" : "Shortcut")
+                              ? String(localized: "Another app uses this shortcut") : String(localized: "Shortcut"))
                 }
                 Spacer(minLength: 4)
                 Text(label)
@@ -158,11 +160,13 @@ private struct ModeCard: View {
 
     private var label: String {
         switch model.state {
-        case .selecting(kind): kind == .window ? "Click a window…" : "Drag a region…"
-        case let .countdown(current, seconds) where current == kind: seconds > 0 ? "Starts in \(seconds)" : "Starting…"
-        case .recording(kind): "Stop"
-        case .paused(kind): "Paused · Stop"
-        case .finalizing(kind): "Saving…"
+        case .selecting(kind):
+            kind == .window ? String(localized: "Click a window…") : String(localized: "Drag a region…")
+        case let .countdown(current, seconds) where current == kind:
+            seconds > 0 ? String(localized: "Starts in \(seconds)") : String(localized: "Starting…")
+        case .recording(kind): String(localized: "Stop")
+        case .paused(kind): String(localized: "Paused · Stop")
+        case .finalizing(kind): String(localized: "Saving…")
         default: title
         }
     }
@@ -239,12 +243,12 @@ private struct StatusWell: View {
 
     private func text(at now: Date) -> String {
         switch model.state {
-        case .idle: model.lastSaved == nil ? "Ready" : "Saved"
-        case .selecting: "Esc to cancel"
-        case let .countdown(_, seconds): seconds > 0 ? "In \(seconds)s" : "Starting"
+        case .idle: model.lastSaved == nil ? String(localized: "Ready") : String(localized: "Saved")
+        case .selecting: String(localized: "Esc to cancel")
+        case let .countdown(_, seconds): seconds > 0 ? String(localized: "In \(seconds)s") : String(localized: "Starting")
         case .recording: clock(model.elapsed(at: now))
-        case .paused: "Paused \(clock(model.elapsed(at: now)))"
-        case .finalizing: "Saving…"
+        case .paused: String(localized: "Paused \(clock(model.elapsed(at: now)))")
+        case .finalizing: String(localized: "Saving…")
         }
     }
 }

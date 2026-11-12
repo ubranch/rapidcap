@@ -3,6 +3,7 @@
 mod controller;
 mod controls;
 mod gallery;
+mod i18n;
 mod icons;
 mod menu;
 mod motion;
@@ -63,9 +64,9 @@ fn install_app_menu(cx: &mut App, controller: &gpui::Entity<AppController>) {
     cx.set_menus([gpui::Menu {
         name: "RapidCap".into(),
         items: vec![
-            gpui::MenuItem::action("Hide RapidCap", window::HidePanelAction),
+            gpui::MenuItem::action(i18n::t("Hide RapidCap"), window::HidePanelAction),
             gpui::MenuItem::separator(),
-            gpui::MenuItem::action("Quit RapidCap", window::QuitAction),
+            gpui::MenuItem::action(i18n::t("Quit RapidCap"), window::QuitAction),
         ],
         disabled: false,
     }]);

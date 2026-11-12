@@ -97,8 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func makeWindow(_ screen: Screen) -> NSWindow {
         let title = switch screen {
         case .panel: "RapidCap"
-        case .settings: "Settings"
-        case .gallery: "Recent captures"
+        case .settings: String(localized: "Settings")
+        case .gallery: String(localized: "Recent captures")
         }
         let window = GlassWindow.make(title: title, size: PanelSize.of(screen),
                                       root: WindowRoot(screen: screen, model: model, metrics: metrics))
@@ -173,20 +173,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About RapidCap", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+        appMenu.addItem(withTitle: String(localized: "About RapidCap"),
+                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
                         keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        appMenu.addItem(withTitle: String(localized: "Settings…"), action: #selector(openSettings),
+                        keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide RapidCap", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit RapidCap", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: String(localized: "Hide RapidCap"), action: #selector(NSApplication.hide(_:)),
+                        keyEquivalent: "h")
+        appMenu.addItem(withTitle: String(localized: "Quit RapidCap"), action: #selector(NSApplication.terminate(_:)),
+                        keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 
         let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)),
+        let windowMenu = NSMenu(title: String(localized: "Window"))
+        windowMenu.addItem(withTitle: String(localized: "Close"), action: #selector(NSWindow.performClose(_:)),
+                           keyEquivalent: "w")
+        windowMenu.addItem(withTitle: String(localized: "Minimize"), action: #selector(NSWindow.performMiniaturize(_:)),
                            keyEquivalent: "m")
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
@@ -243,19 +248,20 @@ extension AppDelegate: NSMenuDelegate {
         }
         let recordingVideo = model.state == .recording(.video) || model.state == .paused(.video)
         let recordingGif = model.state == .recording(.gif) || model.state == .paused(.gif)
-        item("Capture region", #selector(menuRegion), "rectangle.dashed", .region)
-        item("Capture window", #selector(menuWindow), "macwindow", .window)
-        item(recordingVideo ? "Stop recording" : "Record video", #selector(menuVideo),
-             recordingVideo ? "stop.fill" : "video", .video)
-        item(recordingGif ? "Stop GIF" : "Record GIF", #selector(menuGif),
+        item(String(localized: "Capture region"), #selector(menuRegion), "rectangle.dashed", .region)
+        item(String(localized: "Capture window"), #selector(menuWindow), "macwindow", .window)
+        item(recordingVideo ? String(localized: "Stop recording") : String(localized: "Record video"),
+             #selector(menuVideo), recordingVideo ? "stop.fill" : "video", .video)
+        item(recordingGif ? String(localized: "Stop GIF") : String(localized: "Record GIF"), #selector(menuGif),
              recordingGif ? "stop.fill" : "photo.stack", .gif)
         menu.addItem(.separator())
-        item("Show RapidCap", #selector(menuShow), "rectangle.on.rectangle")
-        item("Recent captures", #selector(menuGallery), "square.grid.2x2")
-        item("Open captures folder", #selector(menuFolder), "folder")
+        item(String(localized: "Show RapidCap"), #selector(menuShow), "rectangle.on.rectangle")
+        item(String(localized: "Recent captures"), #selector(menuGallery), "square.grid.2x2")
+        item(String(localized: "Open captures folder"), #selector(menuFolder), "folder")
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit RapidCap", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quit.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")?
+        let quit = NSMenuItem(title: String(localized: "Quit RapidCap"), action: #selector(NSApplication.terminate(_:)),
+                              keyEquivalent: "q")
+        quit.image = NSImage(systemSymbolName: "power", accessibilityDescription: String(localized: "Quit"))?
             .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         menu.addItem(quit)
     }

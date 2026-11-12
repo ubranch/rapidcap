@@ -10,6 +10,7 @@
 
 use rapidcap_capture::{CaptureKind, CaptureState};
 
+use crate::i18n::t;
 use crate::theme;
 
 /// What the icon shows. Derived from `CaptureState`, not stored.
@@ -36,15 +37,19 @@ impl TrayState {
     /// Hover text. Mirrors the panel's status well — same words, same order.
     pub fn tooltip(self, state: &CaptureState) -> String {
         let detail = match state {
-            CaptureState::Countdown(kind, seconds) => {
-                format!("{} starts in {seconds}", kind_noun(*kind))
+            CaptureState::Countdown(kind, seconds) => t("{kind} starts in {n}")
+                .replace("{kind}", kind_noun(*kind))
+                .replace("{n}", &seconds.to_string()),
+            CaptureState::Recording(kind) => {
+                t("Recording {kind}").replace("{kind}", kind_noun(*kind))
             }
-            CaptureState::Recording(kind) => format!("Recording {}", kind_noun(*kind)),
-            CaptureState::Paused(kind) => format!("Paused {}", kind_noun(*kind)),
-            CaptureState::Finalizing(kind) => format!("Finalizing {}", kind_noun(*kind)),
-            CaptureState::Selecting(_) => "Selecting".to_string(),
-            CaptureState::Error(_) => "Capture failed".to_string(),
-            CaptureState::Idle => "Ready".to_string(),
+            CaptureState::Paused(kind) => t("Paused {kind}").replace("{kind}", kind_noun(*kind)),
+            CaptureState::Finalizing(kind) => {
+                t("Finalizing {kind}").replace("{kind}", kind_noun(*kind))
+            }
+            CaptureState::Selecting(_) => t("Selecting").to_string(),
+            CaptureState::Error(_) => t("Capture failed").to_string(),
+            CaptureState::Idle => t("Ready").to_string(),
         };
         format!("RapidCap — {detail}")
     }
@@ -54,8 +59,8 @@ fn kind_noun(kind: CaptureKind) -> &'static str {
     match kind {
         CaptureKind::Video => "video",
         CaptureKind::Gif => "GIF",
-        CaptureKind::RegionScreenshot => "region",
-        CaptureKind::ActiveWindowScreenshot => "window",
+        CaptureKind::RegionScreenshot => t("region"),
+        CaptureKind::ActiveWindowScreenshot => t("window"),
     }
 }
 

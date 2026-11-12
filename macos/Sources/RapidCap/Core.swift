@@ -91,11 +91,11 @@ struct PixelRect: Equatable, Sendable {
 
 enum Core {
     private static func take(_ pointer: UnsafeMutablePointer<CChar>?) -> [String: Any] {
-        guard let pointer else { return ["error": "the capture core returned nothing"] }
+        guard let pointer else { return ["error": String(localized: "the capture core returned nothing")] }
         defer { rc_free(pointer) }
         let data = Data(String(cString: pointer).utf8)
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            ?? ["error": "the capture core returned unreadable JSON"]
+            ?? ["error": String(localized: "the capture core returned unreadable JSON")]
     }
 
     private static func check(_ answer: [String: Any]) throws -> [String: Any] {
@@ -142,7 +142,7 @@ enum Core {
         let checked = try check(answer)
         return Saved(
             path: URL(fileURLWithPath: checked["path"] as? String ?? ""),
-            note: (checked["clipboard_error"] as? String).map { "not copied: \($0)" }
+            note: (checked["clipboard_error"] as? String).map { String(localized: "not copied: \($0)") }
         )
     }
 
@@ -171,7 +171,7 @@ final class RecordingHandle: @unchecked Sendable {
         var error: UnsafeMutablePointer<CChar>?
         raw = rc_record_start(gif ? 1 : 0, rect.x, rect.y, rect.width, rect.height, &error)
         if raw == nil {
-            var message = "recording did not start"
+            var message = String(localized: "recording did not start")
             if let error {
                 message = (try? JSONSerialization.jsonObject(with: Data(String(cString: error).utf8))
                     as? [String: Any])?["error"] as? String ?? message
@@ -182,8 +182,10 @@ final class RecordingHandle: @unchecked Sendable {
     }
 
     private func call(_ body: (OpaquePointer?) -> UnsafeMutablePointer<CChar>?) throws -> [String: Any] {
-        guard raw != nil else { throw CoreError(message: "the recording has already ended") }
-        guard let pointer = body(raw) else { throw CoreError(message: "the capture core returned nothing") }
+        guard raw != nil else { throw CoreError(message: String(localized: "the recording has already ended")) }
+        guard let pointer = body(raw) else {
+            throw CoreError(message: String(localized: "the capture core returned nothing"))
+        }
         defer { rc_free(pointer) }
         let answer = (try? JSONSerialization.jsonObject(with: Data(String(cString: pointer).utf8)))
             as? [String: Any] ?? [:]
@@ -203,7 +205,7 @@ final class RecordingHandle: @unchecked Sendable {
         let answer = try call { rc_record_stop($0) }
         return Core.Saved(
             path: URL(fileURLWithPath: answer["path"] as? String ?? ""),
-            note: (answer["clipboard_error"] as? String).map { "not copied: \($0)" }
+            note: (answer["clipboard_error"] as? String).map { String(localized: "not copied: \($0)") }
         )
     }
 

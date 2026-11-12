@@ -34,10 +34,12 @@ struct WindowRoot: View {
             Spacer(minLength: 6)
             switch screen {
             case .panel:
-                IconButton(symbol: "square.grid.2x2", help: "Recent captures") { model.open(.gallery) }
-                IconButton(symbol: "gearshape", help: "Settings") { model.open(.settings) }
+                IconButton(symbol: "square.grid.2x2", help: String(localized: "Recent captures")) {
+                    model.open(.gallery)
+                }
+                IconButton(symbol: "gearshape", help: String(localized: "Settings")) { model.open(.settings) }
             case .gallery:
-                IconButton(symbol: "folder", help: "Open captures folder") { model.openOutput() }
+                IconButton(symbol: "folder", help: String(localized: "Open captures folder")) { model.openOutput() }
             case .settings:
                 EmptyView()
             }
@@ -52,8 +54,8 @@ struct WindowRoot: View {
     private var title: String {
         switch screen {
         case .panel: "RapidCap"
-        case .settings: "Settings"
-        case .gallery: "Recent captures"
+        case .settings: String(localized: "Settings")
+        case .gallery: String(localized: "Recent captures")
         }
     }
 }

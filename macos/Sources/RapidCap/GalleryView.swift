@@ -20,6 +20,15 @@ struct CaptureFile: Identifiable, Hashable {
 
 enum Filter: String, CaseIterable {
     case all = "All", images = "Images", video = "Video", gif = "GIF"
+
+    var title: String {
+        switch self {
+        case .all: String(localized: "All")
+        case .images: String(localized: "Images")
+        case .video: String(localized: "Video")
+        case .gif: String(localized: "GIF")
+        }
+    }
 }
 
 private let extensions: Set<String> = ["png", "jpg", "jpeg", "gif", "mp4", "mov"]
@@ -56,10 +65,10 @@ struct GalleryView: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack {
-                LiquidSegmented(options: Filter.allCases.map { ($0, $0.rawValue) }, selection: $filter,
+                LiquidSegmented(options: Filter.allCases.map { ($0, $0.title) }, selection: $filter,
                                 height: 24)
                 Spacer()
-                Text("\(shown.count) \(shown.count == 1 ? "capture" : "captures")")
+                Text(shown.count == 1 ? String(localized: "1 capture") : String(localized: "\(shown.count) captures"))
                     .font(.system(size: 10.5, weight: .medium).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
@@ -107,7 +116,7 @@ private struct EmptyGallery: View {
             Image(systemName: filtered ? "line.3.horizontal.decrease.circle" : "camera.viewfinder")
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(.secondary)
-            Text(filtered ? "Nothing of this kind yet" : "No captures yet")
+            Text(filtered ? String(localized: "Nothing of this kind yet") : String(localized: "No captures yet"))
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.top, 2)
             Text("Saved to \(homeRelative(model.paths.capture_root))")
@@ -166,9 +175,9 @@ private struct Tile: View {
                 ZStack {
                     Rectangle().fill(.black.opacity(0.35))
                     HStack(spacing: 4) {
-                        action("doc.on.doc", "Copy") { try? Core.copyFile(file.url) }
-                        action("folder", "Show in Finder") { model.reveal(file.url) }
-                        action("trash", "Move to Trash") {
+                        action("doc.on.doc", String(localized: "Copy")) { try? Core.copyFile(file.url) }
+                        action("folder", String(localized: "Show in Finder")) { model.reveal(file.url) }
+                        action("trash", String(localized: "Move to Trash")) {
                             try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)
                             changed()
                         }

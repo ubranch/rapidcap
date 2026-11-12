@@ -25,6 +25,7 @@ use tray_icon::{
     menu::{IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, accelerator::Accelerator},
 };
 
+use crate::i18n::t;
 use crate::tray::{self, TrayState};
 
 #[cfg(target_os = "macos")]
@@ -220,12 +221,12 @@ impl MenuAction {
     /// Stopping a recording means toggling the kind that is running. Sending
     /// `ToggleVideo` at a GIF is answered with `CommandError::Busy`, so the item
     /// has to carry the live kind rather than a fixed command.
-    const fn stop(kind: CaptureKind) -> Self {
+    fn stop(kind: CaptureKind) -> Self {
         let command = match kind {
             CaptureKind::Gif => CaptureCommand::ToggleGif,
             _ => CaptureCommand::ToggleVideo,
         };
-        Self::new(command, "Stop recording")
+        Self::new(command, t("Stop recording"))
     }
 }
 
@@ -239,16 +240,16 @@ fn menu_actions(state: &CaptureState) -> Vec<MenuAction> {
         // `dispatch` clears the error state before it reads the command, so a
         // failed capture offers everything an idle one does.
         CaptureState::Idle | CaptureState::Error(_) => vec![
-            MenuAction::new(CaptureCommand::CaptureRegion, "Capture region"),
-            MenuAction::new(CaptureCommand::CaptureActiveWindow, "Capture window"),
-            MenuAction::new(CaptureCommand::ToggleVideo, "Record video"),
+            MenuAction::new(CaptureCommand::CaptureRegion, t("Capture region")),
+            MenuAction::new(CaptureCommand::CaptureActiveWindow, t("Capture window")),
+            MenuAction::new(CaptureCommand::ToggleVideo, t("Record video")),
         ],
         CaptureState::Recording(kind) => vec![
-            MenuAction::new(CaptureCommand::TogglePause, "Pause"),
+            MenuAction::new(CaptureCommand::TogglePause, t("Pause")),
             MenuAction::stop(*kind),
         ],
         CaptureState::Paused(kind) => vec![
-            MenuAction::new(CaptureCommand::TogglePause, "Resume"),
+            MenuAction::new(CaptureCommand::TogglePause, t("Resume")),
             MenuAction::stop(*kind),
         ],
         // Selecting draws a full-screen overlay with the tray behind it,
@@ -296,9 +297,9 @@ fn tray_menu(state: &CaptureState) -> tray_icon::menu::Result<Menu> {
             )
         })
         .collect();
-    let show = MenuItem::with_id(MENU_SHOW, "Show RapidCap", true, None);
-    let output = MenuItem::with_id(MENU_OUTPUT, "Open output folder", true, None);
-    let exit = MenuItem::with_id(MENU_EXIT, "Exit", true, None);
+    let show = MenuItem::with_id(MENU_SHOW, t("Show RapidCap"), true, None);
+    let output = MenuItem::with_id(MENU_OUTPUT, t("Open output folder"), true, None);
+    let exit = MenuItem::with_id(MENU_EXIT, t("Exit"), true, None);
     // One separator per gap. A single item cannot sit in a menu twice.
     let separators = [
         PredefinedMenuItem::separator(),

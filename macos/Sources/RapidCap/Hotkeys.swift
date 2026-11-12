@@ -15,11 +15,11 @@ enum HotkeyCommand: UInt32, CaseIterable {
 
     var name: String {
         switch self {
-        case .region: "Capture region"
-        case .window: "Capture window"
-        case .video: "Record video"
-        case .gif: "Record GIF"
-        case .pause: "Pause · resume"
+        case .region: String(localized: "Capture region")
+        case .window: String(localized: "Capture window")
+        case .video: String(localized: "Record video")
+        case .gif: String(localized: "Record GIF")
+        case .pause: String(localized: "Pause · resume")
         }
     }
 

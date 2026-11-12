@@ -206,8 +206,8 @@ private final class OverlayView: NSView {
         scrim.fill()
 
         guard let hole else {
-            drawHint(controller.pickWindow ? "Click a window to capture it · Esc to cancel"
-                : "Drag to select · Esc to cancel")
+            drawHint(controller.pickWindow ? String(localized: "Click a window to capture it · Esc to cancel")
+                : String(localized: "Drag to select · Esc to cancel"))
             return
         }
         let edge = NSBezierPath(roundedRect: hole.insetBy(dx: -1, dy: -1), xRadius: 11, yRadius: 11)

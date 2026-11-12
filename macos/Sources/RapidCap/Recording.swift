@@ -149,9 +149,11 @@ private struct HudView: View {
             HStack(spacing: 4) {
                 status(at: context.date)
                     .frame(maxWidth: .infinity)
-                HudButton(symbol: isPaused ? "play.fill" : "pause.fill", help: isPaused ? "Resume" : "Pause",
+                HudButton(symbol: isPaused ? "play.fill" : "pause.fill",
+                          help: isPaused ? String(localized: "Resume") : String(localized: "Pause"),
                           prominent: false, enabled: canPause) { model.togglePause() }
-                HudButton(symbol: canPause ? "stop.fill" : "xmark", help: canPause ? "Stop" : "Cancel",
+                HudButton(symbol: canPause ? "stop.fill" : "xmark",
+                          help: canPause ? String(localized: "Stop") : String(localized: "Cancel"),
                           prominent: canPause, enabled: true) {
                     if canPause { model.trigger(model.state.kind ?? .video) } else { model.cancel() }
                 }
@@ -179,7 +181,7 @@ private struct HudView: View {
     private func status(at now: Date) -> some View {
         switch model.state {
         case let .countdown(kind, seconds):
-            Text(seconds > 0 ? "\(kind.noun) in \(seconds)" : "Starting…")
+            Text(seconds > 0 ? String(localized: "\(kind.noun) in \(seconds)") : String(localized: "Starting…"))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
         case .recording, .paused:
