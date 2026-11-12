@@ -228,6 +228,12 @@ extension AppDelegate: NSMenuDelegate {
             entry.target = self
             entry.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
                 .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+            // Built against the macOS 27 SDK, menus hide item images unless the
+            // item asks for them. The API is new in that SDK, which the CI
+            // runner's older Xcode does not have.
+            #if compiler(>=6.4)
+            if #available(macOS 27, *) { entry.preferredImageVisibility = .visible }
+            #endif
             // The global shortcut, printed on the right like any menu's.
             if let key, let shortcut = Hotkeys.shared.chords[key]?.menuEquivalent {
                 entry.keyEquivalent = shortcut.key
