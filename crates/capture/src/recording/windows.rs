@@ -599,10 +599,11 @@ Error opening input file dummy."#;
                 "error",
                 "-select_streams",
                 "v:0",
+                "-count_frames",
                 "-show_entries",
-                "stream=codec_name,avg_frame_rate",
+                "stream=codec_name,nb_read_frames",
                 "-of",
-                "json",
+                "csv=p=0",
             ])
             .arg(output)
             .output()
@@ -610,6 +611,10 @@ Error opening input file dummy."#;
         let stream = String::from_utf8(probe.stdout).unwrap();
         assert!(probe.status.success(), "{stream}");
         assert!(stream.contains("gif"), "{stream}");
+        // Two seconds at 15 fps. The regression this guards came out as one
+        // or two frames: a still, not a recording.
+        let frames: u32 = stream.trim().rsplit(',').next().unwrap().parse().unwrap();
+        assert!(frames >= 20, "only {frames} frames: {stream}");
     }
 
     #[test]
