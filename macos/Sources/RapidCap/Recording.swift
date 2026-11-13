@@ -145,24 +145,32 @@ private struct HudView: View {
     let model: AppModel
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { context in
-            HStack(spacing: 4) {
+        HStack(spacing: 4) {
+            // Only the clock ticks. The glass and the buttons sit outside the
+            // timeline, so a tick redraws two small views, not the whole HUD.
+            TimelineView(.animation(minimumInterval: 0.5, paused: !ticking)) { context in
                 status(at: context.date)
-                    .frame(maxWidth: .infinity)
-                HudButton(symbol: isPaused ? "play.fill" : "pause.fill",
-                          help: isPaused ? String(localized: "Resume") : String(localized: "Pause"),
-                          prominent: false, enabled: canPause) { model.togglePause() }
-                HudButton(symbol: canPause ? "stop.fill" : "xmark",
-                          help: canPause ? String(localized: "Stop") : String(localized: "Cancel"),
-                          prominent: canPause, enabled: true) {
-                    if canPause { model.trigger(model.state.kind ?? .video) } else { model.cancel() }
-                }
             }
-            .padding(.leading, 10)
-            .padding(.trailing, 5)
-            .frame(width: HudController.size.width, height: HudController.size.height)
-            .glassEffect(.regular, in: .capsule)
+            .frame(maxWidth: .infinity)
+            HudButton(symbol: isPaused ? "play.fill" : "pause.fill",
+                      help: isPaused ? String(localized: "Resume") : String(localized: "Pause"),
+                      prominent: false, enabled: canPause) { model.togglePause() }
+            HudButton(symbol: canPause ? "stop.fill" : "xmark",
+                      help: canPause ? String(localized: "Stop") : String(localized: "Cancel"),
+                      prominent: canPause, enabled: true) {
+                if canPause { model.trigger(model.state.kind ?? .video) } else { model.cancel() }
+            }
         }
+        .padding(.leading, 10)
+        .padding(.trailing, 5)
+        .frame(width: HudController.size.width, height: HudController.size.height)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    /// A paused clock does not move, so it does not tick either.
+    private var ticking: Bool {
+        if case .recording = model.state { return true }
+        return false
     }
 
     private var isPaused: Bool {
@@ -229,11 +237,11 @@ private struct HudButton: View {
 
 /// Blinks on the clock it sits beside: dimmed every other half second.
 ///
-/// Not a `repeatForever` animation. One of those never finishes, so when the
-/// dot was removed under an animated change - a recording ending - SwiftUI
-/// kept the removal running, and the whole window updated every frame from
-/// then on. With Full Keyboard Access on, each of those updates rebuilt the
-/// key-view loop: the likely cause of the app freezing on a second recording.
+/// The switch is instant, not animated. A fade that ran 0.4 s of every 0.5 s
+/// kept the window redrawing at the display rate for the whole recording.
+/// Not a `repeatForever` animation either: one of those never finishes, and
+/// removing the dot under an animated change kept the window updating every
+/// frame; with Full Keyboard Access on, that froze the app.
 struct RecordingDot: View {
     let active: Bool
     let now: Date
@@ -245,7 +253,6 @@ struct RecordingDot: View {
             .fill(active ? Color.accentColor : Color.secondary)
             .frame(width: 6, height: 6)
             .opacity(dim ? 0.35 : 1)
-            .animation(.easeInOut(duration: 0.4), value: dim)
     }
 }
 

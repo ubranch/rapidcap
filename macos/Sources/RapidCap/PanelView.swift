@@ -226,11 +226,10 @@ private struct StatusWell: View {
         }
     }
 
+    /// Only a running clock moves; a paused one is redrawn by the state change.
     private var ticking: Bool {
-        switch model.state {
-        case .recording, .paused: true
-        default: false
-        }
+        if case .recording = model.state { return true }
+        return false
     }
 
     private var dot: Color {
