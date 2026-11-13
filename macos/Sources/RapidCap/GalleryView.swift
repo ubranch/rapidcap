@@ -82,11 +82,14 @@ struct GalleryView: View {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10),
                                         GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(shown) { file in
-                            Tile(file: file, model: model) { reload() }
+                            // The tile goes on the click, not after the folder
+                            // is listed again; a failed trash keeps it.
+                            Tile(file: file, model: model) { files.removeAll { $0.id == file.id } }
                                 .transition(.glassLand(scale: 0.9))
                         }
                     }
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shown)
+                    // Quick: a delete is the one change here someone waits on.
+                    .animation(.snappy(duration: 0.18), value: shown)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
                 }
@@ -155,7 +158,7 @@ private struct EmptyGallery: View {
 private struct Tile: View {
     let file: CaptureFile
     let model: AppModel
-    let changed: () -> Void
+    let trashed: () -> Void
     @Local private var thumbnail: NSImage? = nil
     @Local private var hovering: Bool = false
 
@@ -178,8 +181,9 @@ private struct Tile: View {
                         action("doc.on.doc", String(localized: "Copy")) { try? Core.copyFile(file.url) }
                         action("folder", String(localized: "Show in Finder")) { model.reveal(file.url) }
                         action("trash", String(localized: "Move to Trash")) {
-                            try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)
-                            changed()
+                            guard (try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)) != nil
+                            else { return }
+                            trashed()
                         }
                     }
                 }
