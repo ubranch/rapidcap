@@ -346,7 +346,7 @@ fn encode_gif(
         run_ffmpeg(
             ffmpeg,
             &[source],
-            &format!("[0:v]palettegen=stats_mode={mode}[v]"),
+            &format!("[0:v]{}[v]", palettegen(mode)),
             &["-update", "1", "-frames:v", "1"],
             &palette,
         )
@@ -590,11 +590,22 @@ pub fn microphones() -> Result<Vec<String>, RecordingError> {
 /// Used live only for `single`, which streams. The whole-clip modes buffer
 /// every frame in this form, so [`encode_gif`] runs them in two passes.
 fn gif_palette_chain(settings: &Settings) -> String {
-    let mode = &settings.gif.palette_stats_mode;
     format!(
-        ",split[pg][pu];[pg]palettegen=stats_mode={mode}[pal];[pu][pal]{}[v]",
+        ",split[pg][pu];[pg]{}[pal];[pu][pal]{}[v]",
+        palettegen(&settings.gif.palette_stats_mode),
         paletteuse(settings)
     )
+}
+
+/// The palette chosen, all 256 colours of it for the picture.
+///
+/// `palettegen` keeps one entry back for transparency by default. A screen
+/// capture has none, and with that entry in the palette FFmpeg's GIF encoder
+/// wrote every frame whole: ten seconds of a still 1080p desktop came to
+/// 11 MB. Without it unchanged frames shrink to almost nothing - 0.08 MB for
+/// the same clip - and the extra colour lifted its PSNR from 34 to 40 dB.
+fn palettegen(mode: &str) -> String {
+    format!("palettegen=stats_mode={mode}:reserve_transparent=0")
 }
 
 /// The palette applied, with the settings' dither. `diff_mode=rectangle`
@@ -794,6 +805,45 @@ mod tests {
         assert_eq!(whole.len(), 30, "3 seconds at 10 fps");
         assert_eq!(frames(&sliced), whole);
         assert!(!dir.join("sliced.0.part.gif").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The regression: a still screen whose GIF repeated the whole frame
+    /// every frame. Desktop Duplication hands back a few pixels with alpha
+    /// below opaque (shadows, the cursor), as this source has in one column.
+    /// Thirty unchanged frames must cost little more than one.
+    #[test]
+    fn a_still_screen_does_not_repeat_its_frame() {
+        let Ok(ffmpeg) = ffmpeg_path() else { return };
+        let dir = std::env::temp_dir().join(format!("rapidcap-still-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("capture.mkv");
+        let made = Command::new(&ffmpeg)
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .args(["testsrc2=size=320x240:rate=10", "-vf"])
+            .arg("trim=end_frame=1,loop=-1:1,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(eq(X,5),0,255)'")
+            .args(["-t", "3", "-pix_fmt", "bgra", "-c:v", "ffv1", "-y"])
+            .arg(&source)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let size = |gif: &Path, extra: &[&str]| {
+            run_ffmpeg(
+                &ffmpeg,
+                &[&source],
+                &format!("[0:v]null{}", gif_palette_chain(&Settings::default())),
+                extra,
+                gif,
+            )
+            .unwrap();
+            fs::metadata(gif).unwrap().len()
+        };
+        let one = size(&dir.join("one.gif"), &["-frames:v", "1"]);
+        let all = size(&dir.join("all.gif"), &[]);
+        assert!(
+            all < one * 3,
+            "30 still frames: {all} bytes, one frame: {one}"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
