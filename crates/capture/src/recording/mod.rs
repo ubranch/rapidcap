@@ -8,7 +8,7 @@
 use std::{
     fmt, fs,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant},
@@ -325,10 +325,10 @@ pub fn recording_paths(
 /// known: 1.3 GB for ten seconds of 1080p, growing with the length. A palette
 /// per frame (`single`) streams in one graph, so it keeps that form.
 fn encode_gif(
-    ffmpeg: &std::path::Path,
+    ffmpeg: &Path,
     settings: &Settings,
-    source: &std::path::Path,
-    gif: &std::path::Path,
+    source: &Path,
+    gif: &Path,
 ) -> Result<PathBuf, RecordingError> {
     let mode = &settings.gif.palette_stats_mode;
     let palette = gif.with_extension("palette.png");
@@ -350,15 +350,7 @@ fn encode_gif(
             &["-update", "1", "-frames:v", "1"],
             &palette,
         )
-        .and_then(|()| {
-            run_ffmpeg(
-                ffmpeg,
-                &[source, &palette],
-                &format!("[0:v][1:v]{}[v]", paletteuse(settings)),
-                &[],
-                gif,
-            )
-        })
+        .and_then(|()| apply_palette(ffmpeg, settings, source, &palette, gif))
     };
     let _ = fs::remove_file(&palette);
     result.map_err(|status| {
@@ -370,14 +362,183 @@ fn encode_gif(
     Ok(gif.to_path_buf())
 }
 
+/// How many slices the palette pass is cut into: one per whole second of
+/// clip, up to one per core and never more than eight.
+fn gif_slices(seconds: f64) -> usize {
+    let cores = thread::available_parallelism().map_or(1, |cores| cores.get());
+    (seconds as usize).clamp(1, cores.min(8))
+}
+
+/// The frames mapped onto `palette`, in time slices side by side.
+///
+/// Error-diffusion dither runs on one thread per FFmpeg and was most of a
+/// GIF's finalise: 5.3 s of the 6.2 s for ten seconds of moving 1080p. Each
+/// slice dithers its own stretch and the GIFs are joined byte for byte. With
+/// one palette shared and no dither state carried between frames, the join
+/// decodes to the same frames one run makes. A short clip, a slice that
+/// fails, or a join that does not fit takes that one run instead.
+fn apply_palette(
+    ffmpeg: &Path,
+    settings: &Settings,
+    source: &Path,
+    palette: &Path,
+    gif: &Path,
+) -> Result<(), String> {
+    let seconds = media_duration(ffmpeg, source).map_or(0.0, |d| d.as_secs_f64());
+    let slices = gif_slices(seconds);
+    if slices > 1
+        && apply_palette_sliced(ffmpeg, settings, source, palette, gif, seconds, slices).is_ok()
+    {
+        return Ok(());
+    }
+    run_ffmpeg(
+        ffmpeg,
+        &[source, palette],
+        &format!("[0:v][1:v]{}[v]", paletteuse(settings)),
+        &[],
+        gif,
+    )
+}
+
+fn apply_palette_sliced(
+    ffmpeg: &Path,
+    settings: &Settings,
+    source: &Path,
+    palette: &Path,
+    gif: &Path,
+    seconds: f64,
+    slices: usize,
+) -> Result<(), String> {
+    let mapping = paletteuse(settings);
+    // One string per cut, so a slice ends on exactly the time the next one
+    // starts: `trim` keeps `start` and drops `end`, and no frame is in two.
+    let cuts: Vec<String> = (1..slices)
+        .map(|cut| format!("{:.6}", seconds * cut as f64 / slices as f64))
+        .collect();
+    let parts: Vec<PathBuf> = (0..slices)
+        .map(|slice| gif.with_extension(format!("{slice}.part.gif")))
+        .collect();
+    let sliced = thread::scope(|scope| {
+        let runs: Vec<_> = parts
+            .iter()
+            .enumerate()
+            .map(|(slice, part)| {
+                let start = slice.checked_sub(1).map_or("0", |cut| &cuts[cut]);
+                let end = cuts.get(slice).map(|cut| format!(":end={cut}"));
+                let graph = format!(
+                    "[0:v]trim=start={start}{},setpts=PTS-STARTPTS[s];[s][1:v]{mapping}[v]",
+                    end.unwrap_or_default()
+                );
+                scope.spawn(move || run_ffmpeg(ffmpeg, &[source, palette], &graph, &[], part))
+            })
+            .collect();
+        runs.into_iter()
+            .map(|run| {
+                run.join()
+                    .unwrap_or_else(|_| Err("a GIF slice panicked".into()))
+            })
+            .collect::<Result<Vec<()>, String>>()
+    })
+    .and_then(|_| join_gifs(&parts, gif));
+    for part in &parts {
+        let _ = fs::remove_file(part);
+    }
+    sliced
+}
+
+/// GIFs made with one palette, as one file: the first whole, then the frames
+/// of each next one without its header, palette and loop block.
+fn join_gifs(parts: &[PathBuf], gif: &Path) -> Result<(), String> {
+    let mut joined = Vec::new();
+    let mut screen: Option<Vec<u8>> = None;
+    for part in parts {
+        let data = fs::read(part).map_err(|error| error.to_string())?;
+        let (this, frames) = gif_frames(&data).ok_or("a GIF slice is not a GIF")?;
+        // An empty slice means the cuts missed the clip's timestamps; one run
+        // is the safe answer, not a GIF with a stretch silently missing.
+        if frames.is_empty() {
+            return Err("a GIF slice has no frames".into());
+        }
+        match &screen {
+            None => {
+                joined.extend_from_slice(&data[..data.len() - 1]);
+                screen = Some(this.to_vec());
+            }
+            Some(first) if first == this => joined.extend_from_slice(frames),
+            Some(_) => return Err("GIF slices differ in size or palette".into()),
+        }
+    }
+    joined.push(GIF_TRAILER);
+    fs::write(gif, joined).map_err(|error| error.to_string())
+}
+
+const GIF_TRAILER: u8 = 0x3B;
+
+/// A GIF's logical screen with its global palette, and its frames: from the
+/// first frame's control block or image to just before the trailer.
+fn gif_frames(data: &[u8]) -> Option<(&[u8], &[u8])> {
+    if !data.starts_with(b"GIF8") || data.last() != Some(&GIF_TRAILER) {
+        return None;
+    }
+    let flags = *data.get(10)?;
+    let palette = if flags & 0x80 != 0 {
+        3 << ((flags & 7) + 1)
+    } else {
+        0
+    };
+    let screen_end = 13 + palette;
+    // Extensions before the first frame (the loop count) belong to the file.
+    let mut at = screen_end;
+    while *data.get(at)? == 0x21 && *data.get(at + 1)? != 0xF9 {
+        at += 2;
+        while *data.get(at)? != 0 {
+            at += usize::from(data[at]) + 1;
+        }
+        at += 1;
+    }
+    Some((data.get(6..screen_end)?, data.get(at..data.len() - 1)?))
+}
+
+/// How long a media file is, from the line FFmpeg prints about its input.
+pub fn media_duration(ffmpeg: &Path, media: &Path) -> Option<Duration> {
+    let mut command = Command::new(ffmpeg);
+    command
+        .args(["-hide_banner", "-nostdin", "-i"])
+        .arg(media)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    platform::hide_console(&mut command);
+    let output = command.output().ok()?;
+    parse_duration(&String::from_utf8_lossy(&output.stderr))
+}
+
+/// Pull `Duration: 00:00:12.34` out of what `ffmpeg` prints about its input.
+///
+/// It is the only place the length appears without shipping a second binary,
+/// and the line has had this shape for the whole of ffmpeg 4 through 9. A file
+/// whose duration is `N/A` - a stream, or a partial recording - parses to
+/// `None` rather than to zero.
+pub fn parse_duration(stderr: &str) -> Option<Duration> {
+    let after = stderr.split("Duration: ").nth(1)?;
+    let stamp = after.split(',').next()?.trim();
+    let mut parts = stamp.split(':');
+    let hours: u64 = parts.next()?.parse().ok()?;
+    let minutes: u64 = parts.next()?.parse().ok()?;
+    let seconds: f64 = parts.next()?.parse().ok()?;
+    Some(Duration::from_secs_f64(
+        (hours * 3600 + minutes * 60) as f64 + seconds,
+    ))
+}
+
 /// One FFmpeg run: `inputs` through `graph`, whose `[v]` is written to
 /// `output` with `extra` output options.
 fn run_ffmpeg(
-    ffmpeg: &std::path::Path,
-    inputs: &[&std::path::Path],
+    ffmpeg: &Path,
+    inputs: &[&Path],
     graph: &str,
     extra: &[&str],
-    output: &std::path::Path,
+    output: &Path,
 ) -> Result<(), String> {
     let mut command = Command::new(ffmpeg);
     command.args(["-hide_banner", "-loglevel", "error"]);
@@ -558,5 +719,100 @@ mod tests {
             assert!(!dir.join("out.palette.png").exists(), "{mode}");
         }
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The sliced palette pass makes the same frames as one run, and leaves
+    /// none of its slices behind. Needs an FFmpeg, like the test above.
+    #[test]
+    fn a_gif_dithered_in_slices_is_the_gif_one_run_makes() {
+        let Ok(ffmpeg) = ffmpeg_path() else { return };
+        let dir = std::env::temp_dir().join(format!("rapidcap-slices-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("capture.mkv");
+        let palette = dir.join("palette.png");
+        let ff = |args: &[&str]| {
+            let status = Command::new(&ffmpeg)
+                .args(["-nostdin", "-v", "error"])
+                .args(args)
+                .status()
+                .unwrap();
+            assert!(status.success(), "{args:?}");
+        };
+        let source_arg = source.to_str().unwrap();
+        let palette_arg = palette.to_str().unwrap();
+        ff(&[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=160x120:rate=10",
+            "-t",
+            "3",
+        ]
+        .into_iter()
+        .chain(["-c:v", "ffv1", "-y", source_arg])
+        .collect::<Vec<_>>());
+        ff(&[
+            "-i",
+            source_arg,
+            "-vf",
+            "palettegen",
+            "-update",
+            "1",
+            "-frames:v",
+            "1",
+            "-y",
+            palette_arg,
+        ]);
+        let frames = |gif: &Path| -> Vec<String> {
+            let output = Command::new(&ffmpeg)
+                .args(["-nostdin", "-v", "error", "-i"])
+                .arg(gif)
+                .args(["-pix_fmt", "rgb24", "-f", "framemd5", "-"])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter(|line| !line.starts_with('#'))
+                .map(|line| line.rsplit(',').next().unwrap().trim().to_owned())
+                .collect()
+        };
+        let settings = Settings::default();
+        let one = dir.join("one.gif");
+        let sliced = dir.join("sliced.gif");
+        run_ffmpeg(
+            &ffmpeg,
+            &[&source, &palette],
+            &format!("[0:v][1:v]{}[v]", paletteuse(&settings)),
+            &[],
+            &one,
+        )
+        .unwrap();
+        // Called directly: `apply_palette` would fall back to one run and pass
+        // this test whatever the slices did.
+        apply_palette_sliced(&ffmpeg, &settings, &source, &palette, &sliced, 3.0, 3).unwrap();
+        let whole = frames(&one);
+        assert_eq!(whole.len(), 30, "3 seconds at 10 fps");
+        assert_eq!(frames(&sliced), whole);
+        assert!(!dir.join("sliced.0.part.gif").exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_length_comes_off_the_line_ffmpeg_prints_about_its_input() {
+        let stderr = "\
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'Screen.mp4':
+  Metadata:
+    encoder         : Lavf61.7.100
+  Duration: 00:00:42.53, start: 0.000000, bitrate: 4821 kb/s
+  Stream #0:0[0x1](und): Video: h264 (High)
+";
+        assert_eq!(parse_duration(stderr), Some(Duration::from_secs_f64(42.53)));
+        assert_eq!(
+            parse_duration("  Duration: 01:02:03.00, start: 0.000000, bitrate: 1 kb/s"),
+            Some(Duration::from_secs(3723))
+        );
+        // A stream, or a recording whose trailer was never written.
+        assert_eq!(parse_duration("  Duration: N/A, bitrate: N/A"), None);
+        assert_eq!(parse_duration("ffmpeg: no such file"), None);
     }
 }

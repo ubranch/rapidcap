@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-use rapidcap_capture::ffmpeg_path;
+use rapidcap_capture::{ffmpeg_path, parse_duration};
 
 use crate::gallery::Kind;
 
@@ -219,25 +219,6 @@ fn frame_and_length(source: &Path, temp: &Path) -> anyhow::Result<Option<Duratio
     Ok(parse_duration(&String::from_utf8_lossy(&output.stderr)))
 }
 
-/// Pull `Duration: 00:00:12.34` out of what `ffmpeg` prints about its input.
-///
-/// It is the only place the length appears without shipping a second binary,
-/// and the line has had this shape for the whole of ffmpeg 4 through 8. A file
-/// whose duration is `N/A` - a stream, or a partial recording - parses to
-/// `None` rather than to zero, so the badge is left off instead of claiming the
-/// clip is empty.
-fn parse_duration(stderr: &str) -> Option<Duration> {
-    let after = stderr.split("Duration: ").nth(1)?;
-    let stamp = after.split(',').next()?.trim();
-    let mut parts = stamp.split(':');
-    let hours: u64 = parts.next()?.parse().ok()?;
-    let minutes: u64 = parts.next()?.parse().ok()?;
-    let seconds: f64 = parts.next()?.parse().ok()?;
-    Some(Duration::from_secs_f64(
-        (hours * 3600 + minutes * 60) as f64 + seconds,
-    ))
-}
-
 /// The badge in the thumbnail's corner: `00:42`, or `1:02:03` past an hour.
 ///
 /// Rounded up, not down, so a clip of 900 milliseconds reads `00:01` rather
@@ -299,25 +280,6 @@ mod tests {
             key(Path::new("C:/shots/a.png"), now + Duration::from_secs(1)),
             "a file overwritten in place is a different thumbnail"
         );
-    }
-
-    #[test]
-    fn the_length_comes_off_the_line_ffmpeg_prints_about_its_input() {
-        let stderr = "\
-Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'Screen.mp4':
-  Metadata:
-    encoder         : Lavf61.7.100
-  Duration: 00:00:42.53, start: 0.000000, bitrate: 4821 kb/s
-  Stream #0:0[0x1](und): Video: h264 (High)
-";
-        assert_eq!(parse_duration(stderr), Some(Duration::from_secs_f64(42.53)));
-        assert_eq!(
-            parse_duration("  Duration: 01:02:03.00, start: 0.000000, bitrate: 1 kb/s"),
-            Some(Duration::from_secs(3723))
-        );
-        // A stream, or a recording whose trailer was never written.
-        assert_eq!(parse_duration("  Duration: N/A, bitrate: N/A"), None);
-        assert_eq!(parse_duration("ffmpeg: no such file"), None);
     }
 
     #[test]

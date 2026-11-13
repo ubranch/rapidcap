@@ -20,8 +20,8 @@ use std::{
 
 use rapidcap_capture::{
     AppPaths, CaptureKind, CaptureTarget, PhysicalRegion, RecordingSession, Settings,
-    SettingsStore, capture_and_save, ffmpeg_path, microphones, recording_paths, write_clipboard,
-    write_clipboard_file,
+    SettingsStore, capture_and_save, ffmpeg_path, media_duration, microphones, recording_paths,
+    write_clipboard, write_clipboard_file,
 };
 use serde_json::{Value, json};
 
@@ -344,7 +344,7 @@ pub unsafe extern "C" fn rc_mux_audio(
 fn mux_audio(video: &Path, audio: &Path, audio_seconds: f64) -> Result<(), String> {
     let ffmpeg = ffmpeg_path().map_err(|problem| problem.to_string())?;
     let late =
-        video_seconds(&ffmpeg, video).map_or(0.0, |video_seconds| video_seconds - audio_seconds);
+        media_duration(&ffmpeg, video).map_or(0.0, |video| video.as_secs_f64() - audio_seconds);
     // Positive: the audio began after the first frame and waits that long.
     // Negative: it began before, and that much is cut from its front.
     let align = if late >= 0.0 {
@@ -384,26 +384,6 @@ fn mux_audio(video: &Path, audio: &Path, audio_seconds: f64) -> Result<(), Strin
     Ok(())
 }
 
-/// The `Duration:` FFmpeg prints for an input, in seconds.
-fn video_seconds(ffmpeg: &Path, video: &Path) -> Option<f64> {
-    let output = Command::new(ffmpeg)
-        .arg("-hide_banner")
-        .arg("-i")
-        .arg(video)
-        .output()
-        .ok()?;
-    parse_duration(&String::from_utf8_lossy(&output.stderr))
-}
-
-fn parse_duration(log: &str) -> Option<f64> {
-    let start = log.find("Duration: ")? + "Duration: ".len();
-    let mut parts = log.get(start..start + 11)?.split(':');
-    let hours: f64 = parts.next()?.parse().ok()?;
-    let minutes: f64 = parts.next()?.parse().ok()?;
-    let seconds: f64 = parts.next()?.parse().ok()?;
-    Some(hours * 3600.0 + minutes * 60.0 + seconds)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,13 +412,5 @@ mod tests {
         assert!(take(unsafe { rc_record_stop(ptr::null_mut()) })["error"].is_string());
         assert!(take(unsafe { rc_record_pause(ptr::null_mut()) })["error"].is_string());
         unsafe { rc_record_cancel(ptr::null_mut()) };
-    }
-
-    #[test]
-    fn reads_the_duration_ffmpeg_prints() {
-        let log =
-            "Input #0, mov,mp4\n  Duration: 00:01:02.50, start: 0.000000, bitrate: 900 kb/s\n";
-        assert_eq!(parse_duration(log), Some(62.5));
-        assert_eq!(parse_duration("no such line"), None);
     }
 }
