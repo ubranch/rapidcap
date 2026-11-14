@@ -9,6 +9,7 @@ mod menu;
 mod motion;
 mod overlay;
 mod platform;
+mod preview;
 mod settings_view;
 mod theme;
 mod thumbs;
@@ -113,6 +114,7 @@ fn main() -> anyhow::Result<()> {
     application().with_assets(IconAssets).run(move |cx: &mut App| {
         let mut bindings = key_bindings();
         bindings.extend(overlay_key_bindings());
+        bindings.extend(preview::key_bindings());
         cx.bind_keys(bindings);
         let controller = cx.new(|_| AppController::new(settings, paths));
         install_app_menu(cx, &controller);

@@ -183,6 +183,7 @@ private struct Tile: View {
                         action("trash", String(localized: "Move to Trash")) {
                             guard (try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)) != nil
                             else { return }
+                            if model.previewing == file.url { model.closePreview() }
                             trashed()
                         }
                     }
@@ -228,7 +229,7 @@ private struct Tile: View {
         .onHover { inside in
             withAnimation(.spring(response: 0.3, dampingFraction: 0.68)) { hovering = inside }
         }
-        .onTapGesture(count: 2) { NSWorkspace.shared.open(file.url) }
+        .onTapGesture(count: 2) { model.preview(file.url) }
         .help(file.url.lastPathComponent)
         .task(id: file.url) { thumbnail = await makeThumbnail(file.url) }
         .animation(.easeOut(duration: 0.12), value: hovering)

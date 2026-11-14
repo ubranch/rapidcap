@@ -41,6 +41,7 @@ use crate::i18n::t;
 use crate::icons::Icon;
 use crate::motion;
 use crate::platform::{move_to_trash, open_path, reveal_path, shortcut_label};
+use crate::preview::{self, PreviewEvent};
 use crate::settings_view::command_name;
 use crate::theme;
 use crate::thumbs::{self, Thumb};
@@ -116,7 +117,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn of(path: &Path) -> Option<Self> {
+    pub(crate) fn of(path: &Path) -> Option<Self> {
         let extension = path.extension()?.to_str()?.to_ascii_lowercase();
         match extension.as_str() {
             "png" => Some(Self::Png),
@@ -217,6 +218,9 @@ pub struct GalleryView {
     leaving: HashSet<PathBuf>,
     _controller: gpui::Subscription,
     _saved: gpui::Subscription,
+    /// Hears the preview window's deletes, so a capture trashed there fades
+    /// out of the grid the same way one trashed from its tile does.
+    _preview: Option<gpui::Subscription>,
 }
 
 impl GalleryView {
@@ -239,6 +243,7 @@ impl GalleryView {
                     this.reload(cx);
                 }
             }),
+            _preview: None,
             controller,
         }
     }
@@ -360,23 +365,31 @@ impl GalleryView {
         }
     }
 
-    fn open(&self, path: &Path) {
-        if let Err(error) = open_path(path) {
-            tracing::error!(%error, path = %path.display(), "open capture");
-        }
-    }
-
-    /// Put the file itself on the clipboard, not its path: a capture is pasted
-    /// into a chat window far more often than into a shell.
-    fn copy(&self, path: &Path) {
-        if let Err(error) = write_clipboard_file(path) {
-            tracing::error!(%error, path = %path.display(), "copy capture");
-        }
-    }
-
-    fn reveal(&self, path: &Path) {
-        if let Err(error) = reveal_path(path) {
-            tracing::error!(%error, path = %path.display(), "reveal capture");
+    /// Show the capture in RapidCap's own preview window.
+    ///
+    /// Both the tile and the panel's saved chip come through here, so a delete
+    /// made in the preview always reaches the one grid that has to fade it. A
+    /// preview that cannot open falls back to the system app rather than to
+    /// nothing, which is what opening a capture did before the preview existed.
+    pub(crate) fn open(&mut self, path: &Path, cx: &mut Context<Self>) {
+        let thumb_dir = self.controller.read(cx).paths().thumb_dir.clone();
+        match preview::open_preview(cx, path, &thumb_dir) {
+            Ok(preview) => {
+                self._preview = Some(cx.subscribe(
+                    &preview,
+                    |this, _, PreviewEvent::Deleted(path), cx| {
+                        if this.captures.iter().any(|capture| &capture.path == path) {
+                            this.leave(path.clone(), cx);
+                        }
+                    },
+                ));
+            }
+            Err(error) => {
+                tracing::error!(%error, path = %path.display(), "open capture preview");
+                if let Err(error) = open_path(path) {
+                    tracing::error!(%error, path = %path.display(), "open capture");
+                }
+            }
         }
     }
 
@@ -592,7 +605,7 @@ impl GalleryView {
                 )
                 .on_click({
                     let path = path.clone();
-                    cx.listener(move |this, _, _, _| this.open(&path))
+                    cx.listener(move |this, _, _, cx| this.open(&path, cx))
                 })
             })
             .child(
@@ -713,9 +726,9 @@ impl GalleryView {
             .bg(theme::thumb_scrim())
             .child(
                 tile_action(("tile-copy", index), t("Copy"), Icon::Copy, false).on_click(
-                    cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    cx.listener(move |_, _: &ClickEvent, _, cx| {
                         cx.stop_propagation();
-                        this.copy(&copy);
+                        copy_capture(&copy);
                     }),
                 ),
             )
@@ -726,9 +739,9 @@ impl GalleryView {
                     Icon::Folder,
                     false,
                 )
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
                     cx.stop_propagation();
-                    this.reveal(&reveal);
+                    reveal_capture(&reveal);
                 })),
             )
             .child(
@@ -881,7 +894,7 @@ fn filter_chip(filter: Filter, on: bool) -> gpui::Stateful<gpui::Div> {
     chip.child(filter.label())
 }
 
-fn tile_action(
+pub(crate) fn tile_action(
     id: (&'static str, usize),
     label: &'static str,
     icon: Icon,
@@ -907,6 +920,20 @@ fn tile_action(
         .cursor_pointer()
         .hover(move |style| style.bg(hover_bg))
         .child(icon.element(theme::u(ACTION_GLYPH), theme::text_label()))
+}
+
+/// Put the file itself on the clipboard, not its path: a capture is pasted
+/// into a chat window far more often than into a shell.
+pub(crate) fn copy_capture(path: &Path) {
+    if let Err(error) = write_clipboard_file(path) {
+        tracing::error!(%error, path = %path.display(), "copy capture");
+    }
+}
+
+pub(crate) fn reveal_capture(path: &Path) {
+    if let Err(error) = reveal_path(path) {
+        tracing::error!(%error, path = %path.display(), "reveal capture");
+    }
 }
 
 /// One `Capture region — Alt + E` line in the empty state.

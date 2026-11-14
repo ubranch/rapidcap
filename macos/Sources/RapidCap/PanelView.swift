@@ -83,7 +83,7 @@ struct PanelView: View {
                 let saved = model.lastSaved
                 Chip(symbol: saved == nil ? "folder" : "checkmark.circle.fill",
                      text: saved?.lastPathComponent ?? String(localized: "Captures"), prominent: saved != nil) {
-                    if let saved { NSWorkspace.shared.open(saved) } else { model.openOutput() }
+                    if let saved { model.preview(saved) } else { model.openOutput() }
                 }
                 .help(saved.map { String(localized: "Open \($0.path)") } ?? homeRelative(model.paths.capture_root))
                 Spacer(minLength: 4)

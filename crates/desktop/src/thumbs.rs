@@ -105,6 +105,22 @@ impl Cache {
             let _ = std::fs::remove_file(&thumb.image);
             false
         });
+        // The preview's posters go with their capture, by the same key. The
+        // name is `{key}.png`; a `.part` still being written is left alone.
+        let posters = std::fs::read_dir(self.dir.join(POSTERS))
+            .into_iter()
+            .flatten();
+        for entry in posters.flatten() {
+            let path = entry.path();
+            let stale = path
+                .file_name()
+                .and_then(|name| name.to_str()?.strip_suffix(".png"))
+                .and_then(|stem| u64::from_str_radix(stem, 16).ok())
+                .is_some_and(|key| !live.contains(&key));
+            if stale {
+                let _ = std::fs::remove_file(path);
+            }
+        }
     }
 }
 
@@ -167,7 +183,12 @@ fn generate(source: &Path, kind: Kind, dir: &Path, key: u64) -> Option<Thumb> {
     let temp = dir.join(format!("{key:016x}.part"));
     let result = match kind {
         Kind::Png | Kind::Jpg => still(source, &temp).map(|()| None),
-        Kind::Mp4 | Kind::Gif => frame_and_length(source, &temp).map(Some),
+        Kind::Mp4 | Kind::Gif => {
+            let crop = format!(
+                "scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT}"
+            );
+            frame_and_length(source, &temp, &crop).map(Some)
+        }
     };
     match result {
         Ok(duration) => publish(&temp, dir, key, duration.flatten()),
@@ -197,20 +218,16 @@ fn still(source: &Path, temp: &Path) -> anyhow::Result<()> {
 /// `-frames:v 1` with no seek, because a RapidCap recording starts on the
 /// content it was pointed at - there is no title card to skip, and a seek into
 /// a file still being finalised is the reliable way to get nothing back.
-fn frame_and_length(source: &Path, temp: &Path) -> anyhow::Result<Option<Duration>> {
-    let output = Command::new(ffmpeg_path()?)
+fn frame_and_length(source: &Path, temp: &Path, filter: &str) -> anyhow::Result<Option<Duration>> {
+    let mut command = Command::new(ffmpeg_path()?);
+    // FFmpeg is a console program, and spawned from a windowed app without
+    // this every thumbnail flashed a black console window over the gallery.
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0800_0000);
+    let output = command
         .args(["-hide_banner", "-nostdin", "-y", "-i"])
         .arg(source)
-        .args([
-            "-frames:v",
-            "1",
-            "-vf",
-            &format!(
-                "scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,crop={WIDTH}:{HEIGHT}"
-            ),
-            "-f",
-            "image2",
-        ])
+        .args(["-frames:v", "1", "-vf", filter, "-f", "image2"])
         .arg(temp)
         .output()?;
     if !output.status.success() {
@@ -218,6 +235,46 @@ fn frame_and_length(source: &Path, temp: &Path) -> anyhow::Result<Option<Duratio
     }
     Ok(parse_duration(&String::from_utf8_lossy(&output.stderr)))
 }
+
+/// A video's first frame at full size, for the preview window.
+///
+/// Uncropped and capped at 1600px wide rather than the grid's 144px strip,
+/// which looked like a blur once the preview stretched it. Kept in its own
+/// `posters` folder: [`Cache::open`] only lists the top level, so the gallery
+/// never mistakes one for a thumbnail; [`Cache::sweep`] removes it with its
+/// capture. Keyed like a thumbnail, so a re-open is a stat and a recording
+/// overwritten in place gets a fresh frame instead of the one GPUI cached for
+/// the old path.
+pub fn poster(source: &Path, modified: SystemTime, thumb_dir: &Path) -> Option<PathBuf> {
+    let dir = thumb_dir.join(POSTERS);
+    let key = key(source, modified);
+    let image = dir.join(format!("{key:016x}.png"));
+    if image.is_file() {
+        return Some(image);
+    }
+    std::fs::create_dir_all(&dir).ok()?;
+    // Unique per attempt: two previews of the same video may run FFmpeg at
+    // once, and sharing one `.part` would let one rename the other's half-file.
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or_default();
+    let temp = dir.join(format!("{key:016x}-{}-{nanos}.part", std::process::id()));
+    if let Err(error) = frame_and_length(source, &temp, "scale='min(1600,iw)':-2") {
+        tracing::warn!(%error, source = %source.display(), "preview poster");
+        let _ = std::fs::remove_file(&temp);
+        return None;
+    }
+    // Losing a race to the same poster is fine: the winner's file is there.
+    if std::fs::rename(&temp, &image).is_err() {
+        let _ = std::fs::remove_file(&temp);
+        return image.is_file().then_some(image);
+    }
+    Some(image)
+}
+
+/// The preview window's full-size video frames, under the thumbnail directory.
+const POSTERS: &str = "posters";
 
 /// The badge in the thumbnail's corner: `00:42`, or `1:02:03` past an hour.
 ///
@@ -351,6 +408,33 @@ mod tests {
             std::fs::read_dir(&cache_dir).unwrap().count(),
             1,
             "the entry for the deleted capture is gone from the disk too"
+        );
+    }
+
+    #[test]
+    fn a_sweep_takes_stale_posters_and_spares_live_ones_and_parts() {
+        let dir = tempfile::tempdir().unwrap();
+        let posters = dir.path().join(POSTERS);
+        std::fs::create_dir_all(&posters).unwrap();
+        for name in [
+            format!("{:016x}.png", 1),
+            format!("{:016x}.png", 2),
+            "0000000000000002-7-9.part".into(),
+        ] {
+            std::fs::write(posters.join(name), b"").unwrap();
+        }
+        Cache::open(dir.path()).sweep(&[1]);
+        let mut left: Vec<String> = std::fs::read_dir(&posters)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                format!("{:016x}.png", 1),
+                "0000000000000002-7-9.part".into()
+            ]
         );
     }
 

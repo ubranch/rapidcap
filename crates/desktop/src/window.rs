@@ -396,18 +396,18 @@ impl MainWindow {
         }
     }
 
-    /// Open the file the saved chip is offering, and take the chip down.
+    /// Preview the file the saved chip is offering, and take the chip down.
     ///
     /// It has done its job once it has been pressed, and leaving it up for the
     /// rest of the six seconds invites a second click on a file already open.
+    /// It goes through the gallery so a delete in the preview fades the tile.
     fn open_saved(&mut self, cx: &mut Context<Self>) {
         let Some(saved) = self.saved.take() else {
             return;
         };
         cx.notify();
-        if let Err(error) = open_path(&saved.path) {
-            tracing::error!(%error, path = %saved.path.display(), "open saved capture");
-        }
+        self.gallery
+            .update(cx, |gallery, cx| gallery.open(&saved.path, cx));
     }
 
     fn focus_next(&mut self, _: &TabAction, window: &mut Window, cx: &mut Context<Self>) {

@@ -85,6 +85,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         buildStatusItem()
         Hotkeys.shared.start { [weak self] command in self?.handle(command) }
         model.onOpen = { [weak self] screen in self?.open(screen) }
+        model.onPreview = { [weak self] url in self?.openPreview(url) }
+        model.onClosePreview = { [weak self] in self?.preview?.orderOut(nil) }
         show()
         if SelfTest.requested { SelfTest.run() }
         if EndToEnd.requested { EndToEnd.run(model) }
@@ -151,6 +153,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// RapidCap's own preview window: built once, on first use, then reused.
+    /// Opening another capture only swaps the content the model points at.
+    /// The only resizable window - a capture can be any shape.
+    private var preview: NSWindow?
+
+    private func openPreview(_ url: URL) {
+        let window = preview ?? {
+            let made = GlassWindow.make(title: url.lastPathComponent, size: CGSize(width: 760, height: 520),
+                                        root: PreviewRoot(model: model, metrics: metrics),
+                                        minSize: CGSize(width: 420, height: 300))
+            made.delegate = self
+            made.center()
+            preview = made
+            return made
+        }()
+        window.title = url.lastPathComponent
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+    }
+
     private func measureTitlebar() {
         guard let close = window.standardWindowButton(.closeButton),
               let zoom = window.standardWindowButton(.zoomButton),
@@ -169,10 +191,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // listening would keep swallowing every key press.
         Hotkeys.shared.endRecording()
         sender.orderOut(nil)
+        // Hidden is not closed: drop the shown capture so a video stops
+        // playing and its player is released along with the view.
+        if sender === preview { model.previewing = nil }
         return false
     }
 
-    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool { false }
+    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool { window === preview }
 
     private func show() {
         NSApp.activate()
@@ -313,7 +338,8 @@ private func ensureSingleInstance() -> Bool {
     return true
 }
 
-/// A fixed-size window that is glass all the way to its rounded edge.
+/// A glass window, fixed in size unless given a `minSize`; then it resizes
+/// freely above that (the preview).
 ///
 /// The glass sits *behind* the SwiftUI content as a sibling rather than
 /// hosting it as `NSGlassEffectView.contentView`. A click once froze the app
@@ -321,10 +347,12 @@ private func ensureSingleInstance() -> Bool {
 /// subview keeps its responder chain the ordinary one.
 @MainActor
 enum GlassWindow {
-    static func make(title: String, size: CGSize, root: some View) -> NSWindow {
+    static func make(title: String, size: CGSize, root: some View, minSize: CGSize? = nil) -> NSWindow {
+        var style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+        if minSize != nil { style.insert(.resizable) }
         let window = NSWindow(
             contentRect: CGRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+            styleMask: style,
             backing: .buffered, defer: false
         )
         window.title = title
@@ -334,7 +362,7 @@ enum GlassWindow {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.isReleasedWhenClosed = false
-        window.standardWindowButton(.zoomButton)?.isEnabled = false
+        window.standardWindowButton(.zoomButton)?.isEnabled = minSize != nil
         window.collectionBehavior = [.fullScreenAuxiliary]
 
         let container = NSView(frame: CGRect(origin: .zero, size: size))
@@ -359,9 +387,14 @@ enum GlassWindow {
         // Fixed at one size. Min and max pin it against everything that
         // resizes windows from outside the app: a double-click on the title
         // bar, Window > Fill, tiling. The delegate refuses zoom as well.
+        // A resizable window gets only the floor.
         window.setContentSize(size)
-        window.contentMinSize = size
-        window.contentMaxSize = size
+        if let minSize {
+            window.contentMinSize = minSize
+        } else {
+            window.contentMinSize = size
+            window.contentMaxSize = size
+        }
         return window
     }
 }

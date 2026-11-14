@@ -167,6 +167,9 @@ const UZ: &[(&str, &str)] = &[
     ("Copy", "Nusxalash"),
     ("Show in folder", "Papkada ko'rsatish"),
     ("Delete", "O'chirish"),
+    // Preview window.
+    ("Open with default app", "Standart ilovada ochish"),
+    ("Play in default app", "Standart ilovada ijro etish"),
     ("No captures yet", "Hali fayl yo'q"),
     (
         "Every capture is saved to",

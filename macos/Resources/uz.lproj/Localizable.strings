@@ -147,3 +147,5 @@
 "no display to take system audio from" = "tizim ovozini olish uchun ekran topilmadi";
 "no sound arrived from the system" = "tizimdan ovoz kelmadi";
 "the sound track could not be written" = "ovoz yo'lagini yozib bo'lmadi";
+"Open with default app" = "Standart ilovada ochish";
+"This file cannot be shown" = "Bu faylni ko'rsatib bo'lmaydi";

@@ -126,6 +126,27 @@ final class AppModel {
     /// button, so there is no Back button any more.
     func open(_ screen: Screen) { onOpen?(screen) }
 
+    /// The capture shown in RapidCap's own preview window, or nil while that
+    /// window is hidden. Nil is what tears the preview's view down, so a
+    /// video player inside it stops and lets go of the file.
+    var previewing: URL?
+    /// Shows the preview window; set by the app delegate, which owns it.
+    @ObservationIgnored var onPreview: ((URL) -> Void)?
+    /// Hides the preview window; set by the app delegate.
+    @ObservationIgnored var onClosePreview: (() -> Void)?
+
+    /// Opens a capture in RapidCap's preview window rather than handing it
+    /// to Preview.app or QuickTime. Another capture replaces the shown one.
+    func preview(_ url: URL) {
+        previewing = url
+        onPreview?(url)
+    }
+
+    func closePreview() {
+        previewing = nil
+        onClosePreview?()
+    }
+
     // MARK: settings
 
     func update(_ change: (inout Settings) -> Void) {
