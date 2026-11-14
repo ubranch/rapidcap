@@ -14,7 +14,11 @@
 # instead, which survives rebuilds. Set RAPIDCAP_SIGN_IDENTITY (and
 # RAPIDCAP_SIGN_KEYCHAIN) for that; see scripts/macos-signing-identity.sh.
 #
-# FFmpeg is not vendored: the core searches PATH and both Homebrew prefixes.
+# FFmpeg ships inside the bundle, next to the app binary, where the core looks
+# first (`ffmpeg_path`): a static arm64 build from martin-riedl.de, pinned by
+# version and checksum, the same 9.0.2 the Windows package carries. It makes
+# the GIFs, muxes system audio and is the fallback recorder, so without it a
+# fresh Mac could only take screenshots and video.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,15 +41,32 @@ cp "$repo/crates/desktop/assets/rapidcap.icns" "$app/Contents/Resources/rapidcap
 # English and Uzbek UI text; macOS picks one by the user's language order.
 cp -R "$repo"/macos/Resources/*.lproj "$app/Contents/Resources/"
 
+ffmpeg_url=https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip
+ffmpeg_sha=c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924
+ffmpeg_zip="$target/ffmpeg-9.0.2-macos-arm64.zip"
+if ! echo "$ffmpeg_sha  $ffmpeg_zip" | shasum -a 256 -c --status 2>/dev/null; then
+  curl -fsSL -o "$ffmpeg_zip" "$ffmpeg_url"
+  echo "$ffmpeg_sha  $ffmpeg_zip" | shasum -a 256 -c --status
+fi
+unzip -oq "$ffmpeg_zip" ffmpeg -d "$app/Contents/MacOS"
+cp "$repo/assets/ffmpeg/LICENSE.txt" "$app/Contents/Resources/FFMPEG-LICENSE.txt"
+cat > "$app/Contents/Resources/FFMPEG-SOURCE.txt" <<EOF
+FFmpeg 9.0.2, static macOS arm64 build by martin-riedl.de. GPL v3.
+Source code: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+Build and configuration: https://ffmpeg.martin-riedl.de/info/detail/macos/arm64/1789931890_9.0.2
+Binary: $ffmpeg_url (sha256 of the zip: $ffmpeg_sha)
+EOF
+
 identity="${RAPIDCAP_SIGN_IDENTITY:--}"
 keychain="${RAPIDCAP_SIGN_KEYCHAIN:-}"
-if [ -n "$keychain" ]; then
-  codesign --force --sign "$identity" --keychain "$keychain" "$app"
-else
-  codesign --force --sign "$identity" "$app"
-fi
+sign=(codesign --force --sign "$identity")
+if [ -n "$keychain" ]; then sign+=(--keychain "$keychain"); fi
+# Inside out: the bundle's signature seals the FFmpeg binary as it is.
+"${sign[@]}" "$app/Contents/MacOS/ffmpeg"
+"${sign[@]}" "$app"
 
 "$app/Contents/MacOS/RapidCap" --probe > /dev/null
+"$app/Contents/MacOS/ffmpeg" -hide_banner -version > /dev/null
 
 cd "$repo/dist"
 find RapidCap.app -type f -exec shasum -a 256 {} + > SHA256SUMS.txt

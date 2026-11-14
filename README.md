@@ -67,7 +67,10 @@ xcrun notarytool submit dist/RapidCap.zip --keychain-profile YOUR_PROFILE --wait
 xcrun stapler staple dist/RapidCap.app
 ```
 
-Homebrew's FFmpeg (`brew install ffmpeg`) is what `PATH` resolution expects.
+The app bundle carries its own FFmpeg (`Contents/MacOS/ffmpeg`, a static
+arm64 9.0.2 build, GPL v3); `scripts/package-macos.sh` downloads it by pinned
+checksum. A development build run outside the bundle falls back to `PATH` and
+Homebrew's FFmpeg (`brew install ffmpeg`).
 
 ## First run on macOS
 
