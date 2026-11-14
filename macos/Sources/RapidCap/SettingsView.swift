@@ -91,6 +91,7 @@ private let dithers: [(id: String, name: String, blurb: String)] = [
 struct SettingsView: View {
     let model: AppModel
     @Local private var advanced = false
+    @Local private var inDock = DockIcon.shown
 
     var body: some View {
         ScrollView {
@@ -115,6 +116,12 @@ struct SettingsView: View {
                         divider
                         row(String(localized: "System audio"), String(localized: "Record what your Mac plays into videos")) {
                             Toggle("", isOn: bind(\.audio.enabled)).toggleStyle(.switch)
+                        }
+                        divider
+                        row(String(localized: "Show in Dock"),
+                            String(localized: "Off keeps RapidCap in the menu bar only")) {
+                            Toggle("", isOn: $inDock).toggleStyle(.switch)
+                                .onChange(of: inDock) { DockIcon.set(inDock) }
                         }
                     }
                     section(String(localized: "Shortcuts")) {

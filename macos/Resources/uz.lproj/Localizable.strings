@@ -90,6 +90,8 @@
 "It never lands in a recording either way" = "Panel baribir yozuvga tushmaydi";
 "Copy screenshots" = "Skrinshotlarni nusxalash";
 "Put each screenshot on the clipboard" = "Har bir skrinshotni buferga nusxalash";
+"Show in Dock" = "Dock'da ko'rsatish";
+"Off keeps RapidCap in the menu bar only" = "O'chiq bo'lsa, RapidCap faqat menu bar'da turadi";
 "System audio" = "Tizim ovozi";
 "Record what your Mac plays into videos" = "Mac'dagi ovozni videoga yozish";
 "Shortcuts" = "Tezkor tugmalar";

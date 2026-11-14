@@ -13,7 +13,7 @@ struct Main {
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
-        app.setActivationPolicy(.regular)
+        app.setActivationPolicy(DockIcon.shown ? .regular : .accessory)
         app.run()
     }
 
@@ -34,6 +34,28 @@ struct Main {
         } catch {
             FileHandle.standardError.write(Data("probe failed: \(error.localizedDescription)\n".utf8))
             exit(1)
+        }
+    }
+}
+
+/// Whether RapidCap has a Dock icon. Off makes it a menu bar app: no Dock
+/// icon and no app menu, the status item stays. Kept in UserDefaults like the
+/// shortcuts, because settings.json is shared with Windows.
+@MainActor
+enum DockIcon {
+    static let key = "showInDock"
+
+    static var shown: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+
+    static func set(_ shown: Bool) {
+        UserDefaults.standard.set(shown, forKey: key)
+        NSApp.setActivationPolicy(shown ? .regular : .accessory)
+        // Leaving .regular deactivates the app; keep the Settings window in
+        // front of the user who just flipped the switch.
+        let key = NSApp.keyWindow
+        DispatchQueue.main.async {
+            NSApp.activate()
+            key?.makeKeyAndOrderFront(nil)
         }
     }
 }
@@ -258,6 +280,9 @@ extension AppDelegate: NSMenuDelegate {
         item(String(localized: "Show RapidCap"), #selector(menuShow), "rectangle.on.rectangle")
         item(String(localized: "Recent captures"), #selector(menuGallery), "square.grid.2x2")
         item(String(localized: "Open captures folder"), #selector(menuFolder), "folder")
+        // With the Dock icon off there is no app menu, so ⌘, has nowhere to
+        // live; this is the way back to the switch that turns it on again.
+        item(String(localized: "Settings…"), #selector(openSettings), "gearshape")
         menu.addItem(.separator())
         let quit = NSMenuItem(title: String(localized: "Quit RapidCap"), action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
