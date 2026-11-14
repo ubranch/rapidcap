@@ -26,8 +26,8 @@ pub use geometry::{CaptureError, CaptureTarget, CapturedFrame, PhysicalRegion, R
 pub use image_file::{ImageFileError, save_screenshot};
 pub use naming::OutputNamer;
 pub use recording::{
-    RecordingError, RecordingSession, ffmpeg_path, media_duration, microphones, parse_duration,
-    recording_paths,
+    RecordingError, RecordingSession, encode_gif, ffmpeg_path, media_duration, microphones,
+    parse_duration, recording_paths,
 };
 pub use screenshot::{SavedCapture, ScreenshotError, capture_and_save};
 pub use settings::{

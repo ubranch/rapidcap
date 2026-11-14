@@ -317,16 +317,18 @@ final class AppModel {
         unsettled += 1
         if kind == .video && settings.audio.enabled { attachAudio(mine) }
         let rect = pick.pixels
-        let area = kind == .video ? ScreenRecorder.area(pick.points) : nil
-        let video = settings.video
+        let area = ScreenRecorder.area(pick.points)
+        let gif = kind == .gif
+        let fps = gif ? settings.gif.fps : settings.video.fps
+        let bitrate = gif ? 0 : settings.video.bitrate
         Task { [weak self] in
             var sck: (any Recorder)?
             var fallback: String?
-            // Video through ScreenCaptureKit; FFmpeg when that does not start,
-            // so a recording is never lost to it.
+            // ScreenCaptureKit first; FFmpeg when that does not start, so a
+            // recording is never lost to it.
             if let area {
                 do {
-                    sck = try await ScreenRecorder.start(area, video: video)
+                    sck = try await ScreenRecorder.start(area, fps: fps, bitrate: bitrate, gif: gif)
                 } catch {
                     fallback = error.localizedDescription
                 }

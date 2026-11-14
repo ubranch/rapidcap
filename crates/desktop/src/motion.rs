@@ -19,6 +19,9 @@ use crate::theme;
 /// The saved chip arriving and leaving.
 pub const CHIP_FADE: Duration = Duration::from_millis(160);
 
+/// A deleted gallery tile fading out before the grid closes over it.
+pub const TILE_LEAVE: Duration = Duration::from_millis(160);
+
 /// The HUD's idle fade, in each direction.
 pub const HUD_FADE: Duration = Duration::from_millis(240);
 

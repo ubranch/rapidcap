@@ -23,20 +23,23 @@
 //! that sends it to the folder. The tile itself is a tab stop and opens the
 //! file, and Delete removes the focused one.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use chrono::{DateTime, Datelike as _, Local};
 use gpui::{
-    AnyElement, ClickEvent, Context, Entity, FocusHandle, FontWeight, IntoElement, ObjectFit,
-    ParentElement as _, Render, Role, ScrollHandle, SharedString, StyledImage as _, Window, div,
-    img, linear_color_stop, linear_gradient, prelude::*,
+    Animation, AnimationExt as _, AnyElement, ClickEvent, Context, ElementId, Entity, FocusHandle,
+    FontWeight, IntoElement, ObjectFit, ParentElement as _, Render, Role, ScrollHandle,
+    SharedString, StyledImage as _, Window, div, ease_out_quint, img, linear_color_stop,
+    linear_gradient, prelude::*,
 };
 use rapidcap_capture::{CaptureCommand, CaptureEvent, write_clipboard_file};
 
 use crate::controller::AppController;
 use crate::i18n::t;
 use crate::icons::Icon;
+use crate::motion;
 use crate::platform::{move_to_trash, open_path, reveal_path, shortcut_label};
 use crate::settings_view::command_name;
 use crate::theme;
@@ -209,6 +212,9 @@ pub struct GalleryView {
     /// Bumped by every [`Self::reload`], so the thumbnails of a listing that
     /// has already been replaced land on nothing instead of on the new one.
     generation: u64,
+    /// Captures already in the Recycle Bin whose tile is still fading out.
+    /// By path, because a delete shifts every index behind it.
+    leaving: HashSet<PathBuf>,
     _controller: gpui::Subscription,
     _saved: gpui::Subscription,
 }
@@ -223,6 +229,7 @@ impl GalleryView {
             hovered: None,
             loaded: false,
             generation: 0,
+            leaving: HashSet::new(),
             _controller: cx.observe(&controller, |_, _, cx| cx.notify()),
             // A capture that lands while the grid is up belongs at the front of
             // it. Guarded on `loaded`, so a folder nobody has opened the
@@ -269,7 +276,13 @@ impl GalleryView {
                 .map(|(path, modified, _)| thumbs::key(path, *modified))
                 .collect();
             this.update(cx, |this, cx| {
-                this.captures = captures;
+                // A tile that is fading out stays out: its file is in the
+                // Recycle Bin, and a listing that raced the delete must not
+                // bring it back.
+                this.captures = captures
+                    .into_iter()
+                    .filter(|capture| !this.leaving.contains(&capture.path))
+                    .collect();
                 this.loaded = true;
                 cx.notify();
             })?;
@@ -367,23 +380,43 @@ impl GalleryView {
         }
     }
 
-    /// Delete to the Recycle Bin, and drop the tile.
+    /// Delete to the Recycle Bin, and fade the tile out.
     ///
     /// The tile goes without waiting for a re-listing: the grid reflows under
-    /// the pointer either way, and doing it on the next frame rather than after
-    /// a round trip to the disk is the difference between a delete and a delay.
-    /// A failed delete keeps its tile, which is the only honest answer.
+    /// the pointer either way, and doing it after a short fade rather than
+    /// after a round trip to the disk is the difference between a delete and a
+    /// delay. A failed delete keeps its tile, which is the only honest answer.
     fn delete(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(capture) = self.captures.get(index) else {
             return;
         };
+        if self.leaving.contains(&capture.path) {
+            return;
+        }
         if let Err(error) = move_to_trash(&capture.path) {
             tracing::error!(%error, path = %capture.path.display(), "delete capture");
             return;
         }
-        self.captures.remove(index);
+        let path = capture.path.clone();
+        self.leave(path, cx);
+    }
+
+    /// Mark a tile as leaving, and drop it once its fade has run.
+    fn leave(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if !self.leaving.insert(path.clone()) {
+            return;
+        }
         self.hovered = None;
         cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(motion::TILE_LEAVE).await;
+            this.update(cx, |this, cx| {
+                this.leaving.remove(&path);
+                this.captures.retain(|capture| capture.path != path);
+                cx.notify();
+            })
+        })
+        .detach();
     }
 }
 
@@ -529,8 +562,11 @@ impl GalleryView {
     ) -> AnyElement {
         let path = capture.path.clone();
         let name = capture.name.clone();
-        let hovered = self.hovered == Some(index);
-        div()
+        // A leaving tile is already in the Recycle Bin: no actions, no open,
+        // and no second delete while it fades.
+        let leaving = self.leaving.contains(&capture.path);
+        let hovered = !leaving && self.hovered == Some(index);
+        let tile = div()
             .id(("tile", index))
             .accessibility_id(format!("rapidcap.gallery.{index}"))
             .key_context("RapidCapTile")
@@ -548,14 +584,16 @@ impl GalleryView {
             .bg(theme::bg_card())
             .border_1()
             .border_color(theme::border_card())
-            .cursor_pointer()
+            .when(!leaving, |tile| tile.cursor_pointer())
             .focus_visible(|style| style.border_color(theme::accent()))
-            .on_hover(
-                cx.listener(move |this, hovered: &bool, _, cx| this.hover(index, *hovered, cx)),
-            )
-            .on_click({
-                let path = path.clone();
-                cx.listener(move |this, _, _, _| this.open(&path))
+            .when(!leaving, |tile| {
+                tile.on_hover(
+                    cx.listener(move |this, hovered: &bool, _, cx| this.hover(index, *hovered, cx)),
+                )
+                .on_click({
+                    let path = path.clone();
+                    cx.listener(move |this, _, _, _| this.open(&path))
+                })
             })
             .child(
                 div()
@@ -644,8 +682,18 @@ impl GalleryView {
                             .text_color(theme::text_muted())
                             .child(when_label(capture.modified, now)),
                     ),
-            )
-            .into_any_element()
+            );
+        if !leaving {
+            return tile.into_any_element();
+        }
+        // Keyed by path, not index: a second delete during this fade shifts
+        // the index, and a changed id would restart the animation.
+        tile.with_animation(
+            ElementId::Name(capture.path.to_string_lossy().into_owned().into()),
+            Animation::new(motion::TILE_LEAVE).with_easing(ease_out_quint()),
+            |tile, delta| tile.opacity(1.0 - delta),
+        )
+        .into_any_element()
     }
 
     /// Copy, Show in folder and Delete, over the thumbnail.
@@ -1115,6 +1163,66 @@ mod tests {
         cx.run_until_parked();
         assert!(view.read_with(&cx, |view, _| view.loaded));
         assert!(view.read_with(&cx, |view, _| view.captures.is_empty()));
+    }
+
+    #[gpui::test]
+    fn a_deleted_tile_fades_before_it_goes(cx: &mut gpui::TestAppContext) {
+        let documents = tempfile::tempdir().unwrap();
+        let (mut cx, view, root) = open(cx, documents.path());
+        for name in ["a.png", "b.png"] {
+            write(&root, name);
+        }
+        view.update(&mut cx, |view, cx| view.reload(cx));
+        cx.run_until_parked();
+
+        // `leave` is what `delete` does once the Recycle Bin has the file;
+        // called directly so the test does not fill the real one.
+        let gone = view.read_with(&cx, |view, _| view.captures[0].path.clone());
+        view.update(&mut cx, |view, cx| {
+            view.hover(0, true, cx);
+            view.leave(gone.clone(), cx);
+        });
+        cx.run_until_parked();
+        let (count, leaving, hovered) = view.read_with(&cx, |view, _| {
+            (
+                view.captures.len(),
+                view.leaving.contains(&gone),
+                view.hovered,
+            )
+        });
+        assert_eq!(count, 2, "still drawn while it fades");
+        assert!(leaving);
+        assert_eq!(hovered, None, "no actions on a leaving tile");
+
+        // A delete that races the fade is ignored, not repeated.
+        view.update(&mut cx, |view, cx| view.delete(0, cx));
+        assert!(gone.is_file(), "no second trip to the Recycle Bin");
+
+        cx.executor().advance_clock(crate::motion::TILE_LEAVE);
+        cx.run_until_parked();
+        let (paths, unmarked) = view.read_with(&cx, |view, _| {
+            let paths: Vec<PathBuf> = view.captures.iter().map(|c| c.path.clone()).collect();
+            (paths, view.leaving.is_empty())
+        });
+        assert_eq!(paths.len(), 1);
+        assert!(!paths.contains(&gone));
+        assert!(unmarked, "nothing left marked");
+
+        // A listing that still sees the file while its tile is leaving must
+        // not bring that tile back.
+        let other = paths[0].clone();
+        view.update(&mut cx, |view, cx| {
+            view.leave(other.clone(), cx);
+            view.reload(cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            view.read_with(&cx, |view, _| view.captures.iter().all(|c| c.path != other)),
+            "a re-listing mid-fade"
+        );
+        cx.executor().advance_clock(crate::motion::TILE_LEAVE);
+        cx.run_until_parked();
+        assert!(view.read_with(&cx, |view, _| view.leaving.is_empty()));
     }
 
     #[test]

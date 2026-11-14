@@ -20,8 +20,8 @@ use std::{
 
 use rapidcap_capture::{
     AppPaths, CaptureKind, CaptureTarget, PhysicalRegion, RecordingSession, Settings,
-    SettingsStore, capture_and_save, ffmpeg_path, media_duration, microphones, recording_paths,
-    write_clipboard, write_clipboard_file,
+    SettingsStore, capture_and_save, encode_gif, ffmpeg_path, media_duration, microphones,
+    recording_paths, write_clipboard, write_clipboard_file,
 };
 use serde_json::{Value, json};
 
@@ -272,21 +272,49 @@ pub unsafe extern "C" fn rc_record_cancel(recording: *mut Recording) {
     }
 }
 
-/// Where a recording made outside FFmpeg goes: the macOS app records video
-/// through ScreenCaptureKit and files it exactly as [`rc_record_start`]
-/// would. Creates both directories.
-/// `{"temp": "<temp>/<stem>.part.mp4", "final": "<root>/<yyyy-mm>/<stem>.mp4"}`.
+/// Where a recording made outside FFmpeg goes: the macOS app records through
+/// ScreenCaptureKit and files it exactly as [`rc_record_start`] would.
+/// Creates both directories. A video is written straight to its MP4; a GIF's
+/// frames go to a ProRes `.mov` that [`rc_encode_gif`] turns into the GIF.
+/// `{"temp": "<temp>/<stem>.part.mp4|mov", "final": "<root>/<yyyy-mm>/<stem>.mp4|gif"}`.
 #[unsafe(no_mangle)]
-pub extern "C" fn rc_recording_paths() -> *mut c_char {
+pub extern "C" fn rc_recording_paths(gif: bool) -> *mut c_char {
     let (paths, _) = match context() {
         Ok(context) => context,
         Err(message) => return error(message),
     };
-    match recording_paths(CaptureKind::Video, &paths) {
+    let (kind, temp) = if gif {
+        (CaptureKind::Gif, "part.mov")
+    } else {
+        (CaptureKind::Video, "part.mp4")
+    };
+    match recording_paths(kind, &paths) {
         Ok((temp_stem, final_path)) => into_c(json!({
-            "temp": temp_stem.with_extension("part.mp4"),
+            "temp": temp_stem.with_extension(temp),
             "final": final_path,
         })),
+        Err(problem) => error(problem),
+    }
+}
+
+/// Make `gif` from a finished capture file, with the palette the saved
+/// settings name. `{}` on success; on failure the capture file is kept.
+///
+/// # Safety
+/// `source` and `gif` are NUL-terminated strings valid for the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rc_encode_gif(source: *const c_char, gif: *const c_char) -> *mut c_char {
+    let (Some(source), Some(gif)) = (unsafe { read(source) }, unsafe { read(gif) }) else {
+        return error("no file given");
+    };
+    let (_, settings) = match context() {
+        Ok(context) => context,
+        Err(message) => return error(message),
+    };
+    let made = ffmpeg_path()
+        .and_then(|ffmpeg| encode_gif(&ffmpeg, &settings, Path::new(&source), Path::new(&gif)));
+    match made {
+        Ok(_) => into_c(json!({})),
         Err(problem) => error(problem),
     }
 }

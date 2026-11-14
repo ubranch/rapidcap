@@ -324,7 +324,10 @@ pub fn recording_paths(
 /// single-graph form held every decoded frame in memory until the palette was
 /// known: 1.3 GB for ten seconds of 1080p, growing with the length. A palette
 /// per frame (`single`) streams in one graph, so it keeps that form.
-fn encode_gif(
+///
+/// Public for the macOS app, which captures a GIF's frames through
+/// ScreenCaptureKit and hands the file here.
+pub fn encode_gif(
     ffmpeg: &Path,
     settings: &Settings,
     source: &Path,

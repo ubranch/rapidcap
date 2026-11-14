@@ -157,12 +157,19 @@ enum Core {
         _ = try check(take(url.path.withCString { rc_copy_file($0) }))
     }
 
-    /// Where a video recorded outside FFmpeg is written, then moved to: the
+    /// Where a recording made outside FFmpeg is written, then filed: the
     /// same temp directory and file name the core gives its own recordings.
-    static func recordingPaths() throws -> (temp: URL, final: URL) {
-        let answer = try check(take(rc_recording_paths()))
+    static func recordingPaths(gif: Bool) throws -> (temp: URL, final: URL) {
+        let answer = try check(take(rc_recording_paths(gif)))
         return (URL(fileURLWithPath: answer["temp"] as? String ?? ""),
                 URL(fileURLWithPath: answer["final"] as? String ?? ""))
+    }
+
+    /// The GIF made from a finished capture file. Blocks on FFmpeg.
+    static func encodeGif(_ source: URL, to gif: URL) throws {
+        _ = try check(take(source.path.withCString { sourcePath in
+            gif.path.withCString { rc_encode_gif(sourcePath, $0) }
+        }))
     }
 }
 

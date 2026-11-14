@@ -1,10 +1,13 @@
-// Video through ScreenCaptureKit.
+// Video and GIF through ScreenCaptureKit.
 //
 // FFmpeg's AVFoundation input takes the whole display and crops it in a
-// filter, so every frame of every pixel is read whatever the region. Here the
-// window server crops and scales before the frame leaves it, and VideoToolbox
-// encodes it through AVAssetWriter. GIF stays on FFmpeg. The file is named and
-// filed by the core (`rc_recording_paths`), the same as an FFmpeg recording.
+// filter, so every frame of every pixel is read whatever the region, and it
+// starts late: each run lost up to a second and a half off the front of the
+// take, more on a busy machine. Here the window server crops and scales before
+// the frame leaves it, and AVAssetWriter writes it - H.264 for a video, ProRes
+// 4444 for a GIF, whose palette pass the core runs on the file at stop. Files
+// are named and filed by the core (`rc_recording_paths`), the same as an FFmpeg
+// recording.
 
 import AppKit
 import AVFoundation
@@ -52,6 +55,7 @@ final class ScreenRecorder: NSObject, SCStreamOutput, Recorder, @unchecked Senda
 
     private let temp: URL
     private let final: URL
+    private let gif: Bool
     private let queue = DispatchQueue(label: "com.inspire.rapidcap.screen-recorder")
     private let writer: AVAssetWriter
     private let input: AVAssetWriterInput
@@ -74,29 +78,39 @@ final class ScreenRecorder: NSObject, SCStreamOutput, Recorder, @unchecked Senda
     /// Set by stop and cancel: nothing is written after it.
     private var ended = false
 
-    private init(temp: URL, final: URL, area: Area, video: VideoSettings) throws {
+    private init(temp: URL, final: URL, area: Area, fps: Int, bitrate: Int, gif: Bool) throws {
         self.temp = temp
         self.final = final
+        self.gif = gif
         try? FileManager.default.removeItem(at: temp)
-        writer = try AVAssetWriter(outputURL: temp, fileType: .mp4)
-        writer.shouldOptimizeForNetworkUse = true
-        input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        writer = try AVAssetWriter(outputURL: temp, fileType: gif ? .mov : .mp4)
+        writer.shouldOptimizeForNetworkUse = !gif
+        let colour: [String: Any] = [
+            AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+            AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+        ]
+        // A GIF's frames are kept at full colour for its palette pass: ProRes
+        // 4444 does not halve the colour of text edges the way H.264 does.
+        let settings: [String: Any] = gif ? [
+            AVVideoCodecKey: AVVideoCodecType.proRes4444,
+            AVVideoWidthKey: area.width,
+            AVVideoHeightKey: area.height,
+            AVVideoColorPropertiesKey: colour,
+        ] : [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: area.width,
             AVVideoHeightKey: area.height,
-            AVVideoColorPropertiesKey: [
-                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
-                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
-            ],
+            AVVideoColorPropertiesKey: colour,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: video.bitrate,
-                AVVideoExpectedSourceFrameRateKey: video.fps,
-                AVVideoMaxKeyFrameIntervalKey: video.fps * 2,
+                AVVideoAverageBitRateKey: bitrate,
+                AVVideoExpectedSourceFrameRateKey: fps,
+                AVVideoMaxKeyFrameIntervalKey: fps * 2,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                 AVVideoAllowFrameReorderingKey: false,
             ],
-        ])
+        ]
+        input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = true
         super.init()
         writer.add(input)
@@ -105,7 +119,9 @@ final class ScreenRecorder: NSObject, SCStreamOutput, Recorder, @unchecked Senda
         }
     }
 
-    static func start(_ area: Area, video: VideoSettings) async throws -> ScreenRecorder {
+    /// `fps` and `bitrate` from the video or the GIF settings; a GIF has no
+    /// bitrate and takes 0.
+    static func start(_ area: Area, fps: Int, bitrate: Int, gif: Bool) async throws -> ScreenRecorder {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first(where: { $0.displayID == area.displayID }) else {
             throw CoreError(message: String(localized: "the display to record is gone"))
@@ -114,16 +130,22 @@ final class ScreenRecorder: NSObject, SCStreamOutput, Recorder, @unchecked Senda
         config.sourceRect = area.rect
         config.width = area.width
         config.height = area.height
-        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(1, video.fps)))
+        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(1, fps)))
         config.showsCursor = false
         config.capturesAudio = false
-        config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-        config.colorMatrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2
-        config.colorSpaceName = CGColorSpace.itur_709
+        if gif {
+            config.pixelFormat = kCVPixelFormatType_32BGRA
+            config.colorSpaceName = CGColorSpace.sRGB
+        } else {
+            config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            config.colorMatrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2
+            config.colorSpaceName = CGColorSpace.itur_709
+        }
         config.queueDepth = 6
 
-        let paths = try Core.recordingPaths()
-        let recorder = try ScreenRecorder(temp: paths.temp, final: paths.final, area: area, video: video)
+        let paths = try Core.recordingPaths(gif: gif)
+        let recorder = try ScreenRecorder(temp: paths.temp, final: paths.final, area: area, fps: fps,
+                                          bitrate: bitrate, gif: gif)
         // Our own windows - the frame, the HUD - stay out of the picture.
         // `sharingType = .none` alone does not keep them out of this stream.
         let own = content.applications.filter { $0.processID == getpid() }
@@ -188,7 +210,15 @@ final class ScreenRecorder: NSObject, SCStreamOutput, Recorder, @unchecked Senda
             throw writer.error ?? CoreError(message: String(localized: "the video could not be written"))
         }
         do {
-            try FileManager.default.moveItem(at: temp, to: final)
+            if gif {
+                // On failure the core keeps the capture and names it in the error.
+                try Core.encodeGif(temp, to: final)
+                discard()
+            } else {
+                try FileManager.default.moveItem(at: temp, to: final)
+            }
+        } catch let error as CoreError {
+            throw error
         } catch {
             throw CoreError(message: String(localized: "finalize \(temp.path) to \(final.path) failed: \(error.localizedDescription)"))
         }
